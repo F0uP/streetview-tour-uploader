@@ -15,105 +15,411 @@
   }
 }
 </script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/manrope@5.0.19/index.css">
 <style>
+/* ── Design tokens ─────────────────────────────── */
+:root {
+  --bg: #060608;
+  --bg-grad: radial-gradient(ellipse 140% 90% at 15% -10%, #241338 0%, #0b0710 45%, #060608 75%),
+             radial-gradient(ellipse 100% 60% at 100% 0%, #12222f 0%, transparent 55%);
+  --panel: rgba(17,15,23,.82);
+  --panel-solid: #100e16;
+  --panel-2: #171420;
+  --panel-3: #1c1826;
+  --border: rgba(255,255,255,.08);
+  --border-2: rgba(255,255,255,.14);
+  --text: #f3f1f7;
+  --text-dim: #9793a6;
+  --text-faint: #615d70;
+  --accent: #8b5cf6;
+  --accent-2: #c4b5fd;
+  --accent-soft: rgba(139,92,246,.16);
+  --accent-glow: rgba(139,92,246,.55);
+  --gold: #f6b93b;
+  --gold-glow: rgba(246,185,59,.5);
+  --danger: #fb5878;
+  --danger-glow: rgba(251,88,120,.4);
+  --success: #2dd9a8;
+  --radius: 14px;
+  --radius-sm: 9px;
+  --blur: blur(20px) saturate(1.4);
+  --shadow-lg: 0 24px 60px -12px rgba(0,0,0,.65), 0 2px 8px rgba(0,0,0,.4);
+  --shadow-md: 0 12px 32px -8px rgba(0,0,0,.55);
+  --font: 'Manrope Variable', 'Manrope', system-ui, -apple-system, sans-serif;
+}
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: system-ui,-apple-system,sans-serif; background:#111827; color:#e5e7eb; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
-#tb { display:flex; align-items:center; gap:10px; padding:7px 12px; background:#1f2937; border-bottom:1px solid #374151; flex-shrink:0; }
+body {
+  font-family: var(--font); background:var(--bg); background-image:var(--bg-grad);
+  color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden;
+  letter-spacing:-.01em;
+}
+::selection { background:var(--accent); color:#fff; }
+::-webkit-scrollbar { width:9px; height:9px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:rgba(255,255,255,.14); border-radius:99px; border:2px solid transparent; background-clip:padding-box; }
+::-webkit-scrollbar-thumb:hover { background:rgba(255,255,255,.24); background-clip:padding-box; }
+
+/* ── Toolbar ───────────────────────────────────── */
+#tb {
+  display:flex; align-items:center; gap:10px; margin:14px 16px 0 16px; padding:9px 14px;
+  background:var(--panel); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
+  border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow-md);
+  flex-shrink:0; position:relative; z-index:100;
+}
 .tg { display:flex; gap:4px; }
-.sep { width:1px; height:26px; background:#374151; }
-.btn { padding:6px 10px; border:1px solid #374151; border-radius:5px; background:#111827; color:#e5e7eb; cursor:pointer; font-size:12px; white-space:nowrap; }
-.btn:hover { background:#374151; }
-.btn.on { background:#3b82f6; border-color:#3b82f6; }
-.btn.g { background:#16a34a; border-color:#16a34a; color:#fff; font-weight:700; }
-.btn.g:hover { background:#15803d; }
-#st, .savehint { font-size:11px; color:#9ca3af; }
-.savehint { max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-#main { display:flex; flex:1; overflow:hidden; }
-#sb { width:360px; flex-shrink:0; background:#1f2937; border-right:1px solid #374151; overflow-y:auto; padding:12px; }
-.pl { font-size:11px; color:#9ca3af; margin-bottom:4px; }
-.pg { margin-bottom:14px; }
-.pi { width:100%; padding:6px 8px; border-radius:5px; border:1px solid #374151; background:#111827; color:#e5e7eb; font-size:12px; }
-.pb { width:100%; aspect-ratio:2/1; background:#111827; border-radius:5px; overflow:hidden; display:flex; align-items:center; justify-content:center; border:1px solid #374151; font-size:11px; color:#4b5563; margin-bottom:6px; }
+.sep { width:1px; height:22px; background:var(--border-2); margin:0 2px; }
+.brand { display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; letter-spacing:-.02em; padding-right:6px; }
+.brand .dot { width:9px; height:9px; border-radius:50%; background:linear-gradient(135deg,var(--accent),var(--gold)); box-shadow:0 0 12px var(--accent-glow); }
+
+/* ── Buttons ───────────────────────────────────── */
+.btn, .fl, .walkchip, .dbtn, .conn-x, .cx {
+  transition: background .15s ease, border-color .15s ease, color .15s ease, transform .1s ease, box-shadow .15s ease;
+}
+.btn {
+  display:inline-flex; align-items:center; gap:6px; padding:7px 12px; border:1px solid var(--border-2);
+  border-radius:var(--radius-sm); background:var(--panel-2); color:var(--text); cursor:pointer;
+  font:inherit; font-weight:600; font-size:12px; white-space:nowrap;
+}
+.btn svg { width:14px; height:14px; flex-shrink:0; }
+.btn:hover { background:var(--panel-3); border-color:rgba(255,255,255,.22); }
+.btn:active { transform:scale(.96); }
+.btn.on { background:var(--accent); border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.btn.g {
+  background:linear-gradient(135deg,var(--accent),#6d3fe0); border-color:transparent; color:#fff; font-weight:700;
+  box-shadow:0 4px 16px -4px var(--accent-glow);
+}
+.btn.g:hover { filter:brightness(1.1); box-shadow:0 6px 20px -4px var(--accent-glow); }
+.btn.danger { border-color:rgba(251,88,120,.4); color:var(--danger); }
+.btn.danger:hover { background:rgba(251,88,120,.12); }
+.btn:disabled { opacity:.35; cursor:not-allowed; transform:none; }
+.btn:disabled:hover { background:var(--panel-2); }
+.btn.g:disabled:hover { filter:none; }
+kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace; background:rgba(255,255,255,.08); border:1px solid var(--border-2); border-radius:4px; padding:1px 5px; color:var(--text-dim); }
+
+#st { font-size:11px; color:var(--text-dim); font-weight:600; white-space:nowrap; }
+#st b { color:var(--text); }
+.savehint { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:var(--text-dim); }
+.hintline { font-size:11px; color:var(--text-faint); white-space:nowrap; }
+
+/* ── Autosave status ───────────────────────────── */
+#save-status { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dim); white-space:nowrap; }
+#save-status .dot { width:6px; height:6px; border-radius:50%; background:var(--text-faint); transition:background .2s ease, box-shadow .2s ease; }
+#save-status.saving .dot { background:var(--gold); box-shadow:0 0 8px var(--gold-glow); animation:pulse-dot 1s infinite; }
+#save-status.saved .dot { background:var(--success); box-shadow:0 0 8px rgba(45,217,168,.5); }
+@keyframes pulse-dot { 0%,100% { opacity:1; } 50% { opacity:.35; } }
+
+/* ── Layout ────────────────────────────────────── */
+#main { display:flex; flex:1; overflow:hidden; padding:14px 16px 16px 16px; gap:14px; }
+#sb {
+  width:360px; flex-shrink:0; background:var(--panel-solid); border:1px solid var(--border);
+  border-radius:var(--radius); overflow-y:auto; padding:16px; box-shadow:var(--shadow-md);
+}
+@keyframes panel-in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+#no-sel, #n-pr { animation:panel-in .2s ease; }
+.pl { font-size:10.5px; color:var(--text-faint); margin-bottom:5px; text-transform:uppercase; letter-spacing:.07em; font-weight:700; }
+.pg { margin-bottom:16px; }
+.pi {
+  width:100%; padding:8px 10px; border-radius:var(--radius-sm); border:1px solid var(--border-2);
+  background:var(--panel-2); color:var(--text); font:inherit; font-size:12.5px; transition:border-color .15s ease, box-shadow .15s ease;
+}
+.pi:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.pb {
+  width:100%; aspect-ratio:2/1; background:var(--panel-2); border-radius:var(--radius-sm); overflow:hidden;
+  display:flex; align-items:center; justify-content:center; border:1px solid var(--border); font-size:11px;
+  color:var(--text-faint); margin-bottom:6px;
+}
 .pb img { width:100%; height:100%; object-fit:cover; }
-.pvw { width:100%; aspect-ratio:2/1; border:1px solid #374151; border-radius:5px; overflow:hidden; background:#111827; margin-top:6px; }
+.pvw { width:100%; aspect-ratio:2/1; border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; background:var(--panel-2); margin-top:6px; }
 .pvw > div { width:100%; height:100%; }
-.cmp { width:100%; aspect-ratio:2/1; border:1px solid #374151; border-radius:5px; overflow:hidden; background:#111827; margin-top:8px; position:relative; }
+.cmp { width:100%; aspect-ratio:2/1; border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; background:var(--panel-2); margin-top:8px; position:relative; }
 .cmp-layer { position:absolute; inset:0; }
 .cmp-layer.fade { opacity:.45; pointer-events:none; }
 .cmp-layer > div { width:100%; height:100%; }
-.fl { display:inline-block; padding:5px 9px; background:#374151; border-radius:5px; cursor:pointer; font-size:11px; }
-.fl:hover { background:#4b5563; }
-.fn { font-size:10px; color:#6b7280; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:4px; }
-.cb2 { display:flex; align-items:center; gap:6px; font-size:11px; cursor:pointer; }
-.ci { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:4px 0; border-bottom:1px solid #111827; }
-.cil { cursor:pointer; color:#dbeafe; }
+.fl { display:inline-block; padding:6px 10px; background:var(--panel-2); border:1px solid var(--border-2); border-radius:var(--radius-sm); cursor:pointer; font-size:11px; font-weight:600; }
+.fl:hover { background:var(--panel-3); }
+.fn { font-size:10px; color:var(--text-faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:4px; }
+.cb2 { display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer; color:var(--text-dim); }
+.latlng { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.ci { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 2px; border-bottom:1px solid var(--border); font-size:12px; }
+.cil { cursor:pointer; color:var(--accent-2); font-weight:600; }
 .cil:hover { text-decoration:underline; }
-.cx { cursor:pointer; color:#ef4444; font-size:13px; padding:0 2px; }
+.cx { cursor:pointer; color:var(--danger); font-size:14px; padding:0 3px; line-height:1; }
 .walklist { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
-.walkchip { border:1px solid #374151; background:#111827; color:#e5e7eb; border-radius:999px; padding:6px 10px; font-size:11px; cursor:pointer; }
-.walkchip:hover { background:#374151; }
-.dbtn { width:100%; padding:7px; border:1px solid #ef4444; border-radius:5px; background:transparent; color:#ef4444; cursor:pointer; font-size:11px; margin-top:8px; }
-.dbtn:hover { background:#ef4444; color:#fff; }
-.hint { background:#111827; border-radius:5px; padding:10px; font-size:11px; color:#9ca3af; line-height:1.8; }
-.hint ol { padding-left:14px; }
-.gok { font-size:10px; color:#22c55e; }
-.gno { font-size:10px; color:#f59e0b; }
-.mini { font-size:10px; color:#9ca3af; line-height:1.5; margin-top:6px; }
+.walkchip { border:1px solid var(--border-2); background:var(--panel-2); color:var(--text); border-radius:999px; padding:6px 11px; font-size:11px; font-weight:600; cursor:pointer; }
+.walkchip:hover { background:var(--panel-3); border-color:var(--accent-2); }
+.dbtn {
+  display:flex; align-items:center; justify-content:center; gap:6px; width:100%; padding:9px;
+  border:1px solid rgba(251,88,120,.35); border-radius:var(--radius-sm); background:rgba(251,88,120,.06);
+  color:var(--danger); cursor:pointer; font:inherit; font-weight:700; font-size:12px; margin-top:8px;
+}
+.dbtn:hover { background:var(--danger); color:#fff; box-shadow:0 6px 18px -6px var(--danger-glow); }
+.hint { background:var(--panel-2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px; font-size:11.5px; color:var(--text-dim); line-height:1.8; }
+.hint ol { padding-left:16px; }
+.hint strong { color:var(--text); }
+.gok { font-size:10px; color:var(--success); font-weight:700; }
+.gno { font-size:10px; color:var(--gold); font-weight:700; }
+.mini { font-size:10.5px; color:var(--text-faint); line-height:1.5; margin-top:6px; }
 .r2 { display:grid; grid-template-columns:1fr 84px; gap:6px; }
 .r2wide { display:grid; grid-template-columns:1fr 92px; gap:6px; }
 .rowbtn { display:flex; gap:6px; margin-top:6px; }
-.rowbtn .btn { flex:1; padding:6px 8px; font-size:11px; }
-.slider { width:100%; margin-top:8px; }
-#mw { flex:1; position:relative; }
-#map { width:100%; height:100%; }
-#do { position:absolute; inset:0; z-index:1000; pointer-events:none; display:flex; align-items:center; justify-content:center; background:rgba(59,130,246,.12); border:3px dashed #3b82f6; font-size:16px; color:#93c5fd; opacity:0; transition:opacity .2s; }
+.rowbtn .btn { flex:1; padding:7px 8px; font-size:11px; justify-content:center; }
+.slider { width:100%; margin-top:8px; accent-color:var(--accent); }
+
+.brandmark { display:flex; align-items:center; gap:10px; margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+.brandmark .mk { width:30px; height:30px; border-radius:9px; background:linear-gradient(135deg,var(--accent),var(--gold)); box-shadow:0 4px 16px -4px var(--accent-glow); flex-shrink:0; }
+.brandmark .tx { font-size:12.5px; font-weight:800; letter-spacing:-.01em; }
+.brandmark .tx span { display:block; font-size:10px; font-weight:600; color:var(--text-faint); letter-spacing:.02em; }
+
+/* ── Node list ─────────────────────────────────── */
+#node-list-panel { margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+#node-list { max-height:220px; overflow-y:auto; margin-top:8px; }
+.nrow { display:flex; align-items:center; gap:6px; padding:6px 7px; border-radius:var(--radius-sm); cursor:pointer; font-size:12px; border-top:2px solid transparent; transition:background .12s ease; }
+.nrow:hover { background:var(--panel-2); }
+.nrow.sel { background:var(--accent-soft); }
+.nrow.multi { outline:1.5px solid var(--accent); outline-offset:-1px; }
+.nrow.drag-over { border-top-color:var(--accent); }
+.nrow .nrow-drag { cursor:grab; color:var(--text-faint); font-size:12px; }
+.nrow .nrow-idx { color:var(--text-faint); font-size:10px; width:16px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums; }
+.nrow .nrow-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nrow-empty { font-size:11px; color:var(--text-faint); padding:10px 2px; text-align:center; }
+
+/* ── Map ───────────────────────────────────────── */
+#mw { flex:1; position:relative; border-radius:var(--radius); overflow:hidden; border:1px solid var(--border); box-shadow:var(--shadow-lg); }
+#map { width:100%; height:100%; background:#0a0910; }
+#map.connecting, #map.connecting .leaflet-container { cursor:crosshair; }
+.leaflet-control-zoom { border:none !important; box-shadow:var(--shadow-md) !important; }
+.leaflet-control-zoom a {
+  background:var(--panel) !important; backdrop-filter:var(--blur); color:var(--text) !important;
+  border-color:var(--border) !important;
+}
+.leaflet-control-zoom a:hover { background:var(--panel-3) !important; }
+.leaflet-control-attribution { background:rgba(6,6,8,.65) !important; color:var(--text-faint) !important; backdrop-filter:blur(6px); }
+.leaflet-control-attribution a { color:var(--text-dim) !important; }
+#do {
+  position:absolute; inset:0; z-index:1000; pointer-events:none; display:flex; align-items:center; justify-content:center;
+  background:rgba(139,92,246,.14); border:2px dashed var(--accent); border-radius:var(--radius); font-size:16px;
+  font-weight:700; color:var(--accent-2); opacity:0; transition:opacity .2s;
+}
 #do.show { opacity:1; pointer-events:all; }
-.nd { width:34px; height:34px; border-radius:50%; background:#ef4444; border:2.5px solid #fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:#fff; box-shadow:0 2px 8px rgba(0,0,0,.5); cursor:pointer; position:relative; transition:transform .1s; }
-.nd:hover { transform:scale(1.12); }
-.nd.sel { background:#3b82f6; border-color:#bfdbfe; box-shadow:0 0 0 4px rgba(59,130,246,.4); }
-.nd.start { background:#f59e0b; border-color:#fde68a; }
+
+/* ── Node markers ──────────────────────────────── */
+.nd {
+  width:32px; height:32px; border-radius:50%; background:radial-gradient(circle at 32% 28%, #ff9d9d, #fb5878 55%, #e21e50);
+  border:2px solid rgba(255,255,255,.85); display:flex; align-items:center; justify-content:center; font-size:11px;
+  font-weight:800; color:#fff; box-shadow:0 2px 10px rgba(0,0,0,.55), 0 0 0 0 var(--danger-glow); cursor:pointer;
+  position:relative; transition:transform .18s cubic-bezier(.34,1.56,.64,1), box-shadow .18s ease, background .15s ease;
+}
+.nd:hover { transform:scale(1.16); box-shadow:0 4px 18px rgba(0,0,0,.6); }
+.nd:active { transform:scale(.94); }
+.nd.sel { background:radial-gradient(circle at 32% 28%, #b9a6ff, var(--accent) 55%, #6d3fe0); border-color:#fff; box-shadow:0 0 0 5px var(--accent-soft), 0 4px 18px rgba(0,0,0,.6); }
+.nd.start { background:radial-gradient(circle at 32% 28%, #ffe3a3, var(--gold) 55%, #d6910f); border-color:#fff; }
 .nd.csrc { animation:pulse 1s infinite; }
-@keyframes pulse { 0%,100% { box-shadow:0 0 0 0 rgba(239,68,68,.7); } 50% { box-shadow:0 0 0 10px rgba(239,68,68,0); } }
-.nd.hp::after { content:'360'; position:absolute; bottom:-8px; right:-9px; font-size:8px; background:#111827; border:1px solid #374151; border-radius:999px; padding:1px 4px; }
-.nl { position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:3px; background:rgba(0,0,0,.75); color:#fff; font-size:9px; padding:1px 5px; border-radius:3px; white-space:nowrap; pointer-events:none; }
-.conn-x { width:18px; height:18px; border-radius:50%; background:#ef4444; border:1.5px solid #fff; color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,.4); }
-.conn-x:hover { background:#dc2626; }
-.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#1f2937; color:#fde68a; padding:8px 16px; border-radius:8px; font-size:12px; z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,.5); pointer-events:none; }
+@keyframes pulse { 0%,100% { box-shadow:0 0 0 0 var(--danger-glow); } 50% { box-shadow:0 0 0 11px rgba(251,88,120,0); } }
+@keyframes nd-pop { 0% { transform:scale(0); opacity:0; } 65% { transform:scale(1.24); opacity:1; } 100% { transform:scale(1); } }
+.nd-pop .nd { animation:nd-pop .32s cubic-bezier(.34,1.56,.64,1); }
+.nd.hp::after {
+  content:'360°'; position:absolute; bottom:-8px; right:-11px; font-size:7.5px; font-weight:700; background:var(--panel-solid);
+  border:1px solid var(--border-2); border-radius:999px; padding:1.5px 4px; color:var(--text-dim); letter-spacing:0;
+}
+.nd-wedge { position:absolute; top:50%; left:50%; width:44px; height:44px; margin:-22px 0 0 -22px; pointer-events:none; filter:drop-shadow(0 1px 2px rgba(0,0,0,.7)); }
+.nl {
+  position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:5px; background:var(--panel);
+  backdrop-filter:var(--blur); border:1px solid var(--border-2); color:var(--text); font-size:9.5px; font-weight:600;
+  padding:2px 7px; border-radius:999px; white-space:nowrap; pointer-events:none; box-shadow:var(--shadow-md);
+}
+.conn-x {
+  width:18px; height:18px; border-radius:50%; background:var(--panel-solid); border:1.5px solid var(--danger); color:var(--danger);
+  display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; box-shadow:0 1px 6px rgba(0,0,0,.5);
+}
+.conn-x:hover { background:var(--danger); color:#fff; transform:scale(1.15); }
+.leaflet-tooltip.conn-dist-wrap {
+  background:var(--panel); backdrop-filter:var(--blur); border:1px solid var(--border-2); color:var(--text);
+  font-size:10.5px; font-weight:700; font-family:var(--font); padding:3px 8px; border-radius:999px;
+  box-shadow:var(--shadow-md);
+}
+.leaflet-tooltip.conn-dist-wrap::before { border-top-color:var(--border-2); }
+
+/* ── Node quick-action flyout ──────────────────── */
+.qm {
+  position:fixed; z-index:1400; display:flex; gap:3px; padding:4px; background:var(--panel);
+  backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur); border:1px solid var(--border-2);
+  border-radius:999px; box-shadow:var(--shadow-lg); transform:translate(-50%,-100%) translateY(-14px) scale(.85);
+  opacity:0; pointer-events:none; transition:opacity .15s ease, transform .15s cubic-bezier(.34,1.56,.64,1);
+}
+.qm.show { opacity:1; pointer-events:all; transform:translate(-50%,-100%) translateY(-14px) scale(1); }
+.qm::after {
+  content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%); border:6px solid transparent;
+  border-top-color:var(--panel-3);
+}
+.qm button {
+  width:30px; height:30px; border-radius:50%; border:none; background:transparent; color:var(--text-dim);
+  display:flex; align-items:center; justify-content:center; cursor:pointer; transition:background .12s ease, color .12s ease;
+}
+.qm button svg { width:15px; height:15px; }
+.qm button:hover { background:var(--panel-3); color:var(--text); }
+.qm button.danger:hover { background:rgba(251,88,120,.18); color:var(--danger); }
+.qm button.gold:hover { background:rgba(246,185,59,.18); color:var(--gold); }
+
+/* ── Toast ─────────────────────────────────────── */
+.toast {
+  position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--panel);
+  backdrop-filter:var(--blur); color:var(--text); padding:9px 16px; border:1px solid var(--border-2);
+  border-radius:999px; font-size:12px; font-weight:600; z-index:9999; box-shadow:var(--shadow-lg); pointer-events:none;
+  opacity:0; transition:opacity .25s ease, transform .25s cubic-bezier(.34,1.56,.64,1);
+}
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* ── Modal ─────────────────────────────────────── */
+.modal-back { position:fixed; inset:0; background:rgba(4,3,7,.7); backdrop-filter:blur(4px); z-index:2000; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity .2s ease; }
+.modal-back.show { opacity:1; pointer-events:all; }
+.modal {
+  width:480px; max-width:92vw; max-height:86vh; overflow-y:auto; background:var(--panel-solid); border:1px solid var(--border-2);
+  border-radius:calc(var(--radius) + 2px); padding:20px; transform:scale(.95) translateY(8px);
+  transition:transform .22s cubic-bezier(.34,1.56,.64,1); box-shadow:var(--shadow-lg);
+}
+.modal.wide { width:820px; }
+.modal-back.show .modal { transform:scale(1) translateY(0); }
+.modal h2 { font-size:15px; font-weight:800; margin-bottom:14px; letter-spacing:-.01em; }
+.modal .row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.modal .close { margin-left:auto; cursor:pointer; color:var(--text-faint); font-size:13px; }
+.modal .close:hover { color:var(--text); }
+.signin-dot { width:8px; height:8px; border-radius:50%; background:var(--gold); flex-shrink:0; }
+.signin-dot.on { background:var(--success); }
+#upl-log {
+  background:#020203; border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px; font-size:11px;
+  font-family:ui-monospace,Consolas,monospace; height:180px; overflow-y:auto; white-space:pre-wrap; margin-top:10px; line-height:1.6;
+}
+.preview-frame-wrap { width:100%; aspect-ratio:16/10; border-radius:var(--radius-sm); overflow:hidden; border:1px solid var(--border); background:#000; }
+.preview-frame-wrap iframe { width:100%; height:100%; border:0; }
+
+/* ── Restore banner / multibar ─────────────────── */
+.restore-banner {
+  position:fixed; top:0; left:50%; transform:translateX(-50%) translateY(-100%); background:var(--panel);
+  backdrop-filter:var(--blur); border:1px solid var(--border-2); border-top:none; border-radius:0 0 var(--radius) var(--radius);
+  padding:11px 18px; display:flex; align-items:center; gap:10px; font-size:12px; z-index:3000; box-shadow:var(--shadow-lg);
+  transition:transform .25s cubic-bezier(.34,1.56,.64,1);
+}
+.restore-banner.show { transform:translateX(-50%) translateY(0); }
+.multibar {
+  position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--panel);
+  backdrop-filter:var(--blur); border:1px solid var(--border-2); border-radius:999px; padding:8px 10px 8px 16px;
+  display:flex; align-items:center; gap:8px; box-shadow:var(--shadow-lg); z-index:1500; font-size:12px; opacity:0;
+  pointer-events:none; transition:opacity .2s ease, transform .2s cubic-bezier(.34,1.56,.64,1);
+}
+.multibar.show { opacity:1; pointer-events:all; transform:translateX(-50%) translateY(0); }
+.multibar .btn { border-radius:999px; }
+#multibar-count { color:var(--text); font-weight:800; padding-right:4px; }
+
+/* ── Command palette ───────────────────────────── */
+.cmdk-back { position:fixed; inset:0; background:rgba(4,3,7,.6); backdrop-filter:blur(4px); z-index:4000; display:flex; align-items:flex-start; justify-content:center; padding-top:14vh; opacity:0; pointer-events:none; transition:opacity .15s ease; }
+.cmdk-back.show { opacity:1; pointer-events:all; }
+.cmdk { width:560px; max-width:90vw; background:var(--panel-solid); border:1px solid var(--border-2); border-radius:var(--radius); box-shadow:var(--shadow-lg); overflow:hidden; transform:translateY(-10px) scale(.97); transition:transform .18s cubic-bezier(.34,1.56,.64,1); }
+.cmdk-back.show .cmdk { transform:translateY(0) scale(1); }
+.cmdk input { width:100%; padding:16px 18px; background:transparent; border:none; border-bottom:1px solid var(--border); color:var(--text); font:inherit; font-size:15px; }
+.cmdk input:focus { outline:none; }
+.cmdk-list { max-height:340px; overflow-y:auto; padding:8px; }
+.cmdk-item { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:var(--radius-sm); cursor:pointer; font-size:13px; color:var(--text-dim); }
+.cmdk-item svg { width:15px; height:15px; flex-shrink:0; color:var(--text-faint); }
+.cmdk-item .t { flex:1; color:var(--text); font-weight:600; }
+.cmdk-item .h { font-size:10px; color:var(--text-faint); }
+.cmdk-item.active { background:var(--accent-soft); }
+.cmdk-item.active svg { color:var(--accent-2); }
+.cmdk-empty { padding:24px; text-align:center; color:var(--text-faint); font-size:12px; }
+
+/* ── Shortcuts cheatsheet ──────────────────────── */
+.cheat-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px 24px; margin-top:14px; }
+.cheat-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px solid var(--border); font-size:12px; color:var(--text-dim); }
+.cheat-row kbd { margin-left:4px; }
+
+/* ── Misc ──────────────────────────────────────── */
+.ico { width:14px; height:14px; }
 </style>
 </head>
 <body>
 
 <div id="tb">
+  <div class="brand"><span class="dot"></span>Walkthrough</div>
+  <div class="sep"></div>
   <div class="tg">
-    <button class="btn mode-btn on" data-m="s">Select</button>
-    <button class="btn mode-btn" data-m="a">Add Node</button>
-    <button class="btn mode-btn" data-m="c">Connect</button>
+    <button class="btn" id="bundo" title="Undo (Ctrl+Z)" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+    </button>
+    <button class="btn" id="bredo" title="Redo (Ctrl+Y)" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>
+    </button>
   </div>
   <div class="sep"></div>
-  <span id="st">Nodes 0 | Links 0</span>
+  <span id="st">Nodes <b>0</b> · Links <b>0</b></span>
+  <span class="hintline">dbl-click to add · click to select · right-click ×2 to connect</span>
   <div style="flex:1"></div>
+  <div id="save-status"><span class="dot"></span><span id="save-status-text">Autosave on</span></div>
+  <button class="btn" id="bcmdk" title="Command palette (Ctrl+K)"><kbd>Ctrl K</kbd></button>
   <span class="savehint" id="savehint">Save target: Downloads</span>
   <div class="tg">
-    <button class="btn" id="bdir">Save Target</button>
-    <button class="btn" id="best">Estimate Heading</button>
-    <button class="btn" id="bsave">Save</button>
-    <button class="btn" id="bcsv">CSV</button>
-    <button class="btn g" id="bexp">Export</button>
+    <button class="btn" id="bdir" title="Save target folder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+    </button>
+    <button class="btn" id="best" title="Estimate heading">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+    </button>
+    <button class="btn" id="bsave" title="Save project">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    </button>
+    <button class="btn" id="bcsv" title="Export CSV">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+    </button>
+    <button class="btn" id="bpreview" title="Preview tour">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      Preview
+    </button>
+    <button class="btn g" id="bexp">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export
+    </button>
+    <button class="btn g" id="bupload">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+      Upload to Google
+    </button>
   </div>
+</div>
+
+<div class="restore-banner" id="restore-banner">
+  <span id="restore-text"></span>
+  <button class="btn g" id="restore-yes">Restore</button>
+  <button class="btn" id="restore-no">Discard</button>
 </div>
 
 <div id="main">
   <div id="sb">
+    <div class="brandmark">
+      <div class="mk"></div>
+      <div class="tx">Tour Editor<span>360&deg; walkthrough builder</span></div>
+    </div>
+
+    <div id="node-list-panel">
+      <input class="pi" id="node-search" type="text" placeholder="Search nodes…">
+      <div id="node-list"></div>
+    </div>
+
     <div id="no-sel">
-      <p style="font-size:12px;color:#9ca3af;margin-bottom:10px">Drop 360 JPG files onto the map to plan links and orientation.</p>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">Drop 360 JPG files onto the map to plan links and orientation.</p>
       <div class="hint">
         <strong>How to Use</strong>
         <ol>
-          <li>Drop photos onto the map</li>
+          <li>Drop photos onto the map, or double-click empty map area to add a point</li>
           <li>If GPS exists, photos are placed automatically; otherwise they are placed at the drop point</li>
-          <li>In Connect mode, click two points to create a link</li>
-          <li>Adjust heading and the compare view on the selected node</li>
+          <li>Click a node to select it &mdash; a quick-action ring pops up for start / connect / duplicate / delete</li>
+          <li>Right-click a node, then right-click a second node to connect them (right-click again to cancel)</li>
+          <li>Type exact coordinates, adjust heading, and use the compare view on the selected node</li>
           <li>Walk to linked nodes inside the same file while checking the result</li>
+        </ol>
+      </div>
+      <div class="hint" style="margin-top:10px">
+        <strong>Power tools</strong>
+        <ol>
+          <li>Press <kbd>Ctrl K</kbd> for the command palette, <kbd>?</kbd> for all shortcuts</li>
+          <li>Ctrl/Shift-click nodes to multi-select, then bulk-connect or delete</li>
+          <li>Everything autosaves &mdash; closing the tab is safe, a restore prompt appears next time</li>
         </ol>
       </div>
     </div>
@@ -124,6 +430,15 @@ body { font-family: system-ui,-apple-system,sans-serif; background:#111827; colo
       <div class="pg">
         <p class="pl">Name</p>
         <input class="pi" id="ni-n" type="text" placeholder="Node name">
+      </div>
+
+      <div class="pg">
+        <p class="pl">Position</p>
+        <div class="latlng">
+          <input class="pi" id="ni-lat" type="number" step="any" placeholder="Latitude">
+          <input class="pi" id="ni-lng" type="number" step="any" placeholder="Longitude">
+        </div>
+        <div class="mini">Type exact coordinates, or drag the marker on the map.</div>
       </div>
 
       <div class="pg">
@@ -193,13 +508,120 @@ body { font-family: system-ui,-apple-system,sans-serif; background:#111827; colo
   </div>
 </div>
 
+<div class="modal-back" id="upl-back">
+  <div class="modal">
+    <h2>Upload to Google Street View <span class="close" id="upl-close">Close</span></h2>
+
+    <div id="upl-creds-setup">
+      <div class="mini" style="margin-top:0">One-time setup: create a free Google OAuth client, then paste its two values here. No file downloads or config editing needed.</div>
+      <details class="hint" style="margin:10px 0;cursor:pointer">
+        <summary style="font-weight:700;cursor:pointer">How do I get a Client ID / Client Secret?</summary>
+        <ol style="margin-top:8px;padding-left:16px">
+          <li>Open <a href="https://console.cloud.google.com/" target="_blank" rel="noopener" style="color:var(--accent-2)">Google Cloud Console</a> and create (or pick) a project</li>
+          <li><b>APIs &amp; Services &rarr; Library</b> &rarr; search <b>Street View Publish API</b> &rarr; Enable</li>
+          <li><b>APIs &amp; Services &rarr; OAuth consent screen</b> &rarr; External &rarr; add your own email under Test users</li>
+          <li><b>APIs &amp; Services &rarr; Credentials &rarr; Create Credentials &rarr; OAuth client ID</b> &rarr; type <b>Desktop app</b></li>
+          <li>Copy the Client ID and Client Secret shown and paste them below (pasting the whole downloaded JSON into the Client ID field also works)</li>
+        </ol>
+      </details>
+      <div class="pg">
+        <p class="pl">Client ID</p>
+        <input class="pi" id="upl-client-id" type="text" placeholder="xxxxxxxxxxxx.apps.googleusercontent.com" autocomplete="off">
+      </div>
+      <div class="pg">
+        <p class="pl">Client Secret</p>
+        <input class="pi" id="upl-client-secret" type="password" placeholder="GOCSPX-xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+      </div>
+      <div class="mini" id="upl-creds-error" style="display:none;color:var(--danger)"></div>
+      <button class="btn g" id="upl-save-creds" style="width:100%">Save &amp; Continue</button>
+    </div>
+
+    <div id="upl-signed-in-area" style="display:none">
+      <div class="row">
+        <span class="signin-dot" id="upl-dot"></span>
+        <span id="upl-status" style="font-size:12px;color:var(--text-dim)">Checking sign-in status...</span>
+        <button class="btn" id="upl-signin" style="margin-left:auto">Sign in with Google</button>
+      </div>
+      <div class="mini" style="margin-top:-6px"><span id="upl-change-creds" style="cursor:pointer;color:var(--accent-2);text-decoration:underline">Use a different Google API client</span></div>
+
+      <div class="pg">
+        <p class="pl">Google Place ID (optional, links the tour to a location)</p>
+        <input class="pi" id="upl-place" type="text" placeholder="ChIJxxxxxxxxxxxxxxxx">
+      </div>
+
+      <div class="mini" id="upl-summary">Nothing to upload yet.</div>
+
+      <button class="btn g" id="upl-start" style="width:100%;margin-top:10px">Start Upload</button>
+      <div id="upl-log"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="preview-back">
+  <div class="modal wide">
+    <h2>Tour Preview <span class="close" id="preview-close">Close</span></h2>
+    <div class="preview-frame-wrap"><iframe id="preview-frame" title="Tour preview"></iframe></div>
+    <div class="mini" id="preview-help" style="margin:10px 0 12px">Drag to look around, scroll to zoom &mdash; exactly like the exported tour.</div>
+    <button class="btn g" id="preview-export" style="width:100%">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export Now
+    </button>
+  </div>
+</div>
+
+<div class="multibar" id="multibar">
+  <span id="multibar-count">0 selected</span>
+  <button class="btn" id="multibar-connect">Connect in Sequence</button>
+  <button class="btn danger" id="multibar-delete">Delete Selected</button>
+  <button class="btn" id="multibar-clear">Clear</button>
+</div>
+
+<div class="qm" id="qm">
+  <button id="qm-star" title="Set / unset as start node">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+  </button>
+  <button id="qm-link" title="Connect to another node">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 7h3a5 5 0 0 1 0 10h-3m-6 0H6a5 5 0 0 1 0-10h3"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+  </button>
+  <button id="qm-copy" title="Duplicate node">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+  </button>
+  <button id="qm-del" class="danger" title="Delete node">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+  </button>
+</div>
+
+<div class="cmdk-back" id="cmdk-back">
+  <div class="cmdk">
+    <input id="cmdk-input" type="text" placeholder="Type a command or search nodes…" autocomplete="off">
+    <div class="cmdk-list" id="cmdk-list"></div>
+  </div>
+</div>
+
+<div class="modal-back" id="cheat-back">
+  <div class="modal">
+    <h2>Keyboard Shortcuts <span class="close" id="cheat-close">Close</span></h2>
+    <div class="cheat-grid">
+      <div class="cheat-row"><span>Command palette</span><kbd>Ctrl K</kbd></div>
+      <div class="cheat-row"><span>Show this cheatsheet</span><kbd>?</kbd></div>
+      <div class="cheat-row"><span>Undo</span><kbd>Ctrl Z</kbd></div>
+      <div class="cheat-row"><span>Redo</span><kbd>Ctrl Y</kbd></div>
+      <div class="cheat-row"><span>Add point</span><kbd>Dbl-click map</kbd></div>
+      <div class="cheat-row"><span>Select node</span><kbd>Click</kbd></div>
+      <div class="cheat-row"><span>Multi-select</span><kbd>Ctrl+Click</kbd></div>
+      <div class="cheat-row"><span>Connect two nodes</span><kbd>Right-click ×2</kbd></div>
+      <div class="cheat-row"><span>Delete selection</span><kbd>Delete</kbd></div>
+      <div class="cheat-row"><span>Cancel / deselect</span><kbd>Esc</kbd></div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
 import exifr from 'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.esm.js';
 import { Viewer } from '@photo-sphere-viewer/core';
 
 const S = {
-  mode: 's',
   nodes: [],
   conns: [],
   selId: null,
@@ -207,6 +629,7 @@ const S = {
   startId: null,
   nxt: 1,
   compareTargetByNode: {},
+  multiSel: new Set(),
 };
 
 let saveDirHandle = null;
@@ -215,9 +638,10 @@ const cuid = () => `c${S.nxt++}`;
 const gn = id => S.nodes.find(n => n.id === id);
 const gcbs = (a, b) => S.conns.filter(c => (c.from === a && c.to === b) || (c.from === b && c.to === a));
 
-const map = L.map('map', { zoomControl: true }).setView([35.6586, 139.7454], 15);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+const map = L.map('map', { zoomControl: true, doubleClickZoom: false }).setView([54.3233, 10.1228], 13);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  subdomains: 'abcd',
   maxZoom: 19,
 }).addTo(map);
 
@@ -225,6 +649,8 @@ const niN = document.getElementById('ni-n');
 const niP = document.getElementById('ni-p');
 const niH = document.getElementById('ni-h');
 const niS = document.getElementById('ni-s');
+const niLat = document.getElementById('ni-lat');
+const niLng = document.getElementById('ni-lng');
 const phB = document.getElementById('ph-b');
 const phN = document.getElementById('ph-n');
 const clL = document.getElementById('cl-l');
@@ -254,19 +680,114 @@ const walkHistory = [];
 
 initSaveDir();
 
-map.on('click', e => {
-  if (S.mode === 'a') addEmptyNode(e.latlng.lat, e.latlng.lng);
-  else if (S.mode === 's') { S.selId = null; updateSb(); }
-  else if (S.mode === 'c') { S.connFrom = null; refreshAllMarkers(); }
+let connectLine = null;
+
+function cancelConnect() {
+  if (!S.connFrom) return;
+  S.connFrom = null;
+  refreshAllMarkers();
+  if (connectLine) { map.removeLayer(connectLine); connectLine = null; }
+  document.getElementById('map').classList.remove('connecting');
+}
+
+// ── Node quick-action flyout ──────────────────────
+const qm = document.getElementById('qm');
+const qmStar = document.getElementById('qm-star');
+
+function positionQuickMenu() {
+  const n = gn(S.selId);
+  const el = n?.marker?.getElement();
+  if (!el) { qm.classList.remove('show'); return; }
+  const rect = el.getBoundingClientRect();
+  qm.style.left = `${rect.left + rect.width / 2}px`;
+  qm.style.top = `${rect.top}px`;
+}
+
+function showQuickMenu() {
+  const n = gn(S.selId);
+  if (!n || S.connFrom || S.multiSel.size) { qm.classList.remove('show'); return; }
+  positionQuickMenu();
+  qm.classList.add('show');
+  qmStar.classList.toggle('gold', S.startId === n.id);
+  qmStar.querySelector('svg').style.fill = S.startId === n.id ? 'currentColor' : 'none';
+}
+
+function hideQuickMenu() {
+  qm.classList.remove('show');
+}
+
+map.on('move zoom', () => { if (S.selId) positionQuickMenu(); });
+window.addEventListener('resize', () => { if (S.selId) positionQuickMenu(); });
+
+qmStar.onclick = () => {
+  const n = gn(S.selId);
+  if (!n) return;
+  pushUndo();
+  S.startId = S.startId === n.id ? null : n.id;
+  refreshAllMarkers();
+  updateSb();
+  showQuickMenu();
+  scheduleAutosave();
+};
+
+document.getElementById('qm-link').onclick = () => {
+  if (!S.selId) return;
+  hideQuickMenu();
+  handleNodeConnectClick(S.selId);
+};
+
+document.getElementById('qm-copy').onclick = () => {
+  const n = gn(S.selId);
+  if (!n) return;
+  pushUndo();
+  const copy = {
+    ...n,
+    id: uid(),
+    marker: null,
+    lat: n.lat + 0.00006,
+    lng: n.lng + 0.00008,
+    name: `${n.name} copy`,
+  };
+  S.nodes.push(copy);
+  createMarker(copy);
+  jumpToNode(copy.id, false);
+  updateStats();
+  scheduleAutosave();
+  toast(`Duplicated ${n.name}`);
+};
+
+document.getElementById('qm-del').onclick = () => {
+  if (!S.selId) return;
+  pushUndo();
+  removeNodeById(S.selId);
+  hideQuickMenu();
+  updateSb();
+  refreshAllMarkers();
+  updateStats();
+  scheduleAutosave();
+};
+
+map.on('click', () => {
+  if (S.connFrom) { cancelConnect(); return; }
+  if (S.multiSel.size) clearMultiSel();
+  S.selId = null;
+  updateSb();
+  renderNodeList();
+  hideQuickMenu();
 });
 
-document.querySelectorAll('.mode-btn').forEach(btn => {
-  btn.onclick = () => {
-    S.mode = btn.dataset.m;
-    S.connFrom = null;
-    document.querySelectorAll('.mode-btn').forEach(x => x.classList.toggle('on', x.dataset.m === S.mode));
-    refreshAllMarkers();
-  };
+map.on('dblclick', e => addEmptyNode(e.latlng.lat, e.latlng.lng));
+
+map.on('mousemove', e => {
+  if (!S.connFrom || !connectLine) return;
+  const from = gn(S.connFrom);
+  if (!from) return;
+  connectLine.setLatLngs([[from.lat, from.lng], e.latlng]);
+});
+
+map.on('contextmenu', e => {
+  e.originalEvent.preventDefault();
+  cancelConnect();
 });
 
 const mw = document.getElementById('mw');
@@ -285,6 +806,7 @@ mw.addEventListener('drop', async e => {
   if (S.nodes.length >= 2) fitAll();
 });
 
+niN.addEventListener('focus', () => pushUndo());
 niN.addEventListener('input', () => {
   const n = gn(S.selId);
   if (!n) return;
@@ -292,6 +814,8 @@ niN.addEventListener('input', () => {
   refreshMarker(n);
   renderConnList();
   refreshCompareUi(n);
+  renderNodeList();
+  scheduleAutosave();
 });
 
 niP.addEventListener('change', async e => {
@@ -299,9 +823,11 @@ niP.addEventListener('change', async e => {
   if (!file) return;
   const n = gn(S.selId);
   if (!n) return;
+  pushUndo();
   const meta = await readPhotoMeta(file);
   n.photoName = file.name;
   n.photoUrl = URL.createObjectURL(file);
+  n.photoFile = file;
   if (meta.hasGps) {
     n.lat = meta.lat;
     n.lng = meta.lng;
@@ -317,8 +843,10 @@ niP.addEventListener('change', async e => {
   updateSb();
   refreshMarker(n);
   e.target.value = '';
+  scheduleAutosave();
 });
 
+niH.addEventListener('focus', () => pushUndo());
 niH.addEventListener('input', () => {
   const n = gn(S.selId);
   if (!n) return;
@@ -327,16 +855,42 @@ niH.addEventListener('input', () => {
   if (n.viewYaw == null) n.viewYaw = getNodeEditorYaw(n);
   refreshHeadingUi(n);
   refreshCompareUi(n);
+  scheduleAutosave();
 });
 
 niS.addEventListener('change', () => {
+  pushUndo();
   S.startId = niS.checked ? S.selId : null;
   refreshAllMarkers();
+  scheduleAutosave();
 });
+
+function commitLatLng() {
+  const n = gn(S.selId);
+  if (!n) return;
+  const lat = parseFloat(niLat.value);
+  const lng = parseFloat(niLng.value);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) { refreshLatLngUi(n); return; }
+  if (lat === n.lat && lng === n.lng) return;
+  pushUndo();
+  n.lat = Math.max(-90, Math.min(90, lat));
+  n.lng = lng;
+  n.marker?.setLatLng([n.lat, n.lng]);
+  refreshConnLines();
+  refreshCompareUi(n);
+  refreshLatLngUi(n);
+  positionQuickMenu();
+  scheduleAutosave();
+}
+niLat.addEventListener('change', commitLatLng);
+niLng.addEventListener('change', commitLatLng);
+niLat.addEventListener('keydown', e => { if (e.key === 'Enter') niLat.blur(); });
+niLng.addEventListener('keydown', e => { if (e.key === 'Enter') niLng.blur(); });
 
 document.getElementById('bh-set').onclick = () => {
   const n = gn(S.selId);
   if (!n || !panoViewer) return;
+  pushUndo();
   const pos = lockViewerPitch(panoViewer);
   n.heading = normalizeHeading(-radToDeg(pos.yaw));
   n.viewYaw = pos.yaw;
@@ -344,20 +898,23 @@ document.getElementById('bh-set').onclick = () => {
   refreshHeadingUi(n);
   refreshCompareUi(n);
   toast(`${n.name}: heading set to ${n.heading.toFixed(1)}°`);
+  scheduleAutosave();
 };
 
 document.getElementById('bh-reset').onclick = () => {
   const n = gn(S.selId);
   if (!n) return;
+  pushUndo();
   n.heading = n.origHeading;
   n.viewYaw = n.origViewYaw ?? (n.origHeading != null ? degToRad(n.origHeading) : 0);
   n.headingSource = n.origHeading != null ? 'exif' : 'manual';
   refreshHeadingUi(n);
   refreshCompareUi(n);
+  scheduleAutosave();
 };
 
-document.getElementById('bn-d').onclick = () => {
-  const n = gn(S.selId);
+function removeNodeById(id) {
+  const n = gn(id);
   if (!n) return;
   if (n.marker) map.removeLayer(n.marker);
   S.conns.filter(c => c.from === n.id || c.to === n.id).forEach(c => {
@@ -368,13 +925,22 @@ document.getElementById('bn-d').onclick = () => {
   if (S.startId === n.id) S.startId = S.nodes.find(x => x.id !== n.id)?.id ?? null;
   delete S.compareTargetByNode[n.id];
   S.nodes = S.nodes.filter(x => x.id !== n.id);
-  S.selId = null;
-  panoNodeId = null;
-  cmpBaseNodeId = null;
-  cmpOverlayNodeId = null;
+  if (S.selId === n.id) S.selId = null;
+  S.multiSel.delete(n.id);
+  if (S.connFrom === n.id) cancelConnect();
+  if (panoNodeId === n.id) panoNodeId = null;
+  if (cmpBaseNodeId === n.id) cmpBaseNodeId = null;
+  if (cmpOverlayNodeId === n.id) cmpOverlayNodeId = null;
+}
+
+document.getElementById('bn-d').onclick = () => {
+  if (!S.selId) return;
+  pushUndo();
+  removeNodeById(S.selId);
   updateSb();
   refreshAllMarkers();
   updateStats();
+  scheduleAutosave();
 };
 
 cmpTarget.onchange = () => {
@@ -426,10 +992,12 @@ document.getElementById('best').onclick = () => {
     alert('The selected node has no heading yet. Align north first.');
     return;
   }
+  pushUndo();
   const updated = estimateHeadingsFromAnchor(anchor.id);
   updateSb();
   refreshAllMarkers();
   toast(`${updated} node headings estimated`);
+  scheduleAutosave();
 };
 
 cmpOpacity.addEventListener('input', () => {
@@ -509,14 +1077,7 @@ document.getElementById('bcsv').onclick = async () => {
   await saveTextFile('tour.csv', csv);
 };
 
-document.getElementById('bexp').onclick = async () => {
-  if (!S.nodes.length) {
-    alert('No nodes found.');
-    return;
-  }
-  const noPh = S.nodes.filter(n => !n.photoName);
-  if (noPh.length && !confirm(`There are ${noPh.length} nodes without photos. Continue?`)) return;
-
+function buildTourConfig() {
   const startId = S.startId || S.nodes[0].id;
   const nodesConf = S.nodes.map(n => {
     const linked = getLinkedNodes(n.id);
@@ -534,10 +1095,321 @@ document.getElementById('bexp').onclick = async () => {
       links,
     };
   });
+  return { startId, nodesConf };
+}
 
+const previewBack = document.getElementById('preview-back');
+const previewFrame = document.getElementById('preview-frame');
+let pendingExport = null;
+
+function openExportPreview() {
+  if (!S.nodes.length) {
+    alert('No nodes found.');
+    return;
+  }
+  const noPh = S.nodes.filter(n => !n.photoName);
+  if (noPh.length && !confirm(`There are ${noPh.length} nodes without photos. Continue?`)) return;
+
+  pendingExport = buildTourConfig();
+  previewFrame.srcdoc = genViewer(pendingExport.startId, pendingExport.nodesConf);
+  previewBack.classList.add('show');
+}
+
+document.getElementById('bexp').onclick = openExportPreview;
+document.getElementById('bpreview').onclick = openExportPreview;
+document.getElementById('preview-close').onclick = () => previewBack.classList.remove('show');
+
+document.getElementById('preview-export').onclick = async () => {
+  if (!pendingExport) return;
+  const { startId, nodesConf } = pendingExport;
   await saveTextFile('tour-viewer.html', genViewer(startId, nodesConf));
   await saveTextFile('tour-config.json', JSON.stringify({ startNodeId: startId, nodes: nodesConf }, null, 2));
-  setTimeout(() => alert('Exported tour-viewer.html and tour-config.json.'), 200);
+  previewBack.classList.remove('show');
+  setTimeout(() => toast('Exported tour-viewer.html and tour-config.json'), 200);
+};
+
+// ── Command palette ───────────────────────────────
+const ICONS = {
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
+  download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+  upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>',
+  save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>',
+  grid: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+  compass: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>',
+  undo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>',
+  redo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>',
+  keyboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="6" y1="9" x2="6" y2="9"/><line x1="10" y1="9" x2="10" y2="9"/><line x1="14" y1="9" x2="14" y2="9"/><line x1="18" y1="9" x2="18" y2="9"/><line x1="6" y1="13" x2="18" y2="13"/></svg>',
+  target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+};
+
+const cmdkBack = document.getElementById('cmdk-back');
+const cmdkInput = document.getElementById('cmdk-input');
+const cmdkList = document.getElementById('cmdk-list');
+const cheatBack = document.getElementById('cheat-back');
+let cmdkActive = 0;
+let cmdkItems = [];
+
+function staticCommands() {
+  const cmds = [
+    { icon: ICONS.plus, label: 'Add point at map center', run: () => addEmptyNode(map.getCenter().lat, map.getCenter().lng) },
+    { icon: ICONS.eye, label: 'Preview tour', run: openExportPreview },
+    { icon: ICONS.download, label: 'Export tour', run: openExportPreview },
+    { icon: ICONS.upload, label: 'Upload to Google Street View', run: () => document.getElementById('bupload').click() },
+    { icon: ICONS.save, label: 'Save project (tour-project.json)', run: () => document.getElementById('bsave').click() },
+    { icon: ICONS.grid, label: 'Export CSV manifest', run: () => document.getElementById('bcsv').click() },
+    { icon: ICONS.folder, label: 'Set save target folder', run: () => document.getElementById('bdir').click() },
+    { icon: ICONS.compass, label: 'Estimate headings from anchor', run: () => document.getElementById('best').click() },
+    { icon: ICONS.undo, label: 'Undo', hint: 'Ctrl Z', run: doUndo },
+    { icon: ICONS.redo, label: 'Redo', hint: 'Ctrl Y', run: doRedo },
+    { icon: ICONS.keyboard, label: 'Show keyboard shortcuts', hint: '?', run: () => cheatBack.classList.add('show') },
+  ];
+  S.nodes.forEach(n => cmds.push({ icon: ICONS.target, label: n.name, hint: 'Jump to node', run: () => jumpToNode(n.id, false) }));
+  return cmds;
+}
+
+function renderCmdk() {
+  const q = cmdkInput.value.trim().toLowerCase();
+  const all = staticCommands();
+  cmdkItems = q ? all.filter(c => c.label.toLowerCase().includes(q)) : all;
+  cmdkActive = 0;
+  cmdkList.innerHTML = '';
+  if (!cmdkItems.length) {
+    cmdkList.innerHTML = '<div class="cmdk-empty">No matching commands</div>';
+    return;
+  }
+  cmdkItems.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = `cmdk-item${i === 0 ? ' active' : ''}`;
+    row.innerHTML = `${c.icon}<span class="t">${escapeHtml(c.label)}</span>${c.hint ? `<span class="h">${escapeHtml(c.hint)}</span>` : ''}`;
+    row.onclick = () => { closeCmdk(); c.run(); };
+    cmdkList.appendChild(row);
+  });
+}
+
+function updateCmdkActive() {
+  [...cmdkList.children].forEach((el, i) => el.classList.toggle('active', i === cmdkActive));
+  cmdkList.children[cmdkActive]?.scrollIntoView({ block: 'nearest' });
+}
+
+function openCmdk() {
+  cmdkInput.value = '';
+  renderCmdk();
+  cmdkBack.classList.add('show');
+  setTimeout(() => cmdkInput.focus(), 10);
+}
+function closeCmdk() { cmdkBack.classList.remove('show'); cmdkInput.blur(); }
+function toggleCmdk() { cmdkBack.classList.contains('show') ? closeCmdk() : openCmdk(); }
+
+document.getElementById('bcmdk').onclick = openCmdk;
+cmdkInput.addEventListener('input', renderCmdk);
+cmdkInput.addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); cmdkActive = Math.min(cmdkActive + 1, cmdkItems.length - 1); updateCmdkActive(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkActive = Math.max(cmdkActive - 1, 0); updateCmdkActive(); }
+  else if (e.key === 'Enter') { e.preventDefault(); const c = cmdkItems[cmdkActive]; if (c) { closeCmdk(); c.run(); } }
+});
+document.getElementById('cheat-close').onclick = () => cheatBack.classList.remove('show');
+document.querySelectorAll('.modal-back, .cmdk-back').forEach(back => {
+  back.addEventListener('click', e => {
+    if (e.target !== back) return;
+    back.classList.remove('show');
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  });
+});
+
+// ── Upload to Google Street View ─────────────────
+const uplBack = document.getElementById('upl-back');
+const uplCredsSetup = document.getElementById('upl-creds-setup');
+const uplSignedInArea = document.getElementById('upl-signed-in-area');
+const uplClientId = document.getElementById('upl-client-id');
+const uplClientSecret = document.getElementById('upl-client-secret');
+const uplCredsError = document.getElementById('upl-creds-error');
+const uplSaveCreds = document.getElementById('upl-save-creds');
+const uplChangeCreds = document.getElementById('upl-change-creds');
+const uplDot = document.getElementById('upl-dot');
+const uplStatus = document.getElementById('upl-status');
+const uplSignin = document.getElementById('upl-signin');
+const uplPlace = document.getElementById('upl-place');
+const uplSummary = document.getElementById('upl-summary');
+const uplStart = document.getElementById('upl-start');
+const uplLog = document.getElementById('upl-log');
+
+function uplLine(msg) {
+  uplLog.textContent += `${msg}\n`;
+  uplLog.scrollTop = uplLog.scrollHeight;
+}
+
+async function fetchApiStatus() {
+  const r = await fetch('/api/status');
+  return r.json();
+}
+
+async function refreshSignInStatus() {
+  try {
+    const j = await fetchApiStatus();
+    uplDot.classList.toggle('on', j.signedIn);
+    uplStatus.textContent = j.signedIn ? 'Signed in to Google' : 'Not signed in';
+    uplSignin.textContent = j.signedIn ? 'Sign in again' : 'Sign in with Google';
+  } catch (err) {
+    uplStatus.textContent = 'Could not reach local server. Start it with: python run_editor.py';
+  }
+}
+
+function showCredsSetup() {
+  uplCredsSetup.style.display = '';
+  uplSignedInArea.style.display = 'none';
+  uplCredsError.style.display = 'none';
+  uplClientId.value = '';
+  uplClientSecret.value = '';
+}
+
+function showSignedInArea() {
+  uplCredsSetup.style.display = 'none';
+  uplSignedInArea.style.display = '';
+  refreshSignInStatus();
+}
+
+document.getElementById('bupload').onclick = async () => {
+  const missing = S.nodes.filter(n => !n.photoUrl);
+  uplSummary.textContent = missing.length
+    ? `${S.nodes.length} node(s), ${missing.length} without a photo loaded this session (drop the file again to include it).`
+    : `${S.nodes.length} node(s) ready to upload.`;
+  uplLog.textContent = '';
+  uplBack.classList.add('show');
+  try {
+    const j = await fetchApiStatus();
+    if (j.hasCredentials) showSignedInArea();
+    else showCredsSetup();
+  } catch (err) {
+    showCredsSetup();
+  }
+};
+document.getElementById('upl-close').onclick = () => uplBack.classList.remove('show');
+
+function extractClientFields(text) {
+  try {
+    const data = JSON.parse(text);
+    const block = data.installed || data.web;
+    if (block?.client_id && block?.client_secret) {
+      return { client_id: block.client_id, client_secret: block.client_secret };
+    }
+  } catch {}
+  return null;
+}
+
+uplClientId.addEventListener('paste', e => {
+  const text = (e.clipboardData || window.clipboardData).getData('text');
+  const fields = extractClientFields(text);
+  if (!fields) return;
+  e.preventDefault();
+  uplClientId.value = fields.client_id;
+  uplClientSecret.value = fields.client_secret;
+  toast('Detected client_secrets.json — filled both fields');
+});
+
+uplSaveCreds.onclick = async () => {
+  uplCredsError.style.display = 'none';
+  uplSaveCreds.disabled = true;
+  try {
+    const r = await fetch('/api/set-credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: uplClientId.value, client_secret: uplClientSecret.value }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Could not save credentials');
+    showSignedInArea();
+    toast('Google API client saved');
+  } catch (err) {
+    uplCredsError.textContent = err.message;
+    uplCredsError.style.display = '';
+  } finally {
+    uplSaveCreds.disabled = false;
+  }
+};
+
+uplChangeCreds.onclick = async () => {
+  if (!confirm('Remove the saved Google API client and sign-in? You will need to paste a Client ID / Secret again.')) return;
+  await fetch('/api/clear-credentials', { method: 'POST' });
+  showCredsSetup();
+};
+
+uplSignin.onclick = async () => {
+  uplSignin.disabled = true;
+  uplStatus.textContent = 'Opening Google sign-in in your browser...';
+  try {
+    const r = await fetch('/api/login', { method: 'POST' });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Sign-in failed');
+    uplLine('Signed in.');
+  } catch (err) {
+    uplLine(`Sign-in error: ${err.message}`);
+  } finally {
+    uplSignin.disabled = false;
+    refreshSignInStatus();
+  }
+};
+
+uplStart.onclick = async () => {
+  const nodes = S.nodes.filter(n => n.photoUrl && n.lat != null && n.lng != null);
+  if (!nodes.length) {
+    uplLine('No nodes with a loaded photo and GPS position to upload.');
+    return;
+  }
+  uplStart.disabled = true;
+  const placeId = uplPlace.value.trim() || null;
+  const nameToId = {};
+  uplLine(`Uploading ${nodes.length} photo(s)...`);
+
+  for (const n of nodes) {
+    try {
+      const blob = await (await fetch(n.photoUrl)).blob();
+      const buf = await blob.arrayBuffer();
+      const params = new URLSearchParams({ filename: n.photoName, lat: n.lat, lng: n.lng });
+      if (n.heading != null) params.set('heading', n.heading);
+      if (placeId) params.set('place_id', placeId);
+      const r = await fetch(`/api/upload-photo?${params}`, { method: 'POST', body: buf });
+      const j = await r.json();
+      if (r.status === 401) {
+        uplLine(`${n.photoName}: not signed in - click "Sign in with Google" first.`);
+        break;
+      }
+      if (!j.ok) {
+        uplLine(`${n.photoName}: FAILED (${j.error || 'unknown error'})`);
+        continue;
+      }
+      nameToId[n.photoName] = j.photoId;
+      uplLine(`${n.photoName}: OK`);
+    } catch (err) {
+      uplLine(`${n.photoName}: FAILED (${err.message})`);
+    }
+  }
+
+  const uploadedCount = Object.keys(nameToId).length;
+  if (uploadedCount > 1) {
+    uplLine('Linking connections...');
+    const connects = {};
+    for (const n of nodes) {
+      const linked = getLinkedNodes(n.id).map(o => o.photoName).filter(name => name && nameToId[name]);
+      if (linked.length) connects[n.photoName] = linked;
+    }
+    try {
+      const r = await fetch('/api/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name_to_id: nameToId, connects }),
+      });
+      const j = await r.json();
+      (j.results || []).forEach(res => uplLine(`connect ${res.filename}: ${res.ok ? 'OK' : 'FAILED (' + res.error + ')'}`));
+    } catch (err) {
+      uplLine(`Connection step failed: ${err.message}`);
+    }
+  }
+
+  uplLine(`\nDone: ${uploadedCount}/${nodes.length} uploaded.`);
+  uplLine('Check: https://www.google.com/maps/contrib/');
+  uplStart.disabled = false;
 };
 
 function normalizeHeading(v) {
@@ -561,6 +1433,20 @@ function getNodeEditorYaw(n) {
   if (n?.viewYaw != null) return n.viewYaw;
   if (n?.heading != null) return degToRad(n.heading);
   return 0;
+}
+
+function distanceMeters(a, b) {
+  const R = 6371000;
+  const lat1 = a.lat * Math.PI / 180;
+  const lat2 = b.lat * Math.PI / 180;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function formatDistance(m) {
+  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`;
 }
 
 function bearingDeg(from, to) {
@@ -628,6 +1514,7 @@ async function readPhotoMeta(file) {
 }
 
 async function addPhotoNode(file, fallback) {
+  pushUndo();
   const meta = await readPhotoMeta(file);
   const node = {
     id: uid(),
@@ -642,6 +1529,7 @@ async function addPhotoNode(file, fallback) {
     hasGps: meta.hasGps,
     photoUrl: URL.createObjectURL(file),
     photoName: file.name,
+    photoFile: file,
     marker: null,
   };
   if (!meta.hasGps) toast(`${file.name}: no GPS found, placed at the drop point`);
@@ -651,9 +1539,11 @@ async function addPhotoNode(file, fallback) {
   createMarker(node);
   updateSb();
   updateStats();
+  scheduleAutosave();
 }
 
 function addEmptyNode(lat, lng) {
+  pushUndo();
   const node = {
     id: uid(),
     name: `Point ${S.nodes.length + 1}`,
@@ -667,6 +1557,7 @@ function addEmptyNode(lat, lng) {
     hasGps: false,
     photoUrl: null,
     photoName: null,
+    photoFile: null,
     marker: null,
   };
   S.nodes.push(node);
@@ -675,34 +1566,92 @@ function addEmptyNode(lat, lng) {
   createMarker(node);
   updateSb();
   updateStats();
+  scheduleAutosave();
 }
 
 function markerHtml(n) {
   const i = S.nodes.indexOf(n);
-  return `<div class="nd${n.id === S.selId ? ' sel' : ''}${n.id === S.startId ? ' start' : ''}${n.id === S.connFrom ? ' csrc' : ''}${n.photoUrl ? ' hp' : ''}">${i + 1}<div class="nl">${escapeHtml(n.name)}${n.id === S.startId ? ' start' : ''}</div></div>`;
+  const title = n.id === S.connFrom
+    ? 'Right-click a node to finish the connection'
+    : 'Click to select · Ctrl/Shift-click to multi-select · right-click (or long-press) to connect';
+  const cls = ['nd'];
+  if (n.id === S.selId) cls.push('sel');
+  if (n.id === S.startId) cls.push('start');
+  if (n.id === S.connFrom) cls.push('csrc');
+  if (n.photoUrl) cls.push('hp');
+  if (S.multiSel.has(n.id)) cls.push('multi');
+  const wedge = n.heading != null
+    ? `<svg class="nd-wedge" viewBox="0 0 44 44" style="transform:rotate(${n.heading}deg)"><path d="M22 3 L28 16 L16 16 Z" fill="rgba(255,255,255,.85)"/></svg>`
+    : '';
+  return `<div class="${cls.join(' ')}" title="${title}">${wedge}${i + 1}<div class="nl">${escapeHtml(n.name)}${n.id === S.startId ? ' start' : ''}</div></div>`;
 }
 
-function createMarker(n) {
+let suppressNextNodeClick = false;
+
+function createMarker(n, { animate = true } = {}) {
   const mk = L.marker([n.lat, n.lng], {
     icon: L.divIcon({ html: markerHtml(n), className: '', iconAnchor: [17, 17] }),
     draggable: true,
   }).addTo(map);
+  const el = mk.getElement();
+  if (el) {
+    if (animate) {
+      el.classList.add('nd-pop');
+      el.addEventListener('animationend', () => el.classList.remove('nd-pop'), { once: true });
+    }
+    attachLongPress(el, n.id);
+  }
   mk.on('click', e => {
     L.DomEvent.stopPropagation(e);
-    handleNodeClick(n.id);
+    if (suppressNextNodeClick) { suppressNextNodeClick = false; return; }
+    const native = e.originalEvent;
+    if (native && (native.ctrlKey || native.metaKey || native.shiftKey)) {
+      toggleMultiSelect(n.id);
+    } else {
+      handleNodeClick(n.id);
+    }
   });
+  mk.on('contextmenu', e => {
+    L.DomEvent.stopPropagation(e);
+    e.originalEvent.preventDefault();
+    handleNodeConnectClick(n.id);
+  });
+  mk.on('dblclick', e => L.DomEvent.stopPropagation(e));
   mk.on('dragend', () => {
+    pushUndo();
     const p = mk.getLatLng();
     n.lat = p.lat;
     n.lng = p.lng;
     refreshConnLines();
     refreshCompareUi(gn(S.selId));
+    if (S.selId === n.id) { refreshLatLngUi(n); positionQuickMenu(); }
+    scheduleAutosave();
   });
   n.marker = mk;
 }
 
+function attachLongPress(el, id) {
+  let timer = null;
+  let moved = false;
+  el.addEventListener('touchstart', () => {
+    moved = false;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (moved) return;
+      suppressNextNodeClick = true;
+      handleNodeConnectClick(id);
+      if (navigator.vibrate) navigator.vibrate(25);
+    }, 500);
+  }, { passive: true });
+  el.addEventListener('touchmove', () => { moved = true; clearTimeout(timer); }, { passive: true });
+  el.addEventListener('touchend', () => clearTimeout(timer));
+  el.addEventListener('touchcancel', () => clearTimeout(timer));
+}
+
 function refreshMarker(n) {
   n.marker?.setIcon(L.divIcon({ html: markerHtml(n), className: '', iconAnchor: [17, 17] }));
+  const el = n.marker?.getElement();
+  if (el) attachLongPress(el, n.id);
 }
 
 function refreshAllMarkers() {
@@ -710,28 +1659,52 @@ function refreshAllMarkers() {
 }
 
 function handleNodeClick(id) {
-  if (S.mode === 's') {
-    jumpToNode(id, false);
+  if (S.connFrom) { cancelConnect(); return; }
+  if (S.multiSel.size) clearMultiSel();
+  jumpToNode(id, false);
+}
+
+function toggleMultiSelect(id) {
+  if (S.connFrom) cancelConnect();
+  hideQuickMenu();
+  if (S.multiSel.has(id)) S.multiSel.delete(id);
+  else S.multiSel.add(id);
+  refreshAllMarkers();
+  updateMultiBar();
+  renderNodeList();
+}
+
+function clearMultiSel() {
+  if (!S.multiSel.size) return;
+  S.multiSel.clear();
+  refreshAllMarkers();
+  updateMultiBar();
+  renderNodeList();
+}
+
+function handleNodeConnectClick(id) {
+  if (S.multiSel.size) clearMultiSel();
+  if (!S.connFrom) {
+    S.connFrom = id;
+    refreshAllMarkers();
+    const from = gn(id);
+    connectLine = L.polyline([[from.lat, from.lng], [from.lat, from.lng]], {
+      color: '#2dd9a8', weight: 2, opacity: 0.7, dashArray: '6 6',
+    }).addTo(map);
+    document.getElementById('map').classList.add('connecting');
     return;
   }
-  if (S.mode === 'c') {
-    if (!S.connFrom) {
-      S.connFrom = id;
-      refreshAllMarkers();
-      return;
-    }
-    if (S.connFrom !== id && gcbs(S.connFrom, id).length === 0) {
-      S.conns.push({ id: cuid(), from: S.connFrom, to: id, poly: null, xMark: null });
-      S.connFrom = null;
-      refreshAllMarkers();
-      drawLastConn();
-      updateStats();
-      updateSb();
-      return;
-    }
-    S.connFrom = null;
-    refreshAllMarkers();
+  if (S.connFrom !== id && gcbs(S.connFrom, id).length === 0) {
+    pushUndo();
+    S.conns.push({ id: cuid(), from: S.connFrom, to: id, poly: null, xMark: null });
+    cancelConnect();
+    drawLastConn();
+    updateStats();
+    updateSb();
+    scheduleAutosave();
+    return;
   }
+  cancelConnect();
 }
 
 function jumpToNode(id, recordHistory = true) {
@@ -739,21 +1712,33 @@ function jumpToNode(id, recordHistory = true) {
   S.selId = id;
   refreshAllMarkers();
   updateSb();
+  renderNodeList();
   const node = gn(id);
   if (node?.marker) {
     map.panTo(node.marker.getLatLng(), { animate: true });
   }
+  showQuickMenu();
 }
 
 function drawLastConn() {
   drawConn(S.conns[S.conns.length - 1]);
 }
 
-function drawConn(c) {
+function drawConn(c, { animate = true } = {}) {
   const a = gn(c.from);
   const b = gn(c.to);
   if (!a || !b) return;
-  c.poly = L.polyline([[a.lat, a.lng], [b.lat, b.lng]], { color: '#22c55e', weight: 3, opacity: 0.85 }).addTo(map);
+  c.poly = L.polyline([[a.lat, a.lng], [b.lat, b.lng]], { color: '#2dd9a8', weight: 3, opacity: 0.85 }).addTo(map);
+  c.poly.bindTooltip(formatDistance(distanceMeters(a, b)), { className: 'conn-dist-wrap', sticky: true, direction: 'top', opacity: 1 });
+  const pathEl = animate ? c.poly.getElement?.() : null;
+  if (pathEl) {
+    const len = pathEl.getTotalLength();
+    pathEl.style.strokeDasharray = `${len}`;
+    pathEl.style.strokeDashoffset = `${len}`;
+    pathEl.getBoundingClientRect();
+    pathEl.style.transition = 'stroke-dashoffset .45s ease';
+    requestAnimationFrame(() => { pathEl.style.strokeDashoffset = '0'; });
+  }
   const mid = [(a.lat + b.lat) / 2, (a.lng + b.lng) / 2];
   c.xMark = L.marker(mid, {
     icon: L.divIcon({ html: '<div class="conn-x">×</div>', className: '', iconAnchor: [9, 9] }),
@@ -768,18 +1753,20 @@ function drawConn(c) {
 function deleteConn(id) {
   const c = S.conns.find(x => x.id === id);
   if (!c) return;
+  pushUndo();
   if (c.poly) map.removeLayer(c.poly);
   if (c.xMark) map.removeLayer(c.xMark);
   S.conns = S.conns.filter(x => x.id !== id);
   updateStats();
   updateSb();
+  scheduleAutosave();
 }
 
 function refreshConnLines() {
   S.conns.forEach(c => {
     if (c.poly) map.removeLayer(c.poly);
     if (c.xMark) map.removeLayer(c.xMark);
-    drawConn(c);
+    drawConn(c, { animate: false });
   });
 }
 
@@ -848,6 +1835,7 @@ function updateSb() {
   if (!n) return;
   niN.value = n.name;
   niS.checked = S.startId === n.id;
+  refreshLatLngUi(n);
   gpsBadge.innerHTML = n.hasGps ? '<span class="gok">GPS</span>' : '<span class="gno">No GPS</span>';
   phB.innerHTML = n.photoUrl ? `<img src="${n.photoUrl}" alt="">` : '<span>No photo</span>';
   phN.textContent = n.photoName ?? '';
@@ -856,6 +1844,11 @@ function updateSb() {
   renderWalkList(n);
   renderConnList();
   refreshCompareUi(n);
+}
+
+function refreshLatLngUi(n) {
+  niLat.value = n.lat.toFixed(6);
+  niLng.value = n.lng.toFixed(6);
 }
 
 function refreshHeadingUi(n) {
@@ -909,7 +1902,7 @@ function renderConnList() {
   const linked = getLinkedNodes(n.id);
   clL.innerHTML = '';
   if (!linked.length) {
-    clL.innerHTML = '<span style="color:#6b7280">None</span>';
+    clL.innerHTML = '<span style="color:var(--text-faint)">None</span>';
     return;
   }
   linked.forEach(o => {
@@ -1043,7 +2036,8 @@ function alignCompareByHeading(baseNode, targetNode) {
 }
 
 function updateStats() {
-  document.getElementById('st').textContent = `Nodes ${S.nodes.length} | Links ${S.conns.length}`;
+  document.getElementById('st').innerHTML = `Nodes <b>${S.nodes.length}</b> &middot; Links <b>${S.conns.length}</b>`;
+  renderNodeList();
 }
 
 function fitAll() {
@@ -1051,12 +2045,373 @@ function fitAll() {
   map.fitBounds(b, { padding: [60, 60] });
 }
 
+// ── Undo / Redo ───────────────────────────────────
+let undoStack = [];
+let redoStack = [];
+const bUndo = document.getElementById('bundo');
+const bRedo = document.getElementById('bredo');
+
+function snapshotState() {
+  return {
+    nodes: S.nodes.map(n => ({
+      id: n.id, name: n.name, lat: n.lat, lng: n.lng,
+      heading: n.heading, origHeading: n.origHeading,
+      viewYaw: n.viewYaw, origViewYaw: n.origViewYaw,
+      headingSource: n.headingSource, hasGps: n.hasGps,
+      photoName: n.photoName, photoFile: n.photoFile || null,
+    })),
+    conns: S.conns.map(c => ({ id: c.id, from: c.from, to: c.to })),
+    selId: S.selId, startId: S.startId, nxt: S.nxt,
+  };
+}
+
+function pushUndo() {
+  undoStack.push(snapshotState());
+  if (undoStack.length > 60) undoStack.shift();
+  redoStack = [];
+  updateUndoRedoButtons();
+}
+
+function applySnapshot(snap, { refit = false } = {}) {
+  S.nodes.forEach(n => { if (n.marker) map.removeLayer(n.marker); });
+  S.conns.forEach(c => {
+    if (c.poly) map.removeLayer(c.poly);
+    if (c.xMark) map.removeLayer(c.xMark);
+  });
+  if (connectLine) { map.removeLayer(connectLine); connectLine = null; }
+  document.getElementById('map').classList.remove('connecting');
+
+  S.nodes = snap.nodes.map(n => ({
+    ...n,
+    photoUrl: n.photoFile ? URL.createObjectURL(n.photoFile) : null,
+    marker: null,
+  }));
+  S.conns = snap.conns.map(c => ({ ...c, poly: null, xMark: null }));
+  S.selId = snap.selId ?? null;
+  S.startId = snap.startId ?? null;
+  S.nxt = snap.nxt ?? S.nxt;
+  S.connFrom = null;
+  S.multiSel = new Set();
+  panoNodeId = null;
+  cmpBaseNodeId = null;
+  cmpOverlayNodeId = null;
+
+  S.nodes.forEach(n => createMarker(n, { animate: false }));
+  S.conns.forEach(c => drawConn(c, { animate: false }));
+  updateSb();
+  updateMultiBar();
+  updateStats();
+  if (refit && S.nodes.length) fitAll();
+}
+
+function doUndo() {
+  if (!undoStack.length) return;
+  redoStack.push(snapshotState());
+  const snap = undoStack.pop();
+  applySnapshot(snap);
+  updateUndoRedoButtons();
+  scheduleAutosave();
+}
+
+function doRedo() {
+  if (!redoStack.length) return;
+  undoStack.push(snapshotState());
+  const snap = redoStack.pop();
+  applySnapshot(snap);
+  updateUndoRedoButtons();
+  scheduleAutosave();
+}
+
+function updateUndoRedoButtons() {
+  bUndo.disabled = !undoStack.length;
+  bRedo.disabled = !redoStack.length;
+}
+
+bUndo.onclick = doUndo;
+bRedo.onclick = doRedo;
+
+function closeAnyOverlay() {
+  let closed = false;
+  if (cmdkBack.classList.contains('show')) { closeCmdk(); closed = true; }
+  if (cheatBack.classList.contains('show')) { cheatBack.classList.remove('show'); closed = true; }
+  if (previewBack.classList.contains('show')) { previewBack.classList.remove('show'); closed = true; }
+  if (uplBack.classList.contains('show')) { uplBack.classList.remove('show'); closed = true; }
+  if (closed && document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  return closed;
+}
+
+document.addEventListener('keydown', e => {
+  const tag = document.activeElement?.tagName;
+  const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    toggleCmdk();
+    return;
+  }
+
+  if (e.key === 'Escape') {
+    if (closeAnyOverlay()) return;
+    if (S.connFrom) cancelConnect();
+    else if (S.multiSel.size) clearMultiSel();
+    else { S.selId = null; updateSb(); renderNodeList(); hideQuickMenu(); }
+    return;
+  }
+
+  const anyModalOpen = cmdkBack.classList.contains('show') || cheatBack.classList.contains('show') ||
+    previewBack.classList.contains('show') || uplBack.classList.contains('show');
+  if (anyModalOpen) return;
+
+  if (!typing && e.key === '?') {
+    e.preventDefault();
+    cheatBack.classList.add('show');
+    return;
+  }
+
+  if ((e.ctrlKey || e.metaKey) && !typing) {
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) { e.preventDefault(); doUndo(); return; }
+    if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); doRedo(); return; }
+  }
+  if (typing) return;
+
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (S.multiSel.size) {
+      pushUndo();
+      [...S.multiSel].forEach(removeNodeById);
+      clearMultiSel();
+      updateSb();
+      refreshAllMarkers();
+      updateStats();
+      scheduleAutosave();
+    } else if (S.selId) {
+      pushUndo();
+      removeNodeById(S.selId);
+      updateSb();
+      refreshAllMarkers();
+      updateStats();
+      scheduleAutosave();
+      hideQuickMenu();
+    }
+  }
+});
+
+// ── Multi-select bar ──────────────────────────────
+const multibar = document.getElementById('multibar');
+const multibarCount = document.getElementById('multibar-count');
+const multibarConnect = document.getElementById('multibar-connect');
+
+function updateMultiBar() {
+  if (!S.multiSel.size) { multibar.classList.remove('show'); return; }
+  multibar.classList.add('show');
+  multibarCount.textContent = `${S.multiSel.size} selected`;
+  multibarConnect.disabled = S.multiSel.size < 2;
+}
+
+multibarConnect.onclick = () => {
+  const ids = [...S.multiSel];
+  if (ids.length < 2) return;
+  pushUndo();
+  const before = S.conns.length;
+  for (let i = 0; i < ids.length - 1; i++) {
+    const a = ids[i], b = ids[i + 1];
+    if (gcbs(a, b).length === 0) {
+      S.conns.push({ id: cuid(), from: a, to: b, poly: null, xMark: null });
+    }
+  }
+  S.conns.slice(before).forEach(c => drawConn(c));
+  const added = S.conns.length - before;
+  clearMultiSel();
+  updateStats();
+  updateSb();
+  scheduleAutosave();
+  toast(added ? `Connected ${ids.length} nodes in sequence` : 'Those nodes are already connected');
+};
+
+document.getElementById('multibar-delete').onclick = () => {
+  const ids = [...S.multiSel];
+  if (!ids.length) return;
+  pushUndo();
+  ids.forEach(removeNodeById);
+  clearMultiSel();
+  updateSb();
+  refreshAllMarkers();
+  updateStats();
+  scheduleAutosave();
+};
+
+document.getElementById('multibar-clear').onclick = () => clearMultiSel();
+
+// ── Searchable / reorderable node list ────────────
+const nodeSearchEl = document.getElementById('node-search');
+const nodeListEl = document.getElementById('node-list');
+
+function renderNodeList() {
+  const q = nodeSearchEl.value.trim().toLowerCase();
+  nodeListEl.innerHTML = '';
+  const filtered = S.nodes
+    .map((n, i) => ({ n, i }))
+    .filter(({ n }) => !q || n.name.toLowerCase().includes(q));
+
+  if (!filtered.length) {
+    const empty = document.createElement('div');
+    empty.className = 'nrow-empty';
+    empty.textContent = S.nodes.length ? 'No matches' : 'No nodes yet';
+    nodeListEl.appendChild(empty);
+    return;
+  }
+
+  filtered.forEach(({ n, i }) => {
+    const row = document.createElement('div');
+    row.className = `nrow${n.id === S.selId ? ' sel' : ''}${S.multiSel.has(n.id) ? ' multi' : ''}`;
+    row.draggable = true;
+    row.innerHTML = `<span class="nrow-drag">⠿</span><span class="nrow-idx">${i + 1}</span><span class="nrow-name">${escapeHtml(n.name)}</span><span class="cx" title="Delete">×</span>`;
+    row.addEventListener('click', e => {
+      if (e.target.classList.contains('cx')) return;
+      if (e.ctrlKey || e.metaKey || e.shiftKey) toggleMultiSelect(n.id);
+      else jumpToNode(n.id, false);
+    });
+    row.querySelector('.cx').addEventListener('click', e => {
+      e.stopPropagation();
+      pushUndo();
+      removeNodeById(n.id);
+      updateSb();
+      refreshAllMarkers();
+      updateStats();
+      scheduleAutosave();
+    });
+    row.addEventListener('dragstart', e => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', n.id);
+    });
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      row.classList.add('drag-over');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      row.classList.remove('drag-over');
+      const draggedId = e.dataTransfer.getData('text/plain');
+      if (!draggedId || draggedId === n.id) return;
+      reorderNode(draggedId, n.id);
+    });
+    nodeListEl.appendChild(row);
+  });
+}
+
+function reorderNode(draggedId, targetId) {
+  const from = S.nodes.findIndex(x => x.id === draggedId);
+  const to = S.nodes.findIndex(x => x.id === targetId);
+  if (from === -1 || to === -1 || from === to) return;
+  pushUndo();
+  const [moved] = S.nodes.splice(from, 1);
+  S.nodes.splice(to, 0, moved);
+  refreshAllMarkers();
+  renderNodeList();
+  scheduleAutosave();
+}
+
+nodeSearchEl.addEventListener('input', renderNodeList);
+
+// ── Session autosave / restore (IndexedDB) ────────
+let autosaveTimer = null;
+const saveStatusEl = document.getElementById('save-status');
+const saveStatusText = document.getElementById('save-status-text');
+
+function setSaveStatus(mode, text) {
+  saveStatusEl.classList.remove('saving', 'saved');
+  if (mode) saveStatusEl.classList.add(mode);
+  saveStatusText.textContent = text;
+}
+
+function scheduleAutosave() {
+  clearTimeout(autosaveTimer);
+  setSaveStatus('saving', 'Saving…');
+  autosaveTimer = setTimeout(saveSessionNow, 1200);
+}
+
+async function saveSessionNow() {
+  try {
+    const db = await openSaveDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('kv', 'readwrite');
+      if (!S.nodes.length) {
+        tx.objectStore('kv').delete('session');
+      } else {
+        tx.objectStore('kv').put(snapshotState(), 'session');
+      }
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+    setSaveStatus('saved', 'Saved');
+  } catch (err) {
+    console.warn('autosave failed', err);
+    setSaveStatus(null, 'Autosave failed');
+  }
+}
+
+async function clearSavedSession() {
+  try {
+    const db = await openSaveDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').delete('session');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch (err) { /* ignore */ }
+}
+
+async function loadSavedSession() {
+  try {
+    const db = await openSaveDb();
+    const snap = await new Promise((resolve, reject) => {
+      const tx = db.transaction('kv', 'readonly');
+      const req = tx.objectStore('kv').get('session');
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    return snap;
+  } catch (err) {
+    return null;
+  }
+}
+
+const restoreBanner = document.getElementById('restore-banner');
+
+async function checkSavedSession() {
+  const snap = await loadSavedSession();
+  if (!snap || !snap.nodes?.length) return;
+  document.getElementById('restore-text').textContent =
+    `Previous session found: ${snap.nodes.length} node(s), ${snap.conns.length} connection(s).`;
+  restoreBanner.classList.add('show');
+
+  document.getElementById('restore-yes').onclick = () => {
+    applySnapshot(snap, { refit: true });
+    restoreBanner.classList.remove('show');
+    toast('Session restored');
+    scheduleAutosave();
+  };
+  document.getElementById('restore-no').onclick = () => {
+    clearSavedSession();
+    restoreBanner.classList.remove('show');
+  };
+}
+
 function toast(msg) {
   const t = document.createElement('div');
   t.className = 'toast';
   t.textContent = msg;
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 4000);
+  requestAnimationFrame(() => t.classList.add('show'));
+  setTimeout(() => {
+    t.classList.remove('show');
+    setTimeout(() => t.remove(), 250);
+  }, 4000);
 }
 
 async function initSaveDir() {
@@ -1181,6 +2536,9 @@ function dl(content, name) {
   a.download = name;
   a.click();
 }
+
+updateStats();
+checkSavedSession();
 </script>
 </body>
 </html>

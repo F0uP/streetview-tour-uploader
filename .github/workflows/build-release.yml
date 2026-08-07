@@ -1,0 +1,53 @@
+name: Build and Release
+
+# Push a tag like "v1.1.0" to build the .exe and publish it as a GitHub
+# Release. Use "Run workflow" in the Actions tab to build and download a zip
+# without cutting a release (handy for testing this pipeline itself).
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable
+        run: python build_exe.py
+
+      - name: Zip the build
+        shell: pwsh
+        run: Compress-Archive -Path dist\* -DestinationPath StreetviewTourEditor-windows.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreetviewTourEditor-windows
+          path: StreetviewTourEditor-windows.zip
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: StreetviewTourEditor-windows.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
