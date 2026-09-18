@@ -187,6 +187,9 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 #mw { flex:1; position:relative; border-radius:var(--radius); overflow:hidden; border:1px solid var(--border); box-shadow:var(--shadow-lg); }
 #map { width:100%; height:100%; background:#0a0910; }
 #map.connecting, #map.connecting .leaflet-container { cursor:crosshair; }
+/* OSM tiles are light by default; invert+rotate hue to match the app's dark theme
+   without touching markers/overlays, which live in separate panes. */
+.leaflet-tile-pane { filter:invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.7); }
 .leaflet-control-zoom { border:none !important; box-shadow:var(--shadow-md) !important; }
 .leaflet-control-zoom a {
   background:var(--panel) !important; backdrop-filter:var(--blur); color:var(--text) !important;
@@ -639,9 +642,13 @@ const gn = id => S.nodes.find(n => n.id === id);
 const gcbs = (a, b) => S.conns.filter(c => (c.from === a && c.to === b) || (c.from === b && c.to === a));
 
 const map = L.map('map', { zoomControl: true, doubleClickZoom: false }).setView([54.3233, 10.1228], 13);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-  subdomains: 'abcd',
+// CARTO's free basemap tiles (basemaps.cartocdn.com) now require signing up for an
+// API key - unauthenticated requests just return tiles watermarked "API KEY REQUIRED".
+// OpenStreetMap's own raster tiles are still free with no key, so we use those and
+// fake the dark look with a CSS filter on the tile pane (see .leaflet-tile-pane below).
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  subdomains: 'abc',
   maxZoom: 19,
 }).addTo(map);
 
@@ -1111,7 +1118,15 @@ function openExportPreview() {
   if (noPh.length && !confirm(`There are ${noPh.length} nodes without photos. Continue?`)) return;
 
   pendingExport = buildTourConfig();
-  previewFrame.srcdoc = genViewer(pendingExport.startId, pendingExport.nodesConf);
+  // The preview iframe has no access to the photo files by filename (they only exist
+  // in memory), so swap in the blob URLs for the live preview. The actual export keeps
+  // plain filenames in pendingExport.nodesConf, since tour-viewer.html is meant to sit
+  // next to the real photo files on disk.
+  const previewNodes = pendingExport.nodesConf.map(nc => ({
+    ...nc,
+    panorama: gn(nc.id)?.photoUrl || nc.panorama,
+  }));
+  previewFrame.srcdoc = genViewer(pendingExport.startId, previewNodes);
   previewBack.classList.add('show');
 }
 
