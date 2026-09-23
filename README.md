@@ -9,7 +9,8 @@ Upload equirectangular 360 photos from cameras such as RICOH THETA, Insta360, an
 - Manual heading alignment with pano preview and EXIF reset
 - In-editor walkthrough between linked nodes
 - Overlay compare view for visually checking orientation between two nodes
-- Export to `tour-config.json`, `tour-project.json`, `tour-viewer.html`, and `tour.csv`
+- Save / open the whole project, photos included, as a single `.vrtour` file (a plain zip)
+- Export to `tour-config.json`, `tour-viewer.html`, and `tour.csv`
 - Google Street View Publish API uploader and heading patch utilities
 
 ## Repository Layout

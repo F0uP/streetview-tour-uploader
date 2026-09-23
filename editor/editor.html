@@ -365,7 +365,11 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
     <button class="btn" id="best" title="Estimate heading">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
     </button>
-    <button class="btn" id="bsave" title="Save project">
+    <button class="btn" id="bopen" title="Open project (.vrtour)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><polyline points="9 14 12 11 15 14"/><line x1="12" y1="11" x2="12" y2="18"/></svg>
+    </button>
+    <input type="file" id="bopen-file" accept=".vrtour,.zip,.json" hidden>
+    <button class="btn" id="bsave" title="Save project with photos (.vrtour)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
     </button>
     <button class="btn" id="bcsv" title="Export CSV">
@@ -423,6 +427,7 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
           <li>Press <kbd>Ctrl K</kbd> for the command palette, <kbd>?</kbd> for all shortcuts</li>
           <li>Ctrl/Shift-click nodes to multi-select, then bulk-connect or delete</li>
           <li>Everything autosaves &mdash; closing the tab is safe, a restore prompt appears next time</li>
+          <li>Save the whole project with photos as a <code>.vrtour</code> file; open it again or drop it on the map</li>
         </ol>
       </div>
     </div>
@@ -805,6 +810,8 @@ mw.addEventListener('dragleave', e => { if (!mw.contains(e.relatedTarget)) doEl.
 mw.addEventListener('drop', async e => {
   e.preventDefault();
   doEl.classList.remove('show');
+  const project = [...e.dataTransfer.files].find(f => /\.(vrtour|zip)$/i.test(f.name));
+  if (project) { await openProjectFile(project); return; }
   const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
   if (!files.length) return;
   const rect = document.getElementById('map').getBoundingClientRect();
@@ -1029,8 +1036,18 @@ document.getElementById('bdir').onclick = async () => {
   }
 };
 
-document.getElementById('bsave').onclick = async () => {
-  const data = {
+// ── Project save / open (.vrtour) ─────────────────
+// A .vrtour file is a plain (uncompressed) zip holding project.json plus every
+// node's photo under photos/<nodeId>/<filename>, so a whole tour can be moved
+// between machines or reopened later without re-dropping the pictures. Photos
+// are already JPEG-compressed, so "stored" entries keep saving fast and let
+// opening slice each photo straight out of the file without copying it.
+const PROJECT_FILE = 'tour-project.vrtour';
+
+function projectData() {
+  return {
+    format: 'vrtour',
+    version: 1,
     nodes: S.nodes.map(n => ({
       id: n.id,
       name: n.name,
@@ -1043,13 +1060,185 @@ document.getElementById('bsave').onclick = async () => {
       headingSource: n.headingSource,
       hasGps: n.hasGps,
       photoName: n.photoName,
+      photoPath: n.photoFile ? `photos/${n.id}/${n.photoName || 'photo.jpg'}` : null,
+      photoType: n.photoFile?.type || null,
     })),
     conns: S.conns.map(c => ({ id: c.id, from: c.from, to: c.to })),
     startId: S.startId,
     nxt: S.nxt,
   };
-  await saveTextFile('tour-project.json', JSON.stringify(data, null, 2));
+}
+
+document.getElementById('bsave').onclick = async () => {
+  if (!S.nodes.length) {
+    alert('No nodes found.');
+    return;
+  }
+  const data = projectData();
+  const entries = [{ name: 'project.json', data: new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }) }];
+  data.nodes.forEach(nd => {
+    if (nd.photoPath) entries.push({ name: nd.photoPath, data: gn(nd.id).photoFile });
+  });
+  try {
+    setSaveStatus('saving', 'Packing project…');
+    const zip = await buildZip(entries);
+    setSaveStatus('saved', 'Saved');
+    await saveTextFile(PROJECT_FILE, zip);
+  } catch (err) {
+    console.error(err);
+    setSaveStatus(null, 'Project save failed');
+    alert(`Saving the project failed: ${err.message || err}`);
+  }
 };
+
+const openInput = document.getElementById('bopen-file');
+document.getElementById('bopen').onclick = () => openInput.click();
+openInput.addEventListener('change', async () => {
+  const file = openInput.files[0];
+  openInput.value = '';
+  if (file) await openProjectFile(file);
+});
+
+async function openProjectFile(file) {
+  if (S.nodes.length && !confirm('Opening a project replaces the current tour (Ctrl+Z undoes it). Continue?')) return;
+  try {
+    let data;
+    let photos = {};
+    if (/\.json$/i.test(file.name)) {
+      // Older tour-project.json: positions and links only, photos must be dropped again.
+      data = JSON.parse(await file.text());
+    } else {
+      photos = await readZip(file);
+      if (!photos['project.json']) throw new Error('project.json missing - not a .vrtour file');
+      data = JSON.parse(await photos['project.json'].text());
+    }
+    if (!Array.isArray(data.nodes)) throw new Error('No nodes in project');
+    const snap = {
+      nodes: data.nodes.map(nd => {
+        const blob = nd.photoPath && photos[nd.photoPath];
+        return {
+          id: nd.id, name: nd.name, lat: nd.lat, lng: nd.lng,
+          heading: nd.heading ?? null, origHeading: nd.origHeading ?? null,
+          viewYaw: nd.viewYaw ?? 0, origViewYaw: nd.origViewYaw ?? 0,
+          headingSource: nd.headingSource || 'manual', hasGps: !!nd.hasGps,
+          photoName: nd.photoName ?? null,
+          photoFile: blob ? new File([blob], nd.photoName || 'photo.jpg', { type: nd.photoType || 'image/jpeg' }) : null,
+        };
+      }),
+      conns: (data.conns || []).map(c => ({ id: c.id, from: c.from, to: c.to })),
+      selId: null,
+      startId: data.startId ?? null,
+      nxt: data.nxt ?? 1,
+    };
+    pushUndo();
+    applySnapshot(snap, { refit: true });
+    scheduleAutosave();
+    const missing = snap.nodes.filter(n => n.photoName && !n.photoFile).length;
+    toast(missing
+      ? `Opened ${file.name} - ${missing} photo(s) not included, drop them again`
+      : `Opened ${file.name} (${snap.nodes.length} nodes)`);
+  } catch (err) {
+    console.error(err);
+    alert(`Could not open ${file.name}: ${err.message || err}`);
+  }
+}
+
+// Minimal zip writer/reader for "stored" (uncompressed) entries, which is all .vrtour uses.
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+
+async function crc32(blob) {
+  let crc = 0xFFFFFFFF;
+  const CHUNK = 8 * 1024 * 1024;
+  for (let off = 0; off < blob.size; off += CHUNK) {
+    const buf = new Uint8Array(await blob.slice(off, off + CHUNK).arrayBuffer());
+    for (let i = 0; i < buf.length; i++) crc = CRC_TABLE[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+async function buildZip(entries) {
+  const enc = new TextEncoder();
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  for (const e of entries) {
+    const name = enc.encode(e.name);
+    const size = e.data.size;
+    if (offset + size >= 0xFFFFFFFF) throw new Error('Project too large (over 4 GB)');
+    const crc = await crc32(e.data);
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);
+    local.setUint16(4, 20, true);
+    local.setUint16(6, 0x0800, true); // UTF-8 file names
+    local.setUint32(14, crc, true);
+    local.setUint32(18, size, true);
+    local.setUint32(22, size, true);
+    local.setUint16(26, name.length, true);
+    parts.push(local.buffer, name, e.data);
+
+    const cen = new DataView(new ArrayBuffer(46));
+    cen.setUint32(0, 0x02014b50, true);
+    cen.setUint16(4, 20, true);
+    cen.setUint16(6, 20, true);
+    cen.setUint16(8, 0x0800, true);
+    cen.setUint32(16, crc, true);
+    cen.setUint32(20, size, true);
+    cen.setUint32(24, size, true);
+    cen.setUint16(28, name.length, true);
+    cen.setUint32(42, offset, true);
+    central.push(cen.buffer, name);
+    offset += 30 + name.length + size;
+  }
+  const cenSize = central.reduce((sum, b) => sum + b.byteLength, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, entries.length, true);
+  end.setUint16(10, entries.length, true);
+  end.setUint32(12, cenSize, true);
+  end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
+}
+
+async function readZip(file) {
+  const tailLen = Math.min(file.size, 22 + 0xFFFF);
+  const tail = new DataView(await file.slice(file.size - tailLen).arrayBuffer());
+  let eocd = -1;
+  for (let i = tailLen - 22; i >= 0; i--) {
+    if (tail.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('Not a .vrtour / zip file');
+  const count = tail.getUint16(eocd + 10, true);
+  const cenSize = tail.getUint32(eocd + 12, true);
+  const cenOff = tail.getUint32(eocd + 16, true);
+  const cen = new DataView(await file.slice(cenOff, cenOff + cenSize).arrayBuffer());
+  const dec = new TextDecoder();
+  const out = {};
+  let p = 0;
+  for (let i = 0; i < count; i++) {
+    if (cen.getUint32(p, true) !== 0x02014b50) throw new Error('Corrupt zip directory');
+    const method = cen.getUint16(p + 10, true);
+    const size = cen.getUint32(p + 20, true);
+    const nameLen = cen.getUint16(p + 28, true);
+    const extraLen = cen.getUint16(p + 30, true);
+    const commentLen = cen.getUint16(p + 32, true);
+    const localOff = cen.getUint32(p + 42, true);
+    const name = dec.decode(new Uint8Array(cen.buffer, p + 46, nameLen));
+    p += 46 + nameLen + extraLen + commentLen;
+    if (method !== 0) throw new Error(`${name} is compressed - only .vrtour files saved by this editor can be opened`);
+    const lh = new DataView(await file.slice(localOff, localOff + 30).arrayBuffer());
+    const dataStart = localOff + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+    out[name] = file.slice(dataStart, dataStart + size);
+  }
+  return out;
+}
 
 document.getElementById('bcsv').onclick = async () => {
   if (!S.nodes.length) {
@@ -1122,11 +1311,26 @@ function openExportPreview() {
   // in memory), so swap in the blob URLs for the live preview. The actual export keeps
   // plain filenames in pendingExport.nodesConf, since tour-viewer.html is meant to sit
   // next to the real photo files on disk.
-  const previewNodes = pendingExport.nodesConf.map(nc => ({
-    ...nc,
-    panorama: gn(nc.id)?.photoUrl || nc.panorama,
-  }));
-  previewFrame.srcdoc = genViewer(pendingExport.startId, previewNodes);
+  // Nodes whose photo isn't loaded in this session would point at a bare filename the
+  // iframe can't resolve, and one failing panorama breaks the whole viewer, so leave
+  // them (and links to them) out of the preview.
+  const loaded = new Set(S.nodes.filter(n => n.photoUrl).map(n => n.id));
+  if (!loaded.size) {
+    alert('None of the nodes has a photo loaded in this session - drop the photos again (or open a .vrtour project) to preview.');
+    return;
+  }
+  const previewNodes = pendingExport.nodesConf
+    .filter(nc => loaded.has(nc.id))
+    .map(nc => ({
+      ...nc,
+      panorama: gn(nc.id).photoUrl,
+      links: nc.links.filter(l => loaded.has(l.nodeId)),
+    }));
+  const previewStart = loaded.has(pendingExport.startId) ? pendingExport.startId : previewNodes[0].id;
+  if (previewNodes.length < S.nodes.length) {
+    toast(`${S.nodes.length - previewNodes.length} node(s) without a loaded photo are left out of the preview`);
+  }
+  previewFrame.srcdoc = genViewer(previewStart, previewNodes);
   previewBack.classList.add('show');
 }
 
@@ -1172,7 +1376,8 @@ function staticCommands() {
     { icon: ICONS.eye, label: 'Preview tour', run: openExportPreview },
     { icon: ICONS.download, label: 'Export tour', run: openExportPreview },
     { icon: ICONS.upload, label: 'Upload to Google Street View', run: () => document.getElementById('bupload').click() },
-    { icon: ICONS.save, label: 'Save project (tour-project.json)', run: () => document.getElementById('bsave').click() },
+    { icon: ICONS.save, label: 'Save project with photos (.vrtour)', run: () => document.getElementById('bsave').click() },
+    { icon: ICONS.folder, label: 'Open project (.vrtour)', run: () => document.getElementById('bopen').click() },
     { icon: ICONS.grid, label: 'Export CSV manifest', run: () => document.getElementById('bcsv').click() },
     { icon: ICONS.folder, label: 'Set save target folder', run: () => document.getElementById('bdir').click() },
     { icon: ICONS.compass, label: 'Estimate headings from anchor', run: () => document.getElementById('best').click() },
@@ -2405,10 +2610,24 @@ async function checkSavedSession() {
     `Previous session found: ${snap.nodes.length} node(s), ${snap.conns.length} connection(s).`;
   restoreBanner.classList.add('show');
 
-  document.getElementById('restore-yes').onclick = () => {
+  document.getElementById('restore-yes').onclick = async () => {
+    // A photo stored in IndexedDB can come back unreadable (browser storage cleanup,
+    // or the original file changed before it was copied). Drop those up front so the
+    // node shows "No photo" instead of silently breaking the viewers and preview.
+    for (const n of snap.nodes) {
+      if (!n.photoFile) continue;
+      try {
+        await n.photoFile.slice(0, 1).arrayBuffer();
+      } catch {
+        n.photoFile = null;
+      }
+    }
     applySnapshot(snap, { refit: true });
     restoreBanner.classList.remove('show');
-    toast('Session restored');
+    const lost = snap.nodes.filter(n => n.photoName && !n.photoFile).length;
+    toast(lost
+      ? `Session restored - ${lost} photo(s) could not be recovered, drop them again`
+      : 'Session restored');
     scheduleAutosave();
   };
   document.getElementById('restore-no').onclick = () => {
@@ -2547,9 +2766,11 @@ ${closeScript}
 
 function dl(content, name) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
+  const url = URL.createObjectURL(content instanceof Blob ? content : new Blob([content], { type: 'text/plain' }));
+  a.href = url;
   a.download = name;
   a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 updateStats();
