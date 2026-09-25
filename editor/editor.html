@@ -64,7 +64,9 @@ body {
   display:flex; align-items:center; gap:10px; margin:14px 16px 0 16px; padding:9px 14px;
   background:var(--panel); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
   border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow-md);
-  flex-shrink:0; position:relative; z-index:100;
+  /* Above Leaflet's panes/controls (up to 1000) so toolbar dropdowns aren't hidden
+     behind the map, but below modals (2000). */
+  flex-shrink:0; position:relative; z-index:1700;
 }
 .tg { display:flex; gap:4px; }
 .sep { width:1px; height:22px; background:var(--border-2); margin:0 2px; }
