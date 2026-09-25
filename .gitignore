@@ -24,7 +24,11 @@ venv/
 build/
 dist/
 *.spec
+_app_version.py
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated winget manifests (see packaging/winget/README.md)
+packaging/winget/manifests/

@@ -1,8 +1,18 @@
 name: Build and Release
 
-# Push a tag like "v1.1.0" to build the .exe and publish it as a GitHub
-# Release. Use "Run workflow" in the Actions tab to build and download a zip
-# without cutting a release (handy for testing this pipeline itself).
+# Push a tag like "v1.2.0" to build the app, its installer and a portable zip
+# and publish them as a GitHub Release (the in-app updater picks it up from
+# there). Use "Run workflow" in the Actions tab to build without releasing
+# (handy for testing this pipeline itself).
+#
+# Optional repository secrets:
+#   Code signing (Azure Trusted Signing), all five needed:
+#     AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET,
+#     TRUSTED_SIGNING_ENDPOINT (e.g. https://weu.codesigning.azure.net),
+#     TRUSTED_SIGNING_ACCOUNT, TRUSTED_SIGNING_PROFILE
+#   winget: WINGET_TOKEN (classic PAT with public_repo scope) - opens the
+#     update PR against microsoft/winget-pkgs after each release.
+# Without them the build runs unsigned and skips winget.
 on:
   push:
     tags:
@@ -15,9 +25,13 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' && secrets.TRUSTED_SIGNING_ACCOUNT != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # git describe needs the tags
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -29,25 +43,77 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build executable
-        run: python build_exe.py
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
 
-      - name: Zip the build
+      - name: Work out version
+        id: ver
         shell: pwsh
-        run: Compress-Archive -Path dist\* -DestinationPath StreetviewTourEditor-windows.zip
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart("v") }
+          else { $v = "0.0.0-dev.${{ github.run_number }}" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Set up code signing
+        if: env.SIGNING == 'true'
+        shell: pwsh
+        env:
+          TS_ENDPOINT: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          TS_ACCOUNT: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          TS_PROFILE: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "trusted-signing"
+          nuget install Microsoft.Trusted.Signing.Client -x -OutputDirectory $dir | Out-Null
+          $dlib = Get-ChildItem $dir -Recurse -Filter Azure.CodeSigning.Dlib.dll | Where-Object FullName -like '*x64*' | Select-Object -First 1
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          $meta = Join-Path $dir "metadata.json"
+          @{ Endpoint = $env:TS_ENDPOINT; CodeSigningAccountName = $env:TS_ACCOUNT; CertificateProfileName = $env:TS_PROFILE } | ConvertTo-Json | Set-Content $meta
+          "SIGN_CMD=`"$($signtool.FullName)`" sign /v /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 /dlib `"$($dlib.FullName)`" /dmdf `"$meta`" `"{file}`"" >> $env:GITHUB_ENV
+
+      - name: Build app, portable zip and installer
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: python build_exe.py --version ${{ steps.ver.outputs.version }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: StreetviewTourEditor-windows
-          path: StreetviewTourEditor-windows.zip
+          path: |
+            dist/*-Setup.exe
+            dist/*-portable.zip
+            dist/SHA256SUMS.txt
           retention-days: 30
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: StreetviewTourEditor-windows.zip
+          # SHA256SUMS.txt must be attached: the in-app updater refuses an
+          # installer it can't verify against it.
+          files: |
+            dist/*-Setup.exe
+            dist/*-portable.zip
+            dist/SHA256SUMS.txt
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  winget:
+    # Keeps the winget package current. The very first version has to be
+    # submitted by hand once (see packaging/winget/README.md).
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: windows-latest
+    env:
+      HAS_TOKEN: ${{ secrets.WINGET_TOKEN != '' }}
+    steps:
+      - name: Submit to winget
+        if: env.HAS_TOKEN == 'true'
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: F0uP.StreetviewTourEditor
+          installers-regex: '-Setup\.exe$'
+          token: ${{ secrets.WINGET_TOKEN }}

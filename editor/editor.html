@@ -334,6 +334,68 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 .cheat-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px solid var(--border); font-size:12px; color:var(--text-dim); }
 .cheat-row kbd { margin-left:4px; }
 
+/* ── Tools menu ────────────────────────────────── */
+.menu-wrap { position:relative; }
+.menu {
+  position:absolute; top:calc(100% + 6px); right:0; min-width:250px; z-index:1800; padding:6px; background:var(--panel-solid);
+  border:1px solid var(--border-2); border-radius:var(--radius-sm); box-shadow:var(--shadow-lg); display:none;
+}
+.menu.show { display:block; }
+.menu button {
+  display:flex; align-items:center; gap:9px; width:100%; padding:8px 10px; border:none; background:transparent; color:var(--text);
+  font:inherit; font-size:12px; font-weight:600; text-align:left; border-radius:7px; cursor:pointer;
+}
+.menu button:hover { background:var(--accent-soft); }
+.menu button svg { width:14px; height:14px; color:var(--text-faint); flex-shrink:0; }
+.menu button .h { margin-left:auto; font-size:10px; color:var(--text-faint); font-weight:500; }
+.menu hr { border:none; border-top:1px solid var(--border); margin:5px 2px; }
+.brand .ver { font-size:10px; font-weight:600; color:var(--text-faint); margin-left:2px; }
+
+/* ── Update banner / progress ──────────────────── */
+.update-banner {
+  position:fixed; top:64px; right:16px; z-index:3000; max-width:360px; padding:12px 14px; background:var(--panel);
+  backdrop-filter:var(--blur); border:1px solid var(--border-2); border-left:3px solid var(--accent);
+  border-radius:var(--radius-sm); box-shadow:var(--shadow-lg); font-size:12px; display:none;
+}
+.update-banner.show { display:block; animation:ub-in .3s cubic-bezier(.34,1.56,.64,1); }
+@keyframes ub-in { from { transform:translateX(30px); opacity:0; } to { transform:none; opacity:1; } }
+.update-banner .t { margin-bottom:9px; line-height:1.5; }
+.update-banner .t span { color:var(--text-faint); }
+.update-banner .rowbtn { margin-top:0; }
+.progress { height:8px; border-radius:99px; background:var(--panel-3); overflow:hidden; margin:12px 0 8px; }
+.progress > div { height:100%; width:0; background:linear-gradient(90deg, var(--accent), var(--accent-2)); transition:width .3s ease; }
+.progress.indet > div { width:40% !important; animation:indet 1.1s ease-in-out infinite; }
+@keyframes indet { from { transform:translateX(-100%); } to { transform:translateX(250%); } }
+.notes { white-space:pre-wrap; font-size:12px; color:var(--text-dim); line-height:1.6; background:var(--panel-2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px; max-height:50vh; overflow:auto; }
+
+/* ── Google setup wizard ───────────────────────── */
+.wiz { list-style:none; margin:12px 0; display:flex; flex-direction:column; gap:6px; }
+.wiz-step { border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--panel-2); }
+.wiz-h { display:flex; align-items:center; gap:10px; padding:9px 11px; cursor:pointer; font-size:12.5px; font-weight:700; }
+.wiz-n { width:20px; height:20px; border-radius:50%; background:var(--panel-3); color:var(--text-dim); display:flex; align-items:center; justify-content:center; font-size:11px; flex-shrink:0; }
+.wiz-step.done .wiz-n { background:var(--success); color:#04140a; }
+.wiz-step.open { border-color:var(--accent); }
+.wiz-step.open .wiz-n { background:var(--accent); color:#fff; }
+.wiz-b { display:none; padding:0 11px 11px 41px; font-size:11.5px; color:var(--text-dim); line-height:1.65; }
+.wiz-step.open .wiz-b { display:block; }
+.wiz-b ul { padding-left:16px; margin:4px 0 8px; }
+.wiz-b .rowbtn .btn { flex:0 1 auto; }
+.wiz-b a.btn { text-decoration:none; }
+
+/* ── Tool modals (auto-connect, GPX, blur) ─────── */
+.opt { display:flex; gap:8px; align-items:flex-start; padding:9px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:6px; cursor:pointer; font-size:12px; }
+.opt:has(input:checked) { border-color:var(--accent); background:var(--accent-soft); }
+.opt b { display:block; color:var(--text); margin-bottom:2px; }
+.opt span { color:var(--text-dim); font-size:11px; }
+.inline-num { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); margin:10px 0; }
+.inline-num .pi { width:90px; }
+.modal.xwide { width:min(1400px, 96vw); }
+.blur-stage { position:relative; width:100%; aspect-ratio:2/1; background:#000; border-radius:var(--radius-sm); overflow:hidden; border:1px solid var(--border); cursor:crosshair; }
+.blur-stage canvas { width:100%; height:100%; display:block; }
+.blur-stage.panning { cursor:grabbing; }
+.blur-bar { display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap; font-size:12px; color:var(--text-dim); }
+.blur-bar .sp { flex:1; }
+
 /* ── Misc ──────────────────────────────────────── */
 .ico { width:14px; height:14px; }
 </style>
@@ -341,7 +403,7 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 <body>
 
 <div id="tb">
-  <div class="brand"><span class="dot"></span>Walkthrough</div>
+  <div class="brand"><span class="dot"></span>Walkthrough <span class="ver" id="app-version"></span></div>
   <div class="sep"></div>
   <div class="tg">
     <button class="btn" id="bundo" title="Undo (Ctrl+Z)" disabled>
@@ -365,11 +427,27 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
     <button class="btn" id="best" title="Estimate heading">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
     </button>
-    <button class="btn" id="bopen" title="Open project (.vrtour)">
+    <div class="menu-wrap">
+      <button class="btn" id="btools" title="Tools">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        Tools
+      </button>
+      <div class="menu" id="tools-menu">
+        <button data-run="autoconnect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M6 8l5 8M18 8l-5 8"/></svg>Auto-connect nodes…</button>
+        <button data-run="gpx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place photos from GPX track…</button>
+        <button data-run="blur"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/><line x1="3" y1="3" x2="21" y2="21"/></svg>Blur faces &amp; plates…<span class="h">selected node</span></button>
+        <hr>
+        <button data-run="saveas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>Save project as…<span class="h">Ctrl Shift S</span></button>
+        <button data-run="website"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Export tour as website (.zip)</button>
+        <hr>
+        <button data-run="updates"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Check for updates</button>
+      </div>
+    </div>
+    <button class="btn" id="bopen" title="Open project (Ctrl+O)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><polyline points="9 14 12 11 15 14"/><line x1="12" y1="11" x2="12" y2="18"/></svg>
     </button>
     <input type="file" id="bopen-file" accept=".vrtour,.zip,.json" hidden>
-    <button class="btn" id="bsave" title="Save project with photos (.vrtour)">
+    <button class="btn" id="bsave" title="Save project with photos (Ctrl+S)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
     </button>
     <button class="btn" id="bcsv" title="Export CSV">
@@ -394,6 +472,70 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
   <span id="restore-text"></span>
   <button class="btn g" id="restore-yes">Restore</button>
   <button class="btn" id="restore-no">Discard</button>
+</div>
+
+<div class="update-banner" id="update-banner">
+  <div class="t" id="update-text"></div>
+  <div class="rowbtn">
+    <button class="btn g" id="update-go">Update now</button>
+    <button class="btn" id="update-notes">What's new</button>
+    <button class="btn" id="update-later">Later</button>
+  </div>
+</div>
+
+<div class="modal-back" id="update-back">
+  <div class="modal">
+    <h2><span id="update-title">Updating</span> <span class="close" id="update-close">Close</span></h2>
+    <div id="update-body"></div>
+    <div class="progress" id="update-progress" style="display:none"><div></div></div>
+    <div class="mini" id="update-status"></div>
+  </div>
+</div>
+
+<div class="modal-back" id="autoc-back">
+  <div class="modal">
+    <h2>Auto-connect nodes <span class="close" data-close="autoc-back">Close</span></h2>
+    <div class="mini" id="autoc-scope" style="margin:0 0 10px"></div>
+    <label class="opt"><input type="radio" name="autoc-mode" value="time" checked>
+      <div><b>In the order the photos were taken</b><span>Follows your walk using each photo's capture time (EXIF). Photos without a capture time keep their list order.</span></div></label>
+    <label class="opt"><input type="radio" name="autoc-mode" value="near">
+      <div><b>Nearest neighbours</b><span>Links every node to its closest nodes (up to 3) within the distance below.</span></div></label>
+    <div class="inline-num">Only link nodes up to <input class="pi" id="autoc-dist" type="number" min="1" step="1" value="25"> m apart</div>
+    <label class="cb2" style="margin-bottom:12px"><input type="checkbox" id="autoc-replace"> Remove existing connections between these nodes first</label>
+    <button class="btn g" id="autoc-go" style="width:100%">Connect</button>
+  </div>
+</div>
+
+<div class="modal-back" id="gpx-back">
+  <div class="modal">
+    <h2>Place photos from a GPX track <span class="close" data-close="gpx-back">Close</span></h2>
+    <div class="mini" style="margin:0 0 10px">Record a track with your phone (any GPS logger app) while taking the photos. Each photo is placed where the track was at its capture time.</div>
+    <div class="pg">
+      <p class="pl">GPX file</p>
+      <input class="pi" id="gpx-file" type="file" accept=".gpx,application/gpx+xml">
+    </div>
+    <div class="inline-num">Camera clock time zone: UTC <input class="pi" id="gpx-offset" type="number" step="0.25" value="0"> hours</div>
+    <div class="mini" style="margin-top:-6px">Photos store local time without a zone, so set the offset your camera clock was on (e.g. 2 for German summer time).</div>
+    <label class="cb2" style="margin:12px 0"><input type="checkbox" id="gpx-all"> Also move photos that already have GPS</label>
+    <button class="btn g" id="gpx-go" style="width:100%">Place photos</button>
+    <div class="mini" id="gpx-result"></div>
+  </div>
+</div>
+
+<div class="modal-back" id="blur-back">
+  <div class="modal xwide">
+    <h2>Blur faces &amp; licence plates <span class="close" data-close="blur-back">Close</span></h2>
+    <div class="blur-stage" id="blur-stage"><canvas id="blur-canvas"></canvas></div>
+    <div class="blur-bar">
+      <span id="blur-count">Drag boxes over faces and plates.</span>
+      <span class="sp"></span>
+      <span>Scroll to zoom · right-drag to pan</span>
+      <button class="btn" id="blur-undo">Undo box</button>
+      <button class="btn" id="blur-clear">Clear</button>
+      <button class="btn g" id="blur-apply">Apply to photo</button>
+    </div>
+    <div class="mini">The blurred photo replaces the original in this project (Ctrl+Z undoes it). Its EXIF block, which can hold an unblurred thumbnail, is dropped; the 360° (XMP) metadata is kept. The Street View Publish API does not blur anything itself, so do this before uploading.</div>
+  </div>
 </div>
 
 <div id="main">
@@ -453,6 +595,7 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
         <p class="pl">360 Photo <span id="gps-b"></span></p>
         <div class="pb" id="ph-b"><span>No photo</span></div>
         <label class="fl">Replace Photo<input type="file" id="ni-p" accept="image/*" hidden></label>
+        <button class="btn" id="bn-blur" style="width:100%;justify-content:center;margin-top:6px">Blur faces &amp; plates…</button>
         <div class="fn" id="ph-n"></div>
         <div class="pvw" id="pano-wrap" style="display:none"><div id="pano-view"></div></div>
         <div class="mini" id="pano-help">Choose a photo to check north alignment here.</div>
@@ -521,17 +664,48 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
     <h2>Upload to Google Street View <span class="close" id="upl-close">Close</span></h2>
 
     <div id="upl-creds-setup">
-      <div class="mini" style="margin-top:0">One-time setup: create a free Google OAuth client, then paste its two values here. No file downloads or config editing needed.</div>
-      <details class="hint" style="margin:10px 0;cursor:pointer">
-        <summary style="font-weight:700;cursor:pointer">How do I get a Client ID / Client Secret?</summary>
-        <ol style="margin-top:8px;padding-left:16px">
-          <li>Open <a href="https://console.cloud.google.com/" target="_blank" rel="noopener" style="color:var(--accent-2)">Google Cloud Console</a> and create (or pick) a project</li>
-          <li><b>APIs &amp; Services &rarr; Library</b> &rarr; search <b>Street View Publish API</b> &rarr; Enable</li>
-          <li><b>APIs &amp; Services &rarr; OAuth consent screen</b> &rarr; External &rarr; add your own email under Test users</li>
-          <li><b>APIs &amp; Services &rarr; Credentials &rarr; Create Credentials &rarr; OAuth client ID</b> &rarr; type <b>Desktop app</b></li>
-          <li>Copy the Client ID and Client Secret shown and paste them below (pasting the whole downloaded JSON into the Client ID field also works)</li>
-        </ol>
-      </details>
+      <div class="mini" style="margin-top:0">One-time setup, about 5 minutes: Google needs you to register this app as your own free "OAuth client". Work through the steps, each link opens the right page of Google Cloud Console.</div>
+      <ol class="wiz" id="wiz">
+        <li class="wiz-step">
+          <div class="wiz-h"><span class="wiz-n">1</span>Create a Google Cloud project</div>
+          <div class="wiz-b">
+            Sign in with the Google account that should own the photos, give the project any name (e.g. <i>Street View Upload</i>) and click <b>Create</b>. Make sure it is selected in the project picker at the top afterwards.
+            <div class="rowbtn"><a class="btn" href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Open "New project"</a><button class="btn g wiz-next">Done</button></div>
+          </div>
+        </li>
+        <li class="wiz-step">
+          <div class="wiz-h"><span class="wiz-n">2</span>Enable the Street View Publish API</div>
+          <div class="wiz-b">
+            Click <b>Enable</b> on the API page. It is free.
+            <div class="rowbtn"><a class="btn" href="https://console.cloud.google.com/apis/library/streetviewpublish.googleapis.com" target="_blank" rel="noopener">Open the API page</a><button class="btn g wiz-next">Done</button></div>
+          </div>
+        </li>
+        <li class="wiz-step">
+          <div class="wiz-h"><span class="wiz-n">3</span>Set up the consent screen</div>
+          <div class="wiz-b">
+            <ul>
+              <li><b>Get started</b>: any app name, your email as support and contact address</li>
+              <li>Audience: <b>External</b></li>
+              <li>Then under <b>Audience → Test users</b> add your own Google address</li>
+            </ul>
+            <div class="rowbtn"><a class="btn" href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener">Open consent screen</a><button class="btn g wiz-next">Done</button></div>
+          </div>
+        </li>
+        <li class="wiz-step">
+          <div class="wiz-h"><span class="wiz-n">4</span>Create the OAuth client</div>
+          <div class="wiz-b">
+            Application type <b>Desktop app</b>, any name, <b>Create</b>. Keep the dialog with the Client ID and Client Secret open, or click <b>Download JSON</b>.
+            <div class="rowbtn"><a class="btn" href="https://console.cloud.google.com/apis/credentials/oauthclient" target="_blank" rel="noopener">Open "Create OAuth client"</a><button class="btn g wiz-next">Done</button></div>
+          </div>
+        </li>
+        <li class="wiz-step">
+          <div class="wiz-h"><span class="wiz-n">5</span>Paste the two values here</div>
+          <div class="wiz-b">
+            Copy both values into the fields below, or choose the downloaded <code>client_secret_….json</code>, which fills both.
+            <div class="rowbtn"><label class="btn">Choose JSON file…<input type="file" id="upl-json" accept=".json,application/json" hidden></label></div>
+          </div>
+        </li>
+      </ol>
       <div class="pg">
         <p class="pl">Client ID</p>
         <input class="pi" id="upl-client-id" type="text" placeholder="xxxxxxxxxxxx.apps.googleusercontent.com" autocomplete="off">
@@ -559,6 +733,7 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 
       <div class="mini" id="upl-summary">Nothing to upload yet.</div>
 
+      <label class="cb2" style="margin-top:10px"><input type="checkbox" id="upl-reupload"> Upload photos again that were already uploaded</label>
       <button class="btn g" id="upl-start" style="width:100%;margin-top:10px">Start Upload</button>
       <div id="upl-log"></div>
     </div>
@@ -574,6 +749,7 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Export Now
     </button>
+    <button class="btn" id="preview-website" style="width:100%;margin-top:8px;justify-content:center">Export as website with photos (.zip)</button>
   </div>
 </div>
 
@@ -614,6 +790,9 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
       <div class="cheat-row"><span>Show this cheatsheet</span><kbd>?</kbd></div>
       <div class="cheat-row"><span>Undo</span><kbd>Ctrl Z</kbd></div>
       <div class="cheat-row"><span>Redo</span><kbd>Ctrl Y</kbd></div>
+      <div class="cheat-row"><span>Save project</span><kbd>Ctrl S</kbd></div>
+      <div class="cheat-row"><span>Save project as…</span><kbd>Ctrl Shift S</kbd></div>
+      <div class="cheat-row"><span>Open project</span><kbd>Ctrl O</kbd></div>
       <div class="cheat-row"><span>Add point</span><kbd>Dbl-click map</kbd></div>
       <div class="cheat-row"><span>Select node</span><kbd>Click</kbd></div>
       <div class="cheat-row"><span>Multi-select</span><kbd>Ctrl+Click</kbd></div>
@@ -810,8 +989,15 @@ mw.addEventListener('dragleave', e => { if (!mw.contains(e.relatedTarget)) doEl.
 mw.addEventListener('drop', async e => {
   e.preventDefault();
   doEl.classList.remove('show');
-  const project = [...e.dataTransfer.files].find(f => /\.(vrtour|zip)$/i.test(f.name));
-  if (project) { await openProjectFile(project); return; }
+  const projectItem = [...e.dataTransfer.items].find(it => it.kind === 'file' && /\.(vrtour|zip)$/i.test(it.getAsFile()?.name || ''));
+  if (projectItem) {
+    // getAsFileSystemHandle() only works while the drop event is being dispatched.
+    const handlePromise = projectItem.getAsFileSystemHandle?.() ?? Promise.resolve(null);
+    const file = projectItem.getAsFile();
+    const handle = await handlePromise.catch(() => null);
+    await openProjectFile(file, handle?.kind === 'file' ? handle : null);
+    return;
+  }
   const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
   if (!files.length) return;
   const rect = document.getElementById('map').getBoundingClientRect();
@@ -842,6 +1028,10 @@ niP.addEventListener('change', async e => {
   n.photoName = file.name;
   n.photoUrl = URL.createObjectURL(file);
   n.photoFile = file;
+  n.captureTime = meta.captureTime;
+  n.captureOffset = meta.captureOffset;
+  n.gsvPhotoId = null;
+  n.blurred = false;
   if (meta.hasGps) {
     n.lat = meta.lat;
     n.lng = meta.lng;
@@ -1044,6 +1234,10 @@ document.getElementById('bdir').onclick = async () => {
 // opening slice each photo straight out of the file without copying it.
 const PROJECT_FILE = 'tour-project.vrtour';
 
+function photoPathOf(n) {
+  return `photos/${n.id}/${n.photoName || 'photo.jpg'}`;
+}
+
 function projectData() {
   return {
     format: 'vrtour',
@@ -1060,8 +1254,12 @@ function projectData() {
       headingSource: n.headingSource,
       hasGps: n.hasGps,
       photoName: n.photoName,
-      photoPath: n.photoFile ? `photos/${n.id}/${n.photoName || 'photo.jpg'}` : null,
+      photoPath: n.photoFile ? photoPathOf(n) : null,
       photoType: n.photoFile?.type || null,
+      captureTime: n.captureTime ?? null,
+      captureOffset: n.captureOffset ?? null,
+      blurred: !!n.blurred,
+      gsvPhotoId: n.gsvPhotoId ?? null,
     })),
     conns: S.conns.map(c => ({ id: c.id, from: c.from, to: c.to })),
     startId: S.startId,
@@ -1069,42 +1267,119 @@ function projectData() {
   };
 }
 
-document.getElementById('bsave').onclick = async () => {
-  if (!S.nodes.length) {
-    alert('No nodes found.');
-    return;
-  }
+async function packProject() {
   const data = projectData();
   const entries = [{ name: 'project.json', data: new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }) }];
   data.nodes.forEach(nd => {
     if (nd.photoPath) entries.push({ name: nd.photoPath, data: gn(nd.id).photoFile });
   });
+  return buildZip(entries);
+}
+
+// ── Current project file (Ctrl+S) ─────────────────
+// Where the File System Access API exists (Chrome, Edge), the opened or first
+// saved .vrtour is remembered and Ctrl+S writes straight back into it. Other
+// browsers fall back to downloading a copy each time.
+let projectHandle = null;
+let projectName = null;
+let projectDirty = false;
+const PROJECT_PICKER_TYPES = [{ description: 'Tour project', accept: { 'application/zip': ['.vrtour'] } }];
+
+function updateTitle() {
+  document.title = `${projectDirty ? '• ' : ''}${projectName || 'Untitled'} – Tour Editor`;
+}
+function markDirty() { if (!projectDirty) { projectDirty = true; updateTitle(); } }
+function markClean() { projectDirty = false; updateTitle(); }
+
+async function saveProject({ saveAs = false } = {}) {
+  if (!S.nodes.length) {
+    alert('No nodes found.');
+    return;
+  }
+  let handle = saveAs ? null : projectHandle;
+  if (!handle && window.showSaveFilePicker) {
+    try {
+      handle = await window.showSaveFilePicker({ suggestedName: projectName || PROJECT_FILE, types: PROJECT_PICKER_TYPES });
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      handle = null;
+    }
+  }
   try {
     setSaveStatus('saving', 'Packing project…');
-    const zip = await buildZip(entries);
+    const zip = await packProject();
+    if (handle) {
+      const writable = await handle.createWritable();
+      await writable.write(zip);
+      await writable.close();
+      projectHandle = handle;
+      projectName = handle.name;
+      await rebindPhotos(await handle.getFile());
+      toast(`Saved ${handle.name}`);
+    } else {
+      await saveTextFile(projectName || PROJECT_FILE, zip);
+    }
+    markClean();
     setSaveStatus('saved', 'Saved');
-    await saveTextFile(PROJECT_FILE, zip);
   } catch (err) {
     console.error(err);
     setSaveStatus(null, 'Project save failed');
     alert(`Saving the project failed: ${err.message || err}`);
   }
-};
+}
+
+// Photos opened from a .vrtour are slices of that file, and the browser refuses
+// to read them once the file has been overwritten. After saving in place, point
+// every photo (also those in the undo history) at the freshly written file.
+async function rebindPhotos(file) {
+  const entries = await readZip(file);
+  const swap = new Map();
+  S.nodes.forEach(n => {
+    const slice = n.photoFile && entries[photoPathOf(n)];
+    if (!slice) return;
+    const fresh = new File([slice], n.photoName || 'photo.jpg', { type: n.photoFile.type || 'image/jpeg' });
+    swap.set(n.photoFile, fresh);
+    n.photoFile = fresh;
+    if (n.photoUrl) URL.revokeObjectURL(n.photoUrl);
+    n.photoUrl = URL.createObjectURL(fresh);
+  });
+  [...undoStack, ...redoStack].forEach(snap => snap.nodes.forEach(n => {
+    if (swap.has(n.photoFile)) n.photoFile = swap.get(n.photoFile);
+  }));
+  const sel = gn(S.selId);
+  if (sel?.photoUrl) phB.innerHTML = `<img src="${sel.photoUrl}" alt="">`;
+}
+
+document.getElementById('bsave').onclick = () => saveProject();
 
 const openInput = document.getElementById('bopen-file');
-document.getElementById('bopen').onclick = () => openInput.click();
+async function pickAndOpenProject() {
+  if (!window.showOpenFilePicker) { openInput.click(); return; }
+  let handle;
+  try {
+    [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'Tour project', accept: { 'application/zip': ['.vrtour', '.zip'], 'application/json': ['.json'] } }],
+    });
+  } catch (err) {
+    if (err?.name !== 'AbortError') openInput.click();
+    return;
+  }
+  await openProjectFile(await handle.getFile(), handle);
+}
+document.getElementById('bopen').onclick = pickAndOpenProject;
 openInput.addEventListener('change', async () => {
   const file = openInput.files[0];
   openInput.value = '';
   if (file) await openProjectFile(file);
 });
 
-async function openProjectFile(file) {
+async function openProjectFile(file, handle = null) {
   if (S.nodes.length && !confirm('Opening a project replaces the current tour (Ctrl+Z undoes it). Continue?')) return;
   try {
     let data;
     let photos = {};
-    if (/\.json$/i.test(file.name)) {
+    const legacyJson = /\.json$/i.test(file.name);
+    if (legacyJson) {
       // Older tour-project.json: positions and links only, photos must be dropped again.
       data = JSON.parse(await file.text());
     } else {
@@ -1123,6 +1398,10 @@ async function openProjectFile(file) {
           headingSource: nd.headingSource || 'manual', hasGps: !!nd.hasGps,
           photoName: nd.photoName ?? null,
           photoFile: blob ? new File([blob], nd.photoName || 'photo.jpg', { type: nd.photoType || 'image/jpeg' }) : null,
+          captureTime: nd.captureTime ?? undefined,
+          captureOffset: nd.captureOffset ?? null,
+          blurred: !!nd.blurred,
+          gsvPhotoId: nd.gsvPhotoId ?? null,
         };
       }),
       conns: (data.conns || []).map(c => ({ id: c.id, from: c.from, to: c.to })),
@@ -1133,6 +1412,9 @@ async function openProjectFile(file) {
     pushUndo();
     applySnapshot(snap, { refit: true });
     scheduleAutosave();
+    projectHandle = legacyJson ? null : handle;
+    projectName = legacyJson ? file.name.replace(/\.json$/i, '.vrtour') : file.name;
+    markClean();
     const missing = snap.nodes.filter(n => n.photoName && !n.photoFile).length;
     toast(missing
       ? `Opened ${file.name} - ${missing} photo(s) not included, drop them again`
@@ -1360,6 +1642,7 @@ const ICONS = {
   undo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>',
   redo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>',
   keyboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="6" y1="9" x2="6" y2="9"/><line x1="10" y1="9" x2="10" y2="9"/><line x1="14" y1="9" x2="14" y2="9"/><line x1="18" y1="9" x2="18" y2="9"/><line x1="6" y1="13" x2="18" y2="13"/></svg>',
+  link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 7h3a5 5 0 0 1 0 10h-3m-6 0H6a5 5 0 0 1 0-10h3"/><line x1="8" y1="12" x2="16" y2="12"/></svg>',
   target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
 };
 
@@ -1376,8 +1659,14 @@ function staticCommands() {
     { icon: ICONS.eye, label: 'Preview tour', run: openExportPreview },
     { icon: ICONS.download, label: 'Export tour', run: openExportPreview },
     { icon: ICONS.upload, label: 'Upload to Google Street View', run: () => document.getElementById('bupload').click() },
-    { icon: ICONS.save, label: 'Save project with photos (.vrtour)', run: () => document.getElementById('bsave').click() },
-    { icon: ICONS.folder, label: 'Open project (.vrtour)', run: () => document.getElementById('bopen').click() },
+    { icon: ICONS.save, label: 'Save project', hint: 'Ctrl S', run: () => saveProject() },
+    { icon: ICONS.save, label: 'Save project as…', hint: 'Ctrl Shift S', run: () => saveProject({ saveAs: true }) },
+    { icon: ICONS.folder, label: 'Open project (.vrtour)', hint: 'Ctrl O', run: pickAndOpenProject },
+    { icon: ICONS.link, label: 'Auto-connect nodes…', run: openAutoConnect },
+    { icon: ICONS.target, label: 'Place photos from GPX track…', run: openGpx },
+    { icon: ICONS.eye, label: 'Blur faces & plates in the selected photo…', run: () => openBlurTool(S.selId) },
+    { icon: ICONS.download, label: 'Export tour as website (.zip)', run: exportTourWebsite },
+    { icon: ICONS.redo, label: 'Check for updates', run: () => checkForUpdates({ force: true, quiet: false }) },
     { icon: ICONS.grid, label: 'Export CSV manifest', run: () => document.getElementById('bcsv').click() },
     { icon: ICONS.folder, label: 'Set save target folder', run: () => document.getElementById('bdir').click() },
     { icon: ICONS.compass, label: 'Estimate headings from anchor', run: () => document.getElementById('best').click() },
@@ -1490,11 +1779,24 @@ function showSignedInArea() {
   refreshSignInStatus();
 }
 
+function uploadCandidates() {
+  return S.nodes.filter(n => n.photoFile && n.lat != null && n.lng != null);
+}
+
+function refreshUploadSummary() {
+  const ready = uploadCandidates();
+  const done = ready.filter(n => n.gsvPhotoId).length;
+  const missing = S.nodes.length - ready.length;
+  const reupload = document.getElementById('upl-reupload').checked;
+  const parts = [`${reupload ? ready.length : ready.length - done} photo(s) to upload`];
+  if (done) parts.push(`${done} already uploaded${reupload ? ' (will be uploaded again)' : ' (skipped, links are still updated)'}`);
+  if (missing) parts.push(`${missing} without a photo loaded (drop the file again to include it)`);
+  uplSummary.textContent = `${parts.join(' · ')}.`;
+}
+document.getElementById('upl-reupload').addEventListener('change', refreshUploadSummary);
+
 document.getElementById('bupload').onclick = async () => {
-  const missing = S.nodes.filter(n => !n.photoUrl);
-  uplSummary.textContent = missing.length
-    ? `${S.nodes.length} node(s), ${missing.length} without a photo loaded this session (drop the file again to include it).`
-    : `${S.nodes.length} node(s) ready to upload.`;
+  refreshUploadSummary();
   uplLog.textContent = '';
   uplBack.classList.add('show');
   try {
@@ -1572,20 +1874,22 @@ uplSignin.onclick = async () => {
 };
 
 uplStart.onclick = async () => {
-  const nodes = S.nodes.filter(n => n.photoUrl && n.lat != null && n.lng != null);
+  const nodes = uploadCandidates();
   if (!nodes.length) {
     uplLine('No nodes with a loaded photo and GPS position to upload.');
     return;
   }
+  const reupload = document.getElementById('upl-reupload').checked;
+  const todo = nodes.filter(n => reupload || !n.gsvPhotoId);
   uplStart.disabled = true;
   const placeId = uplPlace.value.trim() || null;
-  const nameToId = {};
-  uplLine(`Uploading ${nodes.length} photo(s)...`);
+  let uploaded = 0;
+  if (todo.length) uplLine(`Uploading ${todo.length} photo(s)...`);
+  if (todo.length < nodes.length) uplLine(`Skipping ${nodes.length - todo.length} photo(s) uploaded earlier.`);
 
-  for (const n of nodes) {
+  for (const n of todo) {
     try {
-      const blob = await (await fetch(n.photoUrl)).blob();
-      const buf = await blob.arrayBuffer();
+      const buf = await n.photoFile.arrayBuffer();
       const params = new URLSearchParams({ filename: n.photoName, lat: n.lat, lng: n.lng });
       if (n.heading != null) params.set('heading', n.heading);
       if (placeId) params.set('place_id', placeId);
@@ -1599,36 +1903,45 @@ uplStart.onclick = async () => {
         uplLine(`${n.photoName}: FAILED (${j.error || 'unknown error'})`);
         continue;
       }
-      nameToId[n.photoName] = j.photoId;
+      // Remember the Google photo ID so a later run can skip this photo.
+      n.gsvPhotoId = j.photoId;
+      uploaded++;
+      scheduleAutosave();
       uplLine(`${n.photoName}: OK`);
     } catch (err) {
       uplLine(`${n.photoName}: FAILED (${err.message})`);
     }
   }
 
-  const uploadedCount = Object.keys(nameToId).length;
-  if (uploadedCount > 1) {
+  // Links are keyed by node id, so two photos with the same file name can't clash.
+  const idOf = Object.fromEntries(nodes.filter(n => n.gsvPhotoId).map(n => [n.id, n.gsvPhotoId]));
+  if (Object.keys(idOf).length > 1) {
     uplLine('Linking connections...');
     const connects = {};
     for (const n of nodes) {
-      const linked = getLinkedNodes(n.id).map(o => o.photoName).filter(name => name && nameToId[name]);
-      if (linked.length) connects[n.photoName] = linked;
+      if (!idOf[n.id]) continue;
+      const linked = getLinkedNodes(n.id).filter(o => idOf[o.id]).map(o => o.id);
+      if (linked.length) connects[n.id] = linked;
     }
     try {
       const r = await fetch('/api/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name_to_id: nameToId, connects }),
+        body: JSON.stringify({ name_to_id: idOf, connects }),
       });
       const j = await r.json();
-      (j.results || []).forEach(res => uplLine(`connect ${res.filename}: ${res.ok ? 'OK' : 'FAILED (' + res.error + ')'}`));
+      (j.results || []).forEach(res => {
+        const name = gn(res.filename)?.photoName || res.filename;
+        uplLine(`connect ${name}: ${res.ok ? 'OK' : 'FAILED (' + res.error + ')'}`);
+      });
     } catch (err) {
       uplLine(`Connection step failed: ${err.message}`);
     }
   }
 
-  uplLine(`\nDone: ${uploadedCount}/${nodes.length} uploaded.`);
+  uplLine(`\nDone: ${uploaded}/${todo.length} uploaded.`);
   uplLine('Check: https://www.google.com/maps/contrib/');
+  refreshUploadSummary();
   uplStart.disabled = false;
 };
 
@@ -1721,8 +2034,13 @@ async function readPhotoMeta(file) {
   let lng = null;
   let heading = null;
   let hasGps = false;
+  let captureTime = null;
+  let captureOffset = null;
   try {
-    const data = await exifr.parse(file, { gps: true, xmp: true, exif: false, ifd0: false, iptc: false });
+    const data = await exifr.parse(file, { gps: true, xmp: true, exif: true, ifd0: false, iptc: false });
+    const taken = data?.DateTimeOriginal ?? data?.CreateDate;
+    if (taken instanceof Date && !Number.isNaN(taken.getTime())) captureTime = naiveIso(taken);
+    captureOffset = data?.OffsetTimeOriginal ?? data?.OffsetTime ?? null;
     if (data?.latitude && data?.longitude) {
       lat = data.latitude;
       lng = data.longitude;
@@ -1730,7 +2048,7 @@ async function readPhotoMeta(file) {
     }
     heading = normalizeHeading(data?.PoseHeadingDegrees ?? data?.GPSImgDirection ?? null);
   } catch {}
-  return { lat, lng, heading, hasGps };
+  return { lat, lng, heading, hasGps, captureTime, captureOffset };
 }
 
 async function addPhotoNode(file, fallback) {
@@ -1750,6 +2068,8 @@ async function addPhotoNode(file, fallback) {
     photoUrl: URL.createObjectURL(file),
     photoName: file.name,
     photoFile: file,
+    captureTime: meta.captureTime,
+    captureOffset: meta.captureOffset,
     marker: null,
   };
   if (!meta.hasGps) toast(`${file.name}: no GPS found, placed at the drop point`);
@@ -2058,7 +2378,8 @@ function updateSb() {
   refreshLatLngUi(n);
   gpsBadge.innerHTML = n.hasGps ? '<span class="gok">GPS</span>' : '<span class="gno">No GPS</span>';
   phB.innerHTML = n.photoUrl ? `<img src="${n.photoUrl}" alt="">` : '<span>No photo</span>';
-  phN.textContent = n.photoName ?? '';
+  phN.textContent = [n.photoName, n.blurred && 'blurred', n.gsvPhotoId && 'uploaded to Google'].filter(Boolean).join(' · ');
+  document.getElementById('bn-blur').style.display = n.photoFile ? '' : 'none';
   refreshHeadingUi(n);
   ensurePanoViewer(n);
   renderWalkList(n);
@@ -2279,6 +2600,8 @@ function snapshotState() {
       viewYaw: n.viewYaw, origViewYaw: n.origViewYaw,
       headingSource: n.headingSource, hasGps: n.hasGps,
       photoName: n.photoName, photoFile: n.photoFile || null,
+      captureTime: n.captureTime, captureOffset: n.captureOffset ?? null,
+      blurred: !!n.blurred, gsvPhotoId: n.gsvPhotoId ?? null,
     })),
     conns: S.conns.map(c => ({ id: c.id, from: c.from, to: c.to })),
     selId: S.selId, startId: S.startId, nxt: S.nxt,
@@ -2356,6 +2679,12 @@ function closeAnyOverlay() {
   if (cheatBack.classList.contains('show')) { cheatBack.classList.remove('show'); closed = true; }
   if (previewBack.classList.contains('show')) { previewBack.classList.remove('show'); closed = true; }
   if (uplBack.classList.contains('show')) { uplBack.classList.remove('show'); closed = true; }
+  document.querySelectorAll('.modal-back.show').forEach(el => {
+    if (el.id === 'update-back' && document.getElementById('update-close').style.display === 'none') return;
+    el.classList.remove('show');
+    closed = true;
+  });
+  if (toolsMenu.classList.contains('show')) { toolsMenu.classList.remove('show'); closed = true; }
   if (closed && document.activeElement instanceof HTMLElement) document.activeElement.blur();
   return closed;
 }
@@ -2370,6 +2699,14 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && ['s', 'o'].includes(e.key.toLowerCase())) {
+    e.preventDefault();
+    if (document.querySelector('.modal-back.show')) return;
+    if (e.key.toLowerCase() === 's') saveProject({ saveAs: e.shiftKey });
+    else pickAndOpenProject();
+    return;
+  }
+
   if (e.key === 'Escape') {
     if (closeAnyOverlay()) return;
     if (S.connFrom) cancelConnect();
@@ -2378,8 +2715,7 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  const anyModalOpen = cmdkBack.classList.contains('show') || cheatBack.classList.contains('show') ||
-    previewBack.classList.contains('show') || uplBack.classList.contains('show');
+  const anyModalOpen = cmdkBack.classList.contains('show') || !!document.querySelector('.modal-back.show');
   if (anyModalOpen) return;
 
   if (!typing && e.key === '?') {
@@ -2546,6 +2882,7 @@ function setSaveStatus(mode, text) {
 }
 
 function scheduleAutosave() {
+  markDirty();
   clearTimeout(autosaveTimer);
   setSaveStatus('saving', 'Saving…');
   autosaveTimer = setTimeout(saveSessionNow, 1200);
@@ -2725,6 +3062,585 @@ async function loadSavedDirectoryHandle() {
   }
 }
 
+// ── Small modal helpers ───────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+document.querySelectorAll('[data-close]').forEach(el => { el.onclick = () => closeModal(el.dataset.close); });
+
+function storageGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
+function storageSet(key, value) { try { localStorage.setItem(key, value); } catch {} }
+
+// ── Tools menu ────────────────────────────────────
+const toolsMenu = document.getElementById('tools-menu');
+document.getElementById('btools').onclick = e => {
+  e.stopPropagation();
+  toolsMenu.classList.toggle('show');
+};
+document.addEventListener('click', e => { if (!toolsMenu.contains(e.target)) toolsMenu.classList.remove('show'); });
+toolsMenu.querySelectorAll('button[data-run]').forEach(b => {
+  b.onclick = () => {
+    toolsMenu.classList.remove('show');
+    TOOL_ACTIONS[b.dataset.run]();
+  };
+});
+
+const TOOL_ACTIONS = {
+  autoconnect: openAutoConnect,
+  gpx: openGpx,
+  blur: () => openBlurTool(S.selId),
+  website: exportTourWebsite,
+  updates: () => checkForUpdates({ force: true, quiet: false }),
+  saveas: () => saveProject({ saveAs: true }),
+};
+
+// ── Capture time (EXIF) ───────────────────────────
+// Stored as the camera's local wall-clock time ("2026-05-01T14:03:22") plus its
+// zone offset when the camera recorded one, since EXIF has no time zone itself.
+function naiveIso(d) {
+  const p = v => String(v).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+async function ensureCaptureTime(n) {
+  if (n.captureTime !== undefined || !n.photoFile) return n.captureTime ?? null;
+  const meta = await readPhotoMeta(n.photoFile);
+  n.captureTime = meta.captureTime;
+  n.captureOffset = meta.captureOffset;
+  return n.captureTime;
+}
+
+function scopeNodes() {
+  const ids = S.multiSel.size >= 2 ? S.multiSel : null;
+  return ids ? S.nodes.filter(n => ids.has(n.id)) : S.nodes.slice();
+}
+
+function scopeLabel(list) {
+  return S.multiSel.size >= 2 ? `Applies to the ${list.length} selected nodes.` : `Applies to all ${list.length} nodes (select nodes first to limit it).`;
+}
+
+// ── Auto-connect ──────────────────────────────────
+function openAutoConnect() {
+  const list = scopeNodes();
+  if (list.length < 2) { alert('Add at least two nodes first.'); return; }
+  document.getElementById('autoc-scope').textContent = scopeLabel(list);
+  openModal('autoc-back');
+}
+
+function removeConnsWithin(ids) {
+  S.conns.filter(c => ids.has(c.from) && ids.has(c.to)).forEach(c => {
+    if (c.poly) map.removeLayer(c.poly);
+    if (c.xMark) map.removeLayer(c.xMark);
+  });
+  S.conns = S.conns.filter(c => !(ids.has(c.from) && ids.has(c.to)));
+}
+
+document.getElementById('autoc-go').onclick = async () => {
+  const list = scopeNodes();
+  const mode = document.querySelector('input[name="autoc-mode"]:checked').value;
+  const maxDist = Math.max(1, Number(document.getElementById('autoc-dist').value) || 25);
+  const replace = document.getElementById('autoc-replace').checked;
+
+  const pairs = [];
+  let untimed = 0;
+  if (mode === 'time') {
+    for (const n of list) await ensureCaptureTime(n);
+    const order = list.map((n, i) => ({ n, i, t: n.captureTime ? Date.parse(`${n.captureTime}Z`) : null }));
+    untimed = order.filter(o => o.t == null).length;
+    order.sort((a, b) => (a.t ?? Infinity) - (b.t ?? Infinity) || a.i - b.i);
+    for (let i = 0; i < order.length - 1; i++) pairs.push([order[i].n, order[i + 1].n]);
+  } else {
+    for (const n of list) {
+      list.filter(o => o !== n)
+        .map(o => ({ o, d: distanceMeters(n, o) }))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, 3)
+        .forEach(({ o }) => pairs.push([n, o]));
+    }
+  }
+
+  pushUndo();
+  if (replace) removeConnsWithin(new Set(list.map(n => n.id)));
+  const before = S.conns.length;
+  let tooFar = 0;
+  for (const [a, b] of pairs) {
+    if (distanceMeters(a, b) > maxDist) { tooFar++; continue; }
+    if (gcbs(a.id, b.id).length) continue;
+    S.conns.push({ id: cuid(), from: a.id, to: b.id, poly: null, xMark: null });
+  }
+  S.conns.slice(before).forEach(c => drawConn(c));
+  updateStats();
+  updateSb();
+  scheduleAutosave();
+  closeModal('autoc-back');
+  const added = S.conns.length - before;
+  const notes = [];
+  if (mode === 'time' && untimed) notes.push(`${untimed} without capture time`);
+  if (mode === 'time' && tooFar) notes.push(`${tooFar} gap(s) over ${maxDist} m skipped`);
+  toast(`Added ${added} connection(s)${notes.length ? ` - ${notes.join(', ')}` : ''}`);
+};
+
+// ── GPX import ────────────────────────────────────
+function openGpx() {
+  if (!S.nodes.length) { alert('Add photos first.'); return; }
+  const withOffset = S.nodes.find(n => n.captureOffset);
+  const offset = withOffset ? parseOffsetHours(withOffset.captureOffset) : -new Date().getTimezoneOffset() / 60;
+  document.getElementById('gpx-offset').value = offset;
+  document.getElementById('gpx-result').textContent = '';
+  openModal('gpx-back');
+}
+
+function parseOffsetHours(s) {
+  const m = /^([+-])(\d{1,2}):?(\d{2})?$/.exec(s || '');
+  if (!m) return 0;
+  return (m[1] === '-' ? -1 : 1) * (Number(m[2]) + Number(m[3] || 0) / 60);
+}
+
+function parseGpx(text) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  if (doc.querySelector('parsererror')) throw new Error('Not a valid GPX file');
+  const pts = [...doc.querySelectorAll('trkpt, rtept, wpt')]
+    .map(el => ({
+      lat: Number(el.getAttribute('lat')),
+      lng: Number(el.getAttribute('lon')),
+      t: Date.parse(el.querySelector('time')?.textContent || ''),
+    }))
+    .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng) && Number.isFinite(p.t))
+    .sort((a, b) => a.t - b.t);
+  if (pts.length < 2) throw new Error('The GPX file has no timed track points');
+  return pts;
+}
+
+function positionAt(pts, t, toleranceMs = 120000) {
+  if (t < pts[0].t - toleranceMs || t > pts[pts.length - 1].t + toleranceMs) return null;
+  if (t <= pts[0].t) return pts[0];
+  if (t >= pts[pts.length - 1].t) return pts[pts.length - 1];
+  let lo = 0, hi = pts.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (pts[mid].t <= t) lo = mid; else hi = mid;
+  }
+  const a = pts[lo], b = pts[hi];
+  if (b.t - a.t > 10 * 60000) return null; // signal lost for over 10 minutes: don't guess
+  const f = b.t === a.t ? 0 : (t - a.t) / (b.t - a.t);
+  return { lat: a.lat + (b.lat - a.lat) * f, lng: a.lng + (b.lng - a.lng) * f };
+}
+
+document.getElementById('gpx-go').onclick = async () => {
+  const file = document.getElementById('gpx-file').files[0];
+  const out = document.getElementById('gpx-result');
+  if (!file) { out.textContent = 'Choose a GPX file first.'; return; }
+  let pts;
+  try { pts = parseGpx(await file.text()); } catch (err) { out.textContent = err.message; return; }
+  const offsetMs = Number(document.getElementById('gpx-offset').value || 0) * 3600000;
+  const moveAll = document.getElementById('gpx-all').checked;
+  const list = scopeNodes().filter(n => moveAll || !n.hasGps);
+  if (!list.length) { out.textContent = 'All photos already have GPS - tick "Also move photos that already have GPS" to override.'; return; }
+
+  pushUndo();
+  let placed = 0, noTime = 0, outside = 0;
+  for (const n of list) {
+    const local = await ensureCaptureTime(n);
+    if (!local) { noTime++; continue; }
+    const pos = positionAt(pts, Date.parse(`${local}Z`) - offsetMs);
+    if (!pos) { outside++; continue; }
+    n.lat = pos.lat;
+    n.lng = pos.lng;
+    n.hasGps = true;
+    n.marker?.setLatLng([n.lat, n.lng]);
+    placed++;
+  }
+  refreshConnLines();
+  refreshAllMarkers();
+  updateSb();
+  scheduleAutosave();
+  if (placed) fitAll();
+  const notes = [];
+  if (noTime) notes.push(`${noTime} without capture time`);
+  if (outside) notes.push(`${outside} outside the track's time range - check the time zone`);
+  out.textContent = `Placed ${placed} of ${list.length} photo(s).${notes.length ? ` ${notes.join('; ')}.` : ''}`;
+  if (placed && !notes.length) { closeModal('gpx-back'); toast(`Placed ${placed} photo(s) from ${file.name}`); }
+};
+
+// ── Blur tool ─────────────────────────────────────
+const blurStage = document.getElementById('blur-stage');
+const blurCanvas = document.getElementById('blur-canvas');
+const blurCtx = blurCanvas.getContext('2d');
+const blur = { node: null, bmp: null, rects: [], scale: 1, ox: 0, oy: 0, drag: null };
+
+async function openBlurTool(id) {
+  const n = gn(id);
+  if (!n?.photoFile) { alert('Select a node with a photo first.'); return; }
+  toast('Loading photo…');
+  try {
+    blur.bmp = await createImageBitmap(n.photoFile);
+  } catch (err) {
+    alert(`Could not load the photo: ${err.message || err}`);
+    return;
+  }
+  blur.node = n;
+  blur.rects = [];
+  openModal('blur-back');
+  requestAnimationFrame(() => { fitBlurView(); drawBlur(); });
+}
+
+function fitBlurView() {
+  const r = blurStage.getBoundingClientRect();
+  blurCanvas.width = Math.round(r.width * devicePixelRatio);
+  blurCanvas.height = Math.round(r.height * devicePixelRatio);
+  blur.fit = blurCanvas.width / blur.bmp.width;
+  blur.scale = blur.fit;
+  blur.ox = 0;
+  blur.oy = 0;
+}
+
+function clampBlurView() {
+  const vw = blurCanvas.width / blur.scale, vh = blurCanvas.height / blur.scale;
+  blur.ox = Math.min(Math.max(blur.ox, 0), Math.max(0, blur.bmp.width - vw));
+  blur.oy = Math.min(Math.max(blur.oy, 0), Math.max(0, blur.bmp.height - vh));
+}
+
+// Pixelate a rectangle of `ctx` in place: shrink it to a few pixels and stretch it back.
+function pixelate(ctx, x, y, w, h, block) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  if (w < 2 || h < 2) return;
+  const tw = Math.max(1, Math.round(w / block)), th = Math.max(1, Math.round(h / block));
+  const tmp = new OffscreenCanvas(tw, th);
+  const tctx = tmp.getContext('2d');
+  tctx.imageSmoothingQuality = 'high';
+  tctx.drawImage(ctx.canvas, x, y, w, h, 0, 0, tw, th);
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(tmp, 0, 0, tw, th, x, y, w, h);
+  ctx.restore();
+}
+
+function blurBlockSize(r) { return Math.max(6, Math.min(r.w, r.h) / 7); }
+
+function drawBlur() {
+  const { bmp, scale, ox, oy } = blur;
+  blurCtx.fillStyle = '#000';
+  blurCtx.fillRect(0, 0, blurCanvas.width, blurCanvas.height);
+  blurCtx.drawImage(bmp, 0, 0, bmp.width, bmp.height, -ox * scale, -oy * scale, bmp.width * scale, bmp.height * scale);
+  const all = blur.drag?.rect ? [...blur.rects, blur.drag.rect] : blur.rects;
+  all.forEach(r => {
+    const x = (r.x - ox) * scale, y = (r.y - oy) * scale, w = r.w * scale, h = r.h * scale;
+    pixelate(blurCtx, x, y, w, h, Math.max(3, blurBlockSize(r) * scale));
+    blurCtx.strokeStyle = '#c4b5fd';
+    blurCtx.lineWidth = 2;
+    blurCtx.strokeRect(x, y, w, h);
+  });
+  document.getElementById('blur-count').textContent = blur.rects.length
+    ? `${blur.rects.length} area(s) marked.` : 'Drag boxes over faces and plates.';
+}
+
+function blurImagePoint(e) {
+  const r = blurCanvas.getBoundingClientRect();
+  const cx = (e.clientX - r.left) * devicePixelRatio, cy = (e.clientY - r.top) * devicePixelRatio;
+  return { x: blur.ox + cx / blur.scale, y: blur.oy + cy / blur.scale, cx, cy };
+}
+
+blurCanvas.addEventListener('contextmenu', e => e.preventDefault());
+blurCanvas.addEventListener('pointerdown', e => {
+  if (!blur.bmp) return;
+  blurCanvas.setPointerCapture(e.pointerId);
+  const p = blurImagePoint(e);
+  if (e.button === 0 && !e.altKey) blur.drag = { kind: 'rect', x0: p.x, y0: p.y, rect: null };
+  else { blur.drag = { kind: 'pan', cx: p.cx, cy: p.cy, ox: blur.ox, oy: blur.oy }; blurStage.classList.add('panning'); }
+});
+blurCanvas.addEventListener('pointermove', e => {
+  const d = blur.drag;
+  if (!d) return;
+  const p = blurImagePoint(e);
+  if (d.kind === 'rect') {
+    const x = Math.max(0, Math.min(d.x0, p.x)), y = Math.max(0, Math.min(d.y0, p.y));
+    d.rect = { x, y, w: Math.min(blur.bmp.width, Math.max(d.x0, p.x)) - x, h: Math.min(blur.bmp.height, Math.max(d.y0, p.y)) - y };
+  } else {
+    blur.ox = d.ox - (p.cx - d.cx) / blur.scale;
+    blur.oy = d.oy - (p.cy - d.cy) / blur.scale;
+    clampBlurView();
+  }
+  drawBlur();
+});
+blurCanvas.addEventListener('pointerup', () => {
+  const d = blur.drag;
+  blur.drag = null;
+  blurStage.classList.remove('panning');
+  if (d?.kind === 'rect' && d.rect && d.rect.w * blur.scale > 4 && d.rect.h * blur.scale > 4) blur.rects.push(d.rect);
+  drawBlur();
+});
+blurCanvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const p = blurImagePoint(e);
+  blur.scale = Math.min(Math.max(blur.scale * (e.deltaY < 0 ? 1.25 : 0.8), blur.fit), 4);
+  blur.ox = p.x - p.cx / blur.scale;
+  blur.oy = p.y - p.cy / blur.scale;
+  clampBlurView();
+  drawBlur();
+}, { passive: false });
+
+document.getElementById('blur-undo').onclick = () => { blur.rects.pop(); drawBlur(); };
+document.getElementById('blur-clear').onclick = () => { blur.rects = []; drawBlur(); };
+
+// Copy the XMP (APP1 "http://ns.adobe.com/xap/1.0/") and ICC (APP2) segments of the
+// original JPEG into the re-encoded one, so it is still recognised as a 360° photo.
+// The EXIF APP1 segment is left out on purpose: it can carry an unblurred thumbnail.
+async function spliceJpegMetadata(originalBlob, newBlob) {
+  const orig = new Uint8Array(await originalBlob.slice(0, 1024 * 1024).arrayBuffer());
+  const out = new Uint8Array(await newBlob.arrayBuffer());
+  const keep = [];
+  const XMP = 'http://ns.adobe.com/xap/1.0/';
+  let p = 2;
+  while (p + 4 <= orig.length && orig[p] === 0xFF) {
+    const marker = orig[p + 1];
+    if (marker === 0xDA || marker === 0xD9) break;
+    const len = (orig[p + 2] << 8) | orig[p + 3];
+    const seg = orig.subarray(p, p + 2 + len);
+    const head = String.fromCharCode(...orig.subarray(p + 4, p + 4 + XMP.length));
+    if ((marker === 0xE1 && head === XMP) || marker === 0xE2) keep.push(seg);
+    p += 2 + len;
+  }
+  // Skip the encoder's own JFIF APP0 so the kept segments follow SOI directly.
+  let q = 2;
+  if (out[2] === 0xFF && out[3] === 0xE0) q = 4 + ((out[4] << 8) | out[5]);
+  return new Blob([out.subarray(0, 2), ...keep, out.subarray(q)], { type: 'image/jpeg' });
+}
+
+document.getElementById('blur-apply').onclick = async () => {
+  const n = blur.node;
+  if (!n || !blur.rects.length) { closeModal('blur-back'); return; }
+  const btn = document.getElementById('blur-apply');
+  btn.disabled = true;
+  btn.textContent = 'Applying…';
+  try {
+    await ensureCaptureTime(n); // keep the capture time: the EXIF block is dropped below
+    const { bmp } = blur;
+    const canvas = new OffscreenCanvas(bmp.width, bmp.height);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bmp, 0, 0);
+    blur.rects.forEach(r => pixelate(ctx, r.x, r.y, r.w, r.h, blurBlockSize(r)));
+    const encoded = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 });
+    const jpeg = await spliceJpegMetadata(n.photoFile, encoded);
+    pushUndo();
+    n.photoFile = new File([jpeg], n.photoName || 'photo.jpg', { type: 'image/jpeg' });
+    if (n.photoUrl) URL.revokeObjectURL(n.photoUrl);
+    n.photoUrl = URL.createObjectURL(n.photoFile);
+    n.gsvPhotoId = null;
+    n.blurred = true;
+    panoNodeId = null;
+    updateSb();
+    refreshMarker(n);
+    scheduleAutosave();
+    closeModal('blur-back');
+    toast(`Blurred ${blur.rects.length} area(s) in ${n.name}`);
+  } catch (err) {
+    alert(`Blurring failed: ${err.message || err}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Apply to photo';
+  }
+};
+
+// ── Export as website (.zip) ──────────────────────
+function safeFileName(name) {
+  return (name || 'photo.jpg').replace(/[^\w.\-]+/g, '_');
+}
+
+async function exportTourWebsite() {
+  const withPhoto = S.nodes.filter(n => n.photoFile);
+  if (!withPhoto.length) { alert('None of the nodes has a photo loaded.'); return; }
+  const ids = new Set(withPhoto.map(n => n.id));
+  const { startId, nodesConf } = buildTourConfig();
+  const nodes = nodesConf
+    .filter(nc => ids.has(nc.id))
+    .map(nc => ({
+      ...nc,
+      panorama: `photos/${nc.id}-${safeFileName(gn(nc.id).photoName)}`,
+      links: nc.links.filter(l => ids.has(l.nodeId)),
+    }));
+  const start = ids.has(startId) ? startId : nodes[0].id;
+  const readme = [
+    'Streetview Tour Editor - exported tour',
+    '',
+    'Upload this whole folder to any web space and open index.html there.',
+    '',
+    'Opening index.html straight from disk does not work in most browsers (they block',
+    'loading the photos from file://). To look at it locally, run in this folder:',
+    '  python -m http.server 8000',
+    'and open http://localhost:8000',
+    '',
+  ].join('\r\n');
+  const entries = [
+    { name: 'index.html', data: new Blob([genViewer(start, nodes)], { type: 'text/html' }) },
+    { name: 'tour-config.json', data: new Blob([JSON.stringify({ startNodeId: start, nodes }, null, 2)], { type: 'application/json' }) },
+    { name: 'README.txt', data: new Blob([readme], { type: 'text/plain' }) },
+    ...nodes.map(nc => ({ name: nc.panorama, data: gn(nc.id).photoFile })),
+  ];
+  try {
+    setSaveStatus('saving', 'Packing tour…');
+    const zip = await buildZip(entries);
+    setSaveStatus('saved', 'Saved');
+    await saveTextFile('tour-website.zip', zip);
+    const skipped = S.nodes.length - withPhoto.length;
+    if (skipped) setTimeout(() => toast(`${skipped} node(s) without a photo were left out`), 400);
+  } catch (err) {
+    setSaveStatus(null, 'Export failed');
+    alert(`Export failed: ${err.message || err}`);
+  }
+}
+document.getElementById('preview-website').onclick = () => { previewBack.classList.remove('show'); exportTourWebsite(); };
+
+// ── Google setup wizard ───────────────────────────
+const wizSteps = [...document.querySelectorAll('#wiz .wiz-step')];
+function showWizStep(i) {
+  wizSteps.forEach((el, k) => {
+    el.classList.toggle('open', k === i);
+    el.classList.toggle('done', k < Number(storageGet('gsvWizardDone') || 0));
+  });
+}
+wizSteps.forEach((el, i) => {
+  el.querySelector('.wiz-h').onclick = () => showWizStep(el.classList.contains('open') ? -1 : i);
+  el.querySelector('.wiz-next')?.addEventListener('click', () => {
+    storageSet('gsvWizardDone', String(Math.max(i + 1, Number(storageGet('gsvWizardDone') || 0))));
+    showWizStep(i + 1);
+  });
+});
+showWizStep(Math.min(Number(storageGet('gsvWizardDone') || 0), wizSteps.length - 1));
+
+document.getElementById('upl-json').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const fields = extractClientFields(await file.text());
+  if (!fields) { alert('That file does not contain an OAuth client ID and secret.'); return; }
+  uplClientId.value = fields.client_id;
+  uplClientSecret.value = fields.client_secret;
+  toast('Filled Client ID and Client Secret from the JSON file');
+});
+
+// ── App version, updates, files opened from Explorer ─
+const updateBanner = document.getElementById('update-banner');
+const updateGo = document.getElementById('update-go');
+let updateInfo = null;
+
+async function initAppInfo() {
+  try {
+    const j = await (await fetch('/api/app-info')).json();
+    document.getElementById('app-version').textContent = j.version === 'dev' ? 'dev' : `v${j.version}`;
+    return j;
+  } catch { return null; }
+}
+
+async function checkForUpdates({ force = false, quiet = true } = {}) {
+  try {
+    const j = await (await fetch(`/api/update/check${force ? '?force=1' : ''}`)).json();
+    if (j.dev) { if (!quiet) toast('Running from source - update with git pull'); return; }
+    if (!j.ok) { if (!quiet) toast(`Update check failed: ${j.error}`); return; }
+    updateInfo = j;
+    if (!j.newer) { if (!quiet) toast(`You're on the latest version (${j.current})`); return; }
+    if (quiet && storageGet('dismissedUpdate') === j.latest) return;
+    document.getElementById('update-text').innerHTML =
+      `Version <b>${escapeHtml(j.latest)}</b> is available <span>(you have ${escapeHtml(j.current)})</span>`;
+    updateGo.textContent = j.canInstall ? 'Update now' : 'Download';
+    updateBanner.classList.add('show');
+  } catch {
+    if (!quiet) toast('Update check failed - is the app still running?');
+  }
+}
+
+document.getElementById('update-later').onclick = () => {
+  if (updateInfo) storageSet('dismissedUpdate', updateInfo.latest);
+  updateBanner.classList.remove('show');
+};
+
+document.getElementById('update-notes').onclick = () => {
+  if (!updateInfo) return;
+  document.getElementById('update-title').textContent = `What's new in ${updateInfo.latest}`;
+  document.getElementById('update-body').innerHTML =
+    `<div class="notes">${escapeHtml(updateInfo.notes || 'No release notes.')}</div>` +
+    `<div class="mini"><a href="${escapeHtml(updateInfo.pageUrl || '#')}" target="_blank" rel="noopener" style="color:var(--accent-2)">Open the release page</a></div>`;
+  document.getElementById('update-progress').style.display = 'none';
+  document.getElementById('update-status').textContent = '';
+  document.getElementById('update-close').style.display = '';
+  openModal('update-back');
+};
+document.getElementById('update-close').onclick = () => closeModal('update-back');
+
+updateGo.onclick = async () => {
+  if (!updateInfo) return;
+  if (!updateInfo.canInstall) { window.open(updateInfo.pageUrl, '_blank', 'noopener'); return; }
+  updateBanner.classList.remove('show');
+  const bar = document.getElementById('update-progress');
+  const statusEl = document.getElementById('update-status');
+  document.getElementById('update-title').textContent = `Updating to ${updateInfo.latest}`;
+  document.getElementById('update-body').innerHTML =
+    '<div class="mini" style="margin-top:0">Your work is saved first. The editor closes briefly while the new version installs, then this page reloads by itself.</div>';
+  document.getElementById('update-close').style.display = 'none';
+  bar.style.display = '';
+  bar.classList.remove('indet');
+  bar.firstElementChild.style.width = '0%';
+  statusEl.textContent = 'Saving your work…';
+  openModal('update-back');
+
+  clearTimeout(autosaveTimer);
+  await saveSessionNow();
+  const fail = msg => {
+    statusEl.textContent = msg;
+    bar.style.display = 'none';
+    document.getElementById('update-close').style.display = '';
+  };
+  try {
+    const j = await (await fetch('/api/update/install', { method: 'POST' })).json();
+    if (!j.ok) return fail(j.error || 'Could not start the update.');
+  } catch (err) {
+    return fail(`Could not start the update: ${err.message}`);
+  }
+
+  const oldVersion = updateInfo.current;
+  const started = Date.now();
+  const poll = async () => {
+    if (Date.now() - started > 5 * 60000) return fail('This is taking unusually long. Start the editor again from the Start menu, then reload this page.');
+    try {
+      const s = await (await fetch('/api/update/status', { cache: 'no-store' })).json();
+      if (s.version !== oldVersion) {
+        statusEl.textContent = `Updated to ${s.version} - reloading…`;
+        setTimeout(() => location.reload(), 800);
+        return;
+      }
+      if (s.state === 'error') return fail(s.error || 'The update failed.');
+      if (s.state === 'downloading') {
+        statusEl.textContent = `Downloading… ${Math.round(s.progress * 100)}%`;
+        bar.firstElementChild.style.width = `${Math.round(s.progress * 100)}%`;
+      } else if (s.state === 'installing') {
+        statusEl.textContent = 'Installing… the editor restarts in a moment.';
+        bar.classList.add('indet');
+      }
+    } catch {
+      // The app closed for the install - keep polling until the new version answers.
+      statusEl.textContent = 'Installing… the editor restarts in a moment.';
+      bar.classList.add('indet');
+    }
+    setTimeout(poll, 700);
+  };
+  poll();
+};
+
+// A .vrtour double-clicked in Explorer (or passed to the .exe) waits on the
+// server until this page fetches it.
+async function openPendingProject() {
+  try {
+    const j = await (await fetch('/api/pending-project', { cache: 'no-store' })).json();
+    if (!j.name) return;
+    toast(`Opening ${j.name}…`);
+    const r = await fetch('/api/pending-project/data', { cache: 'no-store' });
+    if (!r.ok) return;
+    await openProjectFile(new File([await r.blob()], j.name));
+  } catch (err) {
+    console.warn('openPendingProject failed', err);
+  }
+}
+
+document.getElementById('bn-blur').onclick = () => openBlurTool(S.selId);
+
 function computeYaw(from, to) {
   const lat1 = from.lat * Math.PI / 180;
   const lat2 = to.lat * Math.PI / 180;
@@ -2774,7 +3690,11 @@ function dl(content, name) {
 }
 
 updateStats();
+updateTitle();
 checkSavedSession();
+initAppInfo();
+openPendingProject();
+setTimeout(() => checkForUpdates(), 2500);
 </script>
 </body>
 </html>

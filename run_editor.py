@@ -13,12 +13,18 @@ commands. It reuses the same client_secrets.json / token.json as those
 scripts (see uploader/upload_tour.py), so either workflow can be used
 interchangeably.
 
+The same file is the entry point of the Windows desktop app (build_exe.py):
+there it runs from a system tray icon instead of a console, opens .vrtour
+files passed on the command line, and can update itself (app_update.py).
+
 Usage:
-  python run_editor.py
+  python run_editor.py [project.vrtour] [--tray] [--no-browser]
 """
 
+import argparse
 import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -26,24 +32,42 @@ import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer, BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
+from urllib.request import Request, urlopen
+
+import app_tray
+import app_update
+
+try:
+    from _app_version import VERSION as APP_VERSION  # written by build_exe.py
+except ImportError:
+    APP_VERSION = "dev"
 
 PORT = 8420
+APP_NAME = "StreetviewTourEditor"
 
-# When bundled into a .exe (PyInstaller), __file__ resolves to a temporary
-# extraction folder that is wiped after the app closes, so credentials must
-# be anchored to a persistent folder instead. sys.executable is python.exe in
-# normal `python run_editor.py` use, which is why this only takes the frozen
-# branch when actually running as a bundled executable. build_exe.py places
-# editor/ and uploader/ two levels up from the .exe (see its docstring for
-# why they can't live right next to it), so mirror that layout here.
+# When bundled into a .exe (PyInstaller), the editor files ship inside the
+# bundle itself (build_exe.py adds them with --add-data), and credentials go
+# to the per-user %APPDATA%\StreetviewTourEditor folder. That way the app can
+# live in an install folder that updates replace wholesale, while each
+# Windows user keeps their own sign-in across updates and reinstalls. Running
+# from source (sys.executable is python.exe) keeps everything in the repo.
 if getattr(sys, 'frozen', False):
-    ROOT = Path(sys.executable).parent.parent.resolve()
+    EDITOR_DIR = Path(sys._MEIPASS) / "editor"
+    APP_ICON = Path(sys._MEIPASS) / "app.ico"
+    UPLOADER_DIR = Path(os.environ.get('APPDATA') or Path.home()) / APP_NAME
 else:
-    ROOT = Path(__file__).parent.resolve()
+    EDITOR_DIR = Path(__file__).parent.resolve() / "editor"
+    APP_ICON = Path(__file__).parent.resolve() / "installer" / "app.ico"
+    UPLOADER_DIR = Path(__file__).parent.resolve() / "uploader"
 
-EDITOR_DIR = ROOT / "editor"
-UPLOADER_DIR = ROOT / "uploader"
 UPLOADER_DIR.mkdir(parents=True, exist_ok=True)
+
+# The windowed .exe has no console (sys.stdout is None), so keep a log file
+# next to the credentials instead - handy when something goes wrong.
+if sys.stdout is None or sys.stderr is None:
+    _log = open(UPLOADER_DIR / "editor.log", "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stdout or _log
+    sys.stderr = sys.stderr or _log
 TOKEN_FILE = UPLOADER_DIR / "token.json"
 CREDENTIALS_FILE = UPLOADER_DIR / "client_secrets.json"
 SCOPES = ['https://www.googleapis.com/auth/streetviewpublish']
@@ -220,12 +244,23 @@ def _connect_photos(creds, name_to_id, connects):
     return results
 
 
+ALLOWED_HOSTS = {f'127.0.0.1:{PORT}', f'localhost:{PORT}'}
+ALLOWED_ORIGINS = {f'http://{h}' for h in ALLOWED_HOSTS}
+PROJECT_SUFFIXES = ('.vrtour', '.zip', '.json')
+
+# A .vrtour file handed to the app (double-click in Explorer, or "Open with")
+# waits here until the editor tab picks it up via /api/pending-project.
+PENDING = {'path': None}
+# Set by main(): stops the tray icon and HTTP server so an update can replace the app.
+SHUTDOWN = {'fn': lambda: None}
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(EDITOR_DIR), **kwargs)
 
     def log_message(self, fmt, *args):
-        if self.path.startswith('/api/'):
+        if self.path.startswith('/api/') and not self.path.startswith(('/api/update/status', '/api/pending-project')):
             super().log_message(fmt, *args)
 
     def _json(self, status, payload):
@@ -233,18 +268,69 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
         self.end_headers()
         self.wfile.write(body)
 
+    def _forbidden_origin(self):
+        """Only the editor itself may use this server: reject other Host names
+        (DNS rebinding) and cross-site requests from other web pages."""
+        if self.headers.get('Host', '') not in ALLOWED_HOSTS:
+            return True
+        origin = self.headers.get('Origin')
+        return bool(origin) and origin not in ALLOWED_ORIGINS
+
     def do_GET(self):
-        if self.path == '/api/status':
+        if self._forbidden_origin():
+            return self._json(403, {'ok': False, 'error': 'forbidden'})
+        parsed = urlparse(self.path)
+        if parsed.path == '/api/status':
             return self._json(200, {
                 'signedIn': TOKEN_FILE.exists(),
                 'hasCredentials': CREDENTIALS_FILE.exists(),
             })
+        if parsed.path == '/api/app-info':
+            return self._json(200, {
+                'version': APP_VERSION,
+                'installed': app_update.is_installed(),
+                'dataDir': str(UPLOADER_DIR),
+            })
+        if parsed.path == '/api/update/check':
+            if APP_VERSION == 'dev':
+                return self._json(200, {'ok': True, 'current': APP_VERSION, 'newer': False, 'dev': True})
+            force = parse_qs(parsed.query).get('force', ['0'])[0] == '1'
+            try:
+                return self._json(200, {'ok': True, **app_update.check(APP_VERSION, force=force)})
+            except Exception as e:
+                return self._json(200, {'ok': False, 'error': str(e)})
+        if parsed.path == '/api/update/status':
+            return self._json(200, {'version': APP_VERSION, **app_update.status})
+        if parsed.path == '/api/pending-project':
+            path = PENDING['path']
+            if not path:
+                return self._json(200, {})
+            return self._json(200, {'name': Path(path).name, 'size': Path(path).stat().st_size})
+        if parsed.path == '/api/pending-project/data':
+            return self._send_pending_project()
         return super().do_GET()
 
+    def _send_pending_project(self):
+        path = PENDING['path']
+        PENDING['path'] = None
+        if not path or not Path(path).is_file():
+            return self._json(404, {'ok': False, 'error': 'no_pending_project'})
+        size = Path(path).stat().st_size
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/octet-stream')
+        self.send_header('Content-Length', str(size))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        with open(path, 'rb') as f:
+            shutil.copyfileobj(f, self.wfile, 1024 * 1024)
+
     def do_POST(self):
+        if self._forbidden_origin():
+            return self._json(403, {'ok': False, 'error': 'forbidden'})
         parsed = urlparse(self.path)
         length = int(self.headers.get('Content-Length') or 0)
         raw_body = self.rfile.read(length) if length else b''
@@ -286,6 +372,20 @@ class Handler(SimpleHTTPRequestHandler):
                 results = _connect_photos(creds, payload.get('name_to_id', {}), payload.get('connects', {}))
                 return self._json(200, {'ok': True, 'results': results})
 
+            if parsed.path == '/api/open-file':
+                payload = json.loads(raw_body.decode('utf-8'))
+                path = Path(payload.get('path') or '')
+                if path.suffix.lower() not in PROJECT_SUFFIXES or not path.is_file():
+                    raise RuntimeError(f"Not a project file: {path}")
+                PENDING['path'] = str(path.resolve())
+                return self._json(200, {'ok': True})
+
+            if parsed.path == '/api/update/install':
+                if not app_update.is_installed():
+                    raise RuntimeError("Only the installed app can update itself.")
+                app_update.start_install(APP_VERSION, lambda: SHUTDOWN['fn']())
+                return self._json(200, {'ok': True})
+
             return self._json(404, {'ok': False, 'error': 'not_found'})
 
         except RuntimeError as e:
@@ -294,26 +394,113 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(500, {'ok': False, 'error': str(e)})
 
 
-def main():
-    if not EDITOR_DIR.exists():
-        print(f"editor/ folder not found: {EDITOR_DIR}")
-        print("Rebuild with build_exe.py, or run this from the project's own folder.")
-        input("Press Enter to exit...")
-        sys.exit(1)
+def _migrate_legacy_credentials():
+    """Older .exe builds kept credentials in dist/uploader/, next to the app folder."""
+    if not getattr(sys, 'frozen', False):
+        return
+    legacy = Path(sys.executable).parent.parent / "uploader"
+    for name in ("client_secrets.json", "token.json"):
+        src, dst = legacy / name, UPLOADER_DIR / name
+        if src.exists() and not dst.exists():
+            shutil.copy2(src, dst)
+            print(f"Copied {name} to {UPLOADER_DIR}")
 
-    ThreadingHTTPServer.allow_reuse_address = True
-    with ThreadingHTTPServer(("127.0.0.1", PORT), Handler) as httpd:
-        url = f"http://127.0.0.1:{PORT}/editor.html"
-        print(f"Serving tour editor at {url}")
-        print(f"Google credentials folder: {UPLOADER_DIR}")
-        if not CREDENTIALS_FILE.exists():
-            print(f"  (no client_secrets.json yet - see README for the one-time Google setup)")
-        print("Press Ctrl+C to stop.")
+
+def _local_api(path, payload=None):
+    """Call the API of an editor that is already running; None if there is none."""
+    data = json.dumps(payload).encode('utf-8') if payload is not None else None
+    req = Request(f"http://127.0.0.1:{PORT}{path}", data=data, headers={'Content-Type': 'application/json'})
+    try:
+        with urlopen(req, timeout=2) as r:
+            return json.loads(r.read())
+    except Exception:
+        return None
+
+
+def _fatal(msg):
+    """Show an error the user can actually see - there's no console in the windowed app."""
+    print(msg)
+    if sys.platform == 'win32' and not (sys.stdin and sys.stdin.isatty()):
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, msg, "Streetview Tour Editor", 0x10)
+    else:
+        input("Press Enter to exit...")
+    sys.exit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Serve the Streetview tour editor on localhost.")
+    parser.add_argument('project', nargs='?', help="a .vrtour project to open")
+    parser.add_argument('--no-browser', action='store_true', help="don't open a browser tab (used after updates)")
+    parser.add_argument('--console', action='store_true', help="run in the console instead of the system tray")
+    parser.add_argument('--tray', action='store_true', help="run from a system tray icon (needs pystray + Pillow)")
+    args = parser.parse_args()
+
+    url = f"http://127.0.0.1:{PORT}/editor.html"
+    project = str(Path(args.project).resolve()) if args.project and Path(args.project).is_file() else None
+
+    # A second launch (shortcut, or double-clicking a .vrtour) hands over to the
+    # running copy instead of failing with "address already in use".
+    if _local_api('/api/status') is not None:
+        if project:
+            _local_api('/api/open-file', {'path': project})
+        if not args.no_browser:
+            webbrowser.open(url)
+        return
+
+    _migrate_legacy_credentials()
+
+    if not EDITOR_DIR.exists():
+        _fatal(f"editor/ folder not found: {EDITOR_DIR}\nRebuild with build_exe.py, or run this from the project's own folder.")
+
+    # SO_REUSEADDR on Windows lets a second server bind the same port and
+    # silently steal requests, so only enable it elsewhere.
+    ThreadingHTTPServer.allow_reuse_address = os.name != 'nt'
+    try:
+        httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError as e:
+        _fatal(f"Could not start on port {PORT}: {e}\nAnother program is using this port. Close it and try again.")
+
+    PENDING['path'] = project
+    print(f"Streetview Tour Editor {APP_VERSION}")
+    print(f"Serving tour editor at {url}")
+    print(f"Google credentials folder: {UPLOADER_DIR}")
+    if not CREDENTIALS_FILE.exists():
+        print("  (no client_secrets.json yet - see README for the one-time Google setup)")
+    if not args.no_browser:
         webbrowser.open(url)
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\nStopped.")
+
+    # The desktop app lives in the tray; from source, stay in the console (Ctrl+C
+    # to stop) unless pystray is installed and --tray is asked for.
+    frozen = getattr(sys, 'frozen', False)
+    use_tray = (frozen or args.tray) and not args.console and app_tray.available() and APP_ICON.exists()
+    if not use_tray:
+        SHUTDOWN['fn'] = lambda: threading.Thread(target=httpd.shutdown, daemon=True).start()
+        print("Press Ctrl+C to stop.")
+        with httpd:
+            try:
+                httpd.serve_forever()
+            except KeyboardInterrupt:
+                print("\nStopped.")
+        return
+
+    server = threading.Thread(target=httpd.serve_forever, daemon=True)
+    server.start()
+
+    def shutdown():
+        app_tray.stop()
+        httpd.shutdown()
+
+    SHUTDOWN['fn'] = shutdown
+    app_tray.run(
+        APP_ICON, APP_VERSION,
+        open_editor=lambda: webbrowser.open(url),
+        data_dir=UPLOADER_DIR,
+        on_quit=httpd.shutdown,
+        message=(f"Updated to version {APP_VERSION}." if args.no_browser
+                 else "Running in the notification area - right-click the icon to quit."),
+    )
+    httpd.server_close()
 
 
 if __name__ == "__main__":
