@@ -244,6 +244,67 @@ def _connect_photos(creds, name_to_id, connects):
     return results
 
 
+def _photo_status(creds, ids):
+    """Ask Google how far each uploaded photo got: {id: {status, shareLink}}.
+
+    status is 'published', 'processing' (accepted, not on Maps yet),
+    'rejected', 'missing' (deleted on Google's side) or 'error'.
+    """
+    requests, *_ = _google_libs()
+    session = requests.Session()
+    session.headers.update({'Authorization': f'Bearer {creds.token}'})
+    out = {}
+    for start in range(0, len(ids), 20):  # batchGet takes at most 20 IDs
+        chunk = ids[start:start + 20]
+        params = [('photoIds', i) for i in chunk] + [('view', 'BASIC')]
+        r = session.get(f'{BASE_URL}/photos:batchGet', params=params)
+        r.raise_for_status()
+        for pid, res in zip(chunk, r.json().get('results', [])):
+            code = (res.get('status') or {}).get('code', 0)
+            photo = res.get('photo') or {}
+            if code == 5:
+                status = 'missing'
+            elif code:
+                status = 'error'
+            elif photo.get('mapsPublishStatus') == 'PUBLISHED':
+                status = 'published'
+            elif photo.get('mapsPublishStatus') == 'REJECTED_UNKNOWN':
+                status = 'rejected'
+            else:
+                status = 'processing'
+            out[pid] = {'status': status, 'shareLink': photo.get('shareLink'),
+                        'message': (res.get('status') or {}).get('message')}
+    return out
+
+
+def _update_photos(creds, items):
+    """Update position, heading and connections of already uploaded photos.
+
+    items: [{id, lat, lng, heading|None, connections: [photo id, ...]}]
+    """
+    _, _, _, _, build_service = _google_libs()
+    sv_service = build_service('streetviewpublish', 'v1', credentials=creds)
+    results = []
+    for it in items:
+        mask = ['pose.latLngPair', 'connections']
+        pose = {'latLngPair': {'latitude': it['lat'], 'longitude': it['lng']}}
+        if it.get('heading') is not None:
+            pose['heading'] = it['heading']
+            mask.append('pose.heading')
+        body = {
+            'photoId': {'id': it['id']},
+            'pose': pose,
+            'connections': [{'target': {'id': t}} for t in it.get('connections', [])],
+        }
+        try:
+            sv_service.photo().update(id=it['id'], updateMask=','.join(mask), body=body).execute()
+            results.append({'id': it['id'], 'ok': True})
+        except Exception as e:
+            results.append({'id': it['id'], 'ok': False, 'error': str(e)})
+        time.sleep(0.3)
+    return results
+
+
 ALLOWED_HOSTS = {f'127.0.0.1:{PORT}', f'localhost:{PORT}'}
 ALLOWED_ORIGINS = {f'http://{h}' for h in ALLOWED_HOSTS}
 PROJECT_SUFFIXES = ('.vrtour', '.zip', '.json')
@@ -372,6 +433,16 @@ class Handler(SimpleHTTPRequestHandler):
                 results = _connect_photos(creds, payload.get('name_to_id', {}), payload.get('connects', {}))
                 return self._json(200, {'ok': True, 'results': results})
 
+            if parsed.path in ('/api/photo-status', '/api/update-photos'):
+                payload = json.loads(raw_body.decode('utf-8'))
+                try:
+                    creds = _load_credentials()
+                except RuntimeError:
+                    return self._json(401, {'ok': False, 'error': 'not_signed_in'})
+                if parsed.path == '/api/photo-status':
+                    return self._json(200, {'ok': True, 'photos': _photo_status(creds, payload.get('ids', []))})
+                return self._json(200, {'ok': True, 'results': _update_photos(creds, payload.get('items', []))})
+
             if parsed.path == '/api/open-file':
                 payload = json.loads(raw_body.decode('utf-8'))
                 path = Path(payload.get('path') or '')
@@ -497,8 +568,8 @@ def main():
         open_editor=lambda: webbrowser.open(url),
         data_dir=UPLOADER_DIR,
         on_quit=httpd.shutdown,
-        message=(f"Updated to version {APP_VERSION}." if args.no_browser
-                 else "Running in the notification area - right-click the icon to quit."),
+        message=(app_tray.tr("Updated to version {v}.", v=APP_VERSION) if args.no_browser
+                 else app_tray.tr("Running in the notification area - right-click the icon to quit.")),
     )
     httpd.server_close()
 

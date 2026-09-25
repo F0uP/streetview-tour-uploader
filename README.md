@@ -12,9 +12,14 @@ Upload equirectangular 360 photos from cameras such as RICOH THETA, Insta360, an
 - Save / open the whole project, photos included, as a single `.vrtour` file (a plain zip); **Ctrl+S** saves straight back into it
 - **Auto-connect** nodes in the order the photos were taken, or to their nearest neighbours
 - Place photos without GPS from a **GPX track** recorded on your phone
-- **Blur faces and licence plates** in the editor before uploading
+- **Blur faces and licence plates** in the editor before uploading, with automatic face detection as a starting point
+- **Headings from walking direction**: align one photo by hand, the rest follow the route
+- **Tour check** before uploading: wrong image format, missing 360° metadata, missing north, unconnected nodes, overly long links, duplicate positions
+- Street map or **satellite view**, thumbnails in the node list and on marker hover, **Shift+drag** to select several nodes
+- **Info points** (title, text, link) inside panoramas, and a **minimap** in the exported tour
+- English and **German** user interface (Tools → Deutsch / English)
 - Export to `tour-config.json`, `tour-viewer.html` and `tour.csv`, or as a ready-to-host **website zip** with all photos
-- One-click upload to Google Street View with a step-by-step setup assistant; re-runs skip photos already uploaded
+- One-click upload to Google Street View with a step-by-step setup assistant; re-runs skip photos already uploaded and only push changed positions, headings and links; the **Google status** (published / processing / rejected) shows on each marker
 - Windows app with installer, tray icon, `.vrtour` file association and in-app updates
 - Google Street View Publish API uploader and heading patch utilities
 
@@ -116,6 +121,9 @@ use, but the map tiles will be blocked by OpenStreetMap's referer policy and
 - Drag markers if GPS is missing or needs correction, or type exact coordinates in the node panel
 - Right-click a node, then right-click a second node to link them
 - Or let **Tools → Auto-connect nodes…** link them in the order you walked (capture time) or to their nearest neighbours
+- **Tools → Headings from walking direction…** sets north for every photo from the route; align one photo by hand first and pick it as reference
+- Shift+drag on the map selects several nodes; the layer button (top right of the map) switches to satellite view
+- **Info points** in the node panel add clickable "i" markers with text and a link to the panorama; they appear in the preview and the exported tour, which also gets a small map
 - Select a node to edit heading, compare with neighbors, and test the walkthrough
 - **Ctrl+S** saves the project (photos included) as a `.vrtour` file and afterwards straight back into it; **Ctrl+O** opens one
 
@@ -129,7 +137,9 @@ Click **Upload to Google** in the toolbar (`run_editor.py` must be running):
 - Click **Sign in with Google** — a normal Google login/consent screen opens in your browser
 - Optionally paste a Google Place ID to link the tour to a location
 - Click **Start Upload** — each photo is uploaded, then connections between linked nodes are published; progress is shown live in the log
-- The project remembers which photos are already on Google (save it to keep that across sessions). Running the upload again only uploads new or changed photos and refreshes the connections; tick **Upload photos again** to force a full re-upload
+- The upload runs a **tour check** first and stops on problems Google would reject (e.g. an image that is not 2:1); warnings are listed in the log and under **Tools → Check tour…**
+- The project remembers which photos are already on Google (save it to keep that across sessions). Running the upload again only uploads new photos; photos you moved, turned or linked differently since are **updated on Google without re-uploading** them. Tick **Upload photos again** to force a full re-upload
+- **Check status on Google** shows per photo whether it is published, still processing or rejected (coloured dot on the marker, link to the photo on Google Maps in the node panel)
 
 This uses the photos already loaded in the editor session, so no manual CSV
 or file paths are needed. Click **Export** first (or anytime) if you also

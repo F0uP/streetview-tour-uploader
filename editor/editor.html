@@ -6,12 +6,14 @@
 <title>Walkthrough Tour Editor</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.11.5/index.css">
 <script type="importmap">
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
     "@photo-sphere-viewer/core": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/index.module.js",
-    "@photo-sphere-viewer/virtual-tour-plugin": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/virtual-tour-plugin@5.11.5/index.module.js"
+    "@photo-sphere-viewer/virtual-tour-plugin": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/virtual-tour-plugin@5.11.5/index.module.js",
+    "@photo-sphere-viewer/markers-plugin": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.11.5/index.module.js"
   }
 }
 </script>
@@ -100,8 +102,9 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 
 #st { font-size:11px; color:var(--text-dim); font-weight:600; white-space:nowrap; }
 #st b { color:var(--text); }
-.savehint { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:var(--text-dim); }
-.hintline { font-size:11px; color:var(--text-faint); white-space:nowrap; }
+.savehint { max-width:220px; min-width:0; flex-shrink:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:var(--text-dim); }
+.hintline { font-size:11px; color:var(--text-faint); white-space:nowrap; min-width:0; flex-shrink:1; overflow:hidden; text-overflow:ellipsis; }
+#tb .tg, #tb .btn, #st, #save-status { flex-shrink:0; }
 
 /* ── Autosave status ───────────────────────────── */
 #save-status { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dim); white-space:nowrap; }
@@ -189,9 +192,6 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 #mw { flex:1; position:relative; border-radius:var(--radius); overflow:hidden; border:1px solid var(--border); box-shadow:var(--shadow-lg); }
 #map { width:100%; height:100%; background:#0a0910; }
 #map.connecting, #map.connecting .leaflet-container { cursor:crosshair; }
-/* OSM tiles are light by default; invert+rotate hue to match the app's dark theme
-   without touching markers/overlays, which live in separate panes. */
-.leaflet-tile-pane { filter:invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.7); }
 .leaflet-control-zoom { border:none !important; box-shadow:var(--shadow-md) !important; }
 .leaflet-control-zoom a {
   background:var(--panel) !important; backdrop-filter:var(--blur); color:var(--text) !important;
@@ -339,17 +339,17 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 /* ── Tools menu ────────────────────────────────── */
 .menu-wrap { position:relative; }
 .menu {
-  position:absolute; top:calc(100% + 6px); right:0; min-width:250px; z-index:1800; padding:6px; background:var(--panel-solid);
+  position:absolute; top:calc(100% + 6px); right:0; min-width:250px; width:max-content; z-index:1800; padding:6px; background:var(--panel-solid);
   border:1px solid var(--border-2); border-radius:var(--radius-sm); box-shadow:var(--shadow-lg); display:none;
 }
 .menu.show { display:block; }
 .menu button {
-  display:flex; align-items:center; gap:9px; width:100%; padding:8px 10px; border:none; background:transparent; color:var(--text);
+  display:flex; align-items:center; gap:9px; width:100%; white-space:nowrap; padding:8px 10px; border:none; background:transparent; color:var(--text);
   font:inherit; font-size:12px; font-weight:600; text-align:left; border-radius:7px; cursor:pointer;
 }
 .menu button:hover { background:var(--accent-soft); }
 .menu button svg { width:14px; height:14px; color:var(--text-faint); flex-shrink:0; }
-.menu button .h { margin-left:auto; font-size:10px; color:var(--text-faint); font-weight:500; }
+.menu button .h { margin-left:auto; padding-left:14px; font-size:10px; color:var(--text-faint); font-weight:500; }
 .menu hr { border:none; border-top:1px solid var(--border); margin:5px 2px; }
 .brand .ver { font-size:10px; font-weight:600; color:var(--text-faint); margin-left:2px; }
 
@@ -398,6 +398,61 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 .blur-bar { display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap; font-size:12px; color:var(--text-dim); }
 .blur-bar .sp { flex:1; }
 
+/* ── Map layers / box select ───────────────────── */
+/* OSM tiles are light by default; invert+rotate hue to match the app's dark theme.
+   Only the street map gets this - satellite imagery keeps its real colours. */
+.osm-dark { filter:invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.7); }
+.leaflet-control-layers {
+  background:var(--panel) !important; backdrop-filter:var(--blur); color:var(--text) !important;
+  border:1px solid var(--border-2) !important; border-radius:var(--radius-sm) !important; box-shadow:var(--shadow-md) !important;
+}
+.leaflet-control-layers-expanded { padding:8px 12px 8px 8px !important; font-family:var(--font); font-size:12px; }
+.leaflet-control-layers-separator { border-top-color:var(--border-2) !important; }
+.leaflet-control-layers-toggle { filter:invert(1); }
+
+/* ── Node thumbnails / Google status ───────────── */
+.nrow-thumb { width:44px; height:22px; border-radius:4px; object-fit:cover; flex-shrink:0; background:var(--panel-3); }
+.leaflet-tooltip.thumb-tip {
+  background:var(--panel-solid); border:1px solid var(--border-2); color:var(--text); border-radius:var(--radius-sm);
+  padding:5px; box-shadow:var(--shadow-md); font-family:var(--font); font-size:11px; font-weight:700;
+}
+.leaflet-tooltip.thumb-tip::before { border-top-color:var(--border-2); }
+.thumb-tip img { display:block; width:192px; height:96px; border-radius:5px; margin-bottom:5px; object-fit:cover; }
+.thumb-tip .sub { font-weight:500; color:var(--text-dim); font-size:10.5px; }
+.gs { position:absolute; top:-3px; right:-3px; width:10px; height:10px; border-radius:50%; border:2px solid var(--panel-solid); background:var(--text-faint); }
+.gs.published { background:var(--success); }
+.gs.processing { background:var(--gold); }
+.gs.rejected, .gs.missing, .gs.error { background:var(--danger); }
+.gs.changed { box-shadow:0 0 0 2px var(--gold); }
+.gstat { display:inline-flex; align-items:center; gap:5px; }
+.gstat .dot { width:7px; height:7px; border-radius:50%; background:var(--text-faint); }
+.gstat .dot.published { background:var(--success); }
+.gstat .dot.processing { background:var(--gold); }
+.gstat .dot.rejected, .gstat .dot.missing, .gstat .dot.error { background:var(--danger); }
+.gstat a { color:var(--accent-2); }
+
+/* ── Tour check ────────────────────────────────── */
+.check-list { display:flex; flex-direction:column; gap:4px; max-height:52vh; overflow-y:auto; margin:10px 0; }
+.check-row { display:flex; align-items:center; gap:9px; padding:7px 9px; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:12px; background:var(--panel-2); }
+.check-row .lv { width:8px; height:8px; border-radius:50%; flex-shrink:0; background:var(--gold); }
+.check-row.error .lv { background:var(--danger); }
+.check-row .nm { font-weight:700; white-space:nowrap; max-width:140px; overflow:hidden; text-overflow:ellipsis; }
+.check-row .msg { flex:1; color:var(--text-dim); }
+.check-row .btn { padding:4px 9px; font-size:11px; }
+.check-ok { padding:18px; text-align:center; color:var(--success); font-weight:700; font-size:13px; }
+
+/* ── Info points (hotspots) ────────────────────── */
+.hs-row { display:flex; align-items:center; gap:6px; padding:5px 7px; border:1px solid var(--border); border-radius:7px; margin-bottom:4px; font-size:11.5px; }
+.hs-row .t { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+.hs-row .t:hover { color:var(--accent-2); }
+.hs-row button { border:none; background:transparent; color:var(--text-faint); cursor:pointer; font-size:12px; padding:2px 4px; }
+.hs-row button:hover { color:var(--text); }
+.hs-pin {
+  width:26px; height:26px; border-radius:50%; background:rgba(139,92,246,.92); border:2px solid #fff; color:#fff;
+  font:700 14px/22px Georgia, serif; text-align:center; box-shadow:0 2px 10px rgba(0,0,0,.5); cursor:pointer;
+}
+.pi.area { min-height:70px; resize:vertical; font-family:inherit; }
+
 /* ── Misc ──────────────────────────────────────── */
 .ico { width:14px; height:14px; }
 </style>
@@ -442,6 +497,11 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
         <button data-run="saveas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>Save project as…<span class="h">Ctrl Shift S</span></button>
         <button data-run="website"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Export tour as website (.zip)</button>
         <hr>
+        <button data-run="walkheadings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>Headings from walking direction…</button>
+        <button data-run="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Check tour…</button>
+        <button data-run="gstatus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>Check status on Google</button>
+        <hr>
+        <button data-run="lang"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l6 6"/><path d="M4 14l6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="M22 22l-5-10-5 10"/><path d="M14 18h6"/></svg><span id="lang-label" data-no-i18n>Deutsch</span></button>
         <button data-run="updates"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Check for updates</button>
       </div>
     </div>
@@ -532,6 +592,7 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
       <span id="blur-count">Drag boxes over faces and plates.</span>
       <span class="sp"></span>
       <span>Scroll to zoom · right-drag to pan</span>
+      <button class="btn" id="blur-detect">Detect faces</button>
       <button class="btn" id="blur-undo">Undo box</button>
       <button class="btn" id="blur-clear">Clear</button>
       <button class="btn g" id="blur-apply">Apply to photo</button>
@@ -568,10 +629,10 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
       <div class="hint" style="margin-top:10px">
         <strong>Power tools</strong>
         <ol>
-          <li>Press <kbd>Ctrl K</kbd> for the command palette, <kbd>?</kbd> for all shortcuts</li>
-          <li>Ctrl/Shift-click nodes to multi-select, then bulk-connect or delete</li>
+          <li data-i18n="tip-keys">Press <kbd>Ctrl K</kbd> for the command palette, <kbd>?</kbd> for all shortcuts</li>
+          <li>Ctrl/Shift-click nodes or Shift-drag on the map to multi-select, then bulk-connect or delete</li>
           <li>Everything autosaves &mdash; closing the tab is safe, a restore prompt appears next time</li>
-          <li>Save the whole project with photos as a <code>.vrtour</code> file; open it again or drop it on the map</li>
+          <li data-i18n="tip-vrtour">Save the whole project with photos as a <code>.vrtour</code> file; open it again or drop it on the map</li>
         </ol>
       </div>
     </div>
@@ -612,6 +673,13 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
         </div>
         <div class="mini" id="heading-meta">Heading not set</div>
         <div class="mini">Only horizontal alignment matters here, not up/down.</div>
+      </div>
+
+      <div class="pg">
+        <p class="pl">Info points</p>
+        <div id="hs-list"></div>
+        <button class="btn" id="hs-add" style="width:100%;justify-content:center">Add info point at current view</button>
+        <div class="mini">Shown as clickable "i" markers in the preview and the exported tour.</div>
       </div>
 
       <div class="pg">
@@ -671,39 +739,39 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
         <li class="wiz-step">
           <div class="wiz-h"><span class="wiz-n">1</span>Create a Google Cloud project</div>
           <div class="wiz-b">
-            Sign in with the Google account that should own the photos, give the project any name (e.g. <i>Street View Upload</i>) and click <b>Create</b>. Make sure it is selected in the project picker at the top afterwards.
+<span data-i18n="wiz1">Sign in with the Google account that should own the photos, give the project any name (e.g. <i>Street View Upload</i>) and click <b>Create</b>. Make sure it is selected in the project picker at the top afterwards.</span>
             <div class="rowbtn"><a class="btn" href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Open "New project"</a><button class="btn g wiz-next">Done</button></div>
           </div>
         </li>
         <li class="wiz-step">
           <div class="wiz-h"><span class="wiz-n">2</span>Enable the Street View Publish API</div>
           <div class="wiz-b">
-            Click <b>Enable</b> on the API page. It is free.
+<span data-i18n="wiz2">Click <b>Enable</b> on the API page. It is free.</span>
             <div class="rowbtn"><a class="btn" href="https://console.cloud.google.com/apis/library/streetviewpublish.googleapis.com" target="_blank" rel="noopener">Open the API page</a><button class="btn g wiz-next">Done</button></div>
           </div>
         </li>
         <li class="wiz-step">
           <div class="wiz-h"><span class="wiz-n">3</span>Set up the consent screen</div>
           <div class="wiz-b">
-            <ul>
+<div data-i18n="wiz3"><ul>
               <li><b>Get started</b>: any app name, your email as support and contact address</li>
               <li>Audience: <b>External</b></li>
               <li>Then under <b>Audience → Test users</b> add your own Google address</li>
-            </ul>
+            </ul></div>
             <div class="rowbtn"><a class="btn" href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener">Open consent screen</a><button class="btn g wiz-next">Done</button></div>
           </div>
         </li>
         <li class="wiz-step">
           <div class="wiz-h"><span class="wiz-n">4</span>Create the OAuth client</div>
           <div class="wiz-b">
-            Application type <b>Desktop app</b>, any name, <b>Create</b>. Keep the dialog with the Client ID and Client Secret open, or click <b>Download JSON</b>.
+<span data-i18n="wiz4">Application type <b>Desktop app</b>, any name, <b>Create</b>. Keep the dialog with the Client ID and Client Secret open, or click <b>Download JSON</b>.</span>
             <div class="rowbtn"><a class="btn" href="https://console.cloud.google.com/apis/credentials/oauthclient" target="_blank" rel="noopener">Open "Create OAuth client"</a><button class="btn g wiz-next">Done</button></div>
           </div>
         </li>
         <li class="wiz-step">
           <div class="wiz-h"><span class="wiz-n">5</span>Paste the two values here</div>
           <div class="wiz-b">
-            Copy both values into the fields below, or choose the downloaded <code>client_secret_….json</code>, which fills both.
+<span data-i18n="wiz5">Copy both values into the fields below, or choose the downloaded <code>client_secret_….json</code>, which fills both.</span>
             <div class="rowbtn"><label class="btn">Choose JSON file…<input type="file" id="upl-json" accept=".json,application/json" hidden></label></div>
           </div>
         </li>
@@ -736,7 +804,10 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
       <div class="mini" id="upl-summary">Nothing to upload yet.</div>
 
       <label class="cb2" style="margin-top:10px"><input type="checkbox" id="upl-reupload"> Upload photos again that were already uploaded</label>
-      <button class="btn g" id="upl-start" style="width:100%;margin-top:10px">Start Upload</button>
+      <div class="rowbtn" style="margin-top:10px">
+        <button class="btn" id="upl-refresh-status">Check status on Google</button>
+        <button class="btn g" id="upl-start">Start Upload</button>
+      </div>
       <div id="upl-log"></div>
     </div>
   </div>
@@ -752,6 +823,50 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
       Export Now
     </button>
     <button class="btn" id="preview-website" style="width:100%;margin-top:8px;justify-content:center">Export as website with photos (.zip)</button>
+  </div>
+</div>
+
+<div class="modal-back" id="walkh-back">
+  <div class="modal">
+    <h2>Headings from walking direction <span class="close" data-close="walkh-back">Close</span></h2>
+    <div class="mini" style="margin:0 0 10px">Sets each photo's north so the camera faces the way you walked. Align one photo by hand first and pick it as reference: its offset is then copied to all others (as long as you held the camera the same way).</div>
+    <div class="mini" id="walkh-scope" style="margin:0 0 10px"></div>
+    <label class="opt"><input type="radio" name="walkh-order" value="time" checked>
+      <div><b>Walk order by capture time</b><span>From the photos' EXIF time stamps.</span></div></label>
+    <label class="opt"><input type="radio" name="walkh-order" value="list">
+      <div><b>Walk order as in the node list</b><span>Drag nodes in the list to change it.</span></div></label>
+    <div class="pg" style="margin-top:10px">
+      <p class="pl">Reference photo</p>
+      <select class="pi" id="walkh-ref"></select>
+    </div>
+    <label class="cb2" style="margin-bottom:12px"><input type="checkbox" id="walkh-overwrite"> Also overwrite headings from EXIF or set by hand</label>
+    <button class="btn g" id="walkh-go" style="width:100%">Set headings</button>
+  </div>
+</div>
+
+<div class="modal-back" id="check-back">
+  <div class="modal wide">
+    <h2>Tour check <span class="close" data-close="check-back">Close</span></h2>
+    <div class="mini" id="check-summary" style="margin:0"></div>
+    <div class="check-list" id="check-list"></div>
+    <div class="rowbtn" id="check-actions">
+      <button class="btn" id="check-rerun">Check again</button>
+      <button class="btn g" id="check-continue" style="display:none">Upload anyway</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-back" id="hs-back">
+  <div class="modal">
+    <h2><span id="hs-title-h">Info point</span> <span class="close" data-close="hs-back">Close</span></h2>
+    <div class="pg"><p class="pl">Title</p><input class="pi" id="hs-title" type="text" placeholder="e.g. Entrance"></div>
+    <div class="pg"><p class="pl">Text</p><textarea class="pi area" id="hs-text" placeholder="Shown when the point is clicked"></textarea></div>
+    <div class="pg"><p class="pl">Link (optional)</p><input class="pi" id="hs-url" type="url" placeholder="https://"></div>
+    <div class="pg"><p class="pl">Height <span id="hs-pitch-v"></span></p><input class="slider" id="hs-pitch" type="range" min="-60" max="60" value="0"></div>
+    <div class="rowbtn">
+      <button class="btn danger" id="hs-delete">Delete</button>
+      <button class="btn g" id="hs-save">Save</button>
+    </div>
   </div>
 </div>
 
@@ -809,6 +924,558 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 <script type="module">
 import exifr from 'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.esm.js';
 import { Viewer } from '@photo-sphere-viewer/core';
+import { MarkersPlugin } from '@photo-sphere-viewer/markers-plugin';
+
+// ── Language (English / Deutsch) ──────────────────
+// The page is written in English. In German, t() looks strings up in DE, and
+// translateDom() swaps static texts, tooltips and placeholders in place; a
+// MutationObserver does the same for anything rendered later, so plain
+// textContent / innerHTML updates are translated too. Only strings with
+// placeholders ({n}) and alert()/confirm() texts need an explicit t().
+// Blocks with inline markup use data-i18n="key" and a whole-HTML entry in DE_HTML.
+let currentLang = (storageGet('lang') || (navigator.language || 'en').slice(0, 2)) === 'de' ? 'de' : 'en';
+
+function rxTranslate(s) {
+  for (const [rx, rep] of DE_RX) if (rx.test(s)) return s.replace(rx, rep);
+  return null;
+}
+
+function t(s, vars) {
+  let out = currentLang === 'de' ? (DE[s] ?? rxTranslate(s) ?? s) : s;
+  if (vars) out = out.replace(/\{(\w+)\}/g, (m, k) => (vars[k] ?? m));
+  return out;
+}
+
+const i18nOrig = new WeakMap();
+const I18N_SKIP = 'script,style,.leaflet-pane,.nl,.nrow-name,#upl-log,.notes,.psv-container,[data-no-i18n]';
+
+function translateTextNode(node) {
+  const orig = i18nOrig.get(node) ?? node.nodeValue;
+  const key = orig.trim();
+  if (!key) return;
+  const de = currentLang === 'de' ? (DE[key] ?? rxTranslate(key)) : null;
+  if (de != null) {
+    i18nOrig.set(node, orig);
+    const next = orig.replace(key, de);
+    if (node.nodeValue !== next) node.nodeValue = next;
+  } else if (i18nOrig.has(node) && node.nodeValue !== orig) {
+    node.nodeValue = orig;
+  }
+}
+
+function translateAttrs(el) {
+  for (const attr of ['title', 'placeholder']) {
+    if (!el.hasAttribute(attr)) continue;
+    const store = `i18n${attr}`;
+    if (el.dataset[store] === undefined) {
+      if (DE[el.getAttribute(attr)] === undefined) continue;
+      el.dataset[store] = el.getAttribute(attr);
+    }
+    const orig = el.dataset[store];
+    el.setAttribute(attr, currentLang === 'de' ? (DE[orig] ?? orig) : orig);
+  }
+}
+
+function translateDom(root = document.body) {
+  if (root.nodeType === Node.TEXT_NODE) {
+    if (!root.parentElement?.closest(I18N_SKIP)) translateTextNode(root);
+    return;
+  }
+  if (root.nodeType !== Node.ELEMENT_NODE || root.closest(I18N_SKIP)) return;
+  const blocks = [...(root.matches('[data-i18n]') ? [root] : []), ...root.querySelectorAll('[data-i18n]')];
+  blocks.forEach(el => {
+    if (!i18nOrig.has(el)) i18nOrig.set(el, el.innerHTML);
+    const html = currentLang === 'de' ? (DE_HTML[el.dataset.i18n] ?? i18nOrig.get(el)) : i18nOrig.get(el);
+    if (el.innerHTML !== html) el.innerHTML = html;
+  });
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: n => (n.parentElement?.closest(`${I18N_SKIP},[data-i18n]`) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+  });
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) translateTextNode(n);
+  [root, ...root.querySelectorAll('[title],[placeholder]')].forEach(el => { if (el.closest && !el.closest(I18N_SKIP)) translateAttrs(el); });
+}
+
+const i18nObserver = new MutationObserver(records => {
+  if (currentLang !== 'de') return;
+  records.forEach(r => {
+    if (r.type === 'characterData') translateDom(r.target);
+    else r.addedNodes.forEach(n => translateDom(n));
+  });
+});
+
+// alert() and confirm() texts go through t() too.
+const nativeAlert = window.alert.bind(window);
+const nativeConfirm = window.confirm.bind(window);
+window.alert = msg => nativeAlert(t(String(msg)));
+window.confirm = msg => nativeConfirm(t(String(msg)));
+
+function setLang(lang) {
+  currentLang = lang;
+  storageSet('lang', lang);
+  document.documentElement.lang = lang;
+  translateDom();
+  const label = document.getElementById('lang-label');
+  if (label) label.textContent = lang === 'de' ? 'English' : 'Deutsch';
+  // Re-render the parts built from t() with placeholders.
+  updateSb();
+  renderNodeList();
+  updateStats();
+  updateMultiBar();
+  refreshAllMarkers();
+  updateTitle();
+}
+
+// German texts. Keys are the English originals; {x} are placeholders for t().
+const DE = {
+  // Toolbar / general
+  'Walkthrough': 'Rundgang',
+  'Walkthrough Tour Editor': 'Rundgang-Editor',
+  'Tour Editor': 'Tour-Editor',
+  '360° walkthrough builder': '360°-Rundgang-Baukasten',
+  'Nodes': 'Knoten',
+  '· Links': '· Verbindungen',
+  'dbl-click to add · click to select · right-click ×2 to connect': 'Doppelklick: neu · Klick: wählen · 2× Rechtsklick: verbinden',
+  'Autosave on': 'Autospeichern an',
+  'Saving…': 'Speichert…',
+  'Saved': 'Gespeichert',
+  'Autosave failed': 'Autospeichern fehlgeschlagen',
+  'Packing project…': 'Projekt wird gepackt…',
+  'Packing tour…': 'Tour wird gepackt…',
+  'Project save failed': 'Speichern fehlgeschlagen',
+  'Export failed': 'Export fehlgeschlagen',
+  'Save target: Downloads': 'Speicherort: Downloads',
+  'Downloads': 'Downloads',
+  'Tools': 'Werkzeuge',
+  'Preview': 'Vorschau',
+  'Export': 'Exportieren',
+  'Upload to Google': 'Zu Google hochladen',
+  'Undo (Ctrl+Z)': 'Rückgängig (Strg+Z)',
+  'Redo (Ctrl+Y)': 'Wiederholen (Strg+Y)',
+  'Command palette (Ctrl+K)': 'Befehlspalette (Strg+K)',
+  'Save target folder': 'Speicherordner festlegen',
+  'Estimate heading': 'Blickrichtung schätzen',
+  'Open project (Ctrl+O)': 'Projekt öffnen (Strg+O)',
+  'Save project with photos (Ctrl+S)': 'Projekt mit Fotos speichern (Strg+S)',
+  'Export CSV': 'CSV exportieren',
+  'Preview tour': 'Tour-Vorschau',
+  'Untitled': 'Unbenannt',
+  'Deutsch': 'Deutsch',
+  'English': 'English',
+
+  // Tools menu / command palette
+  'Auto-connect nodes…': 'Knoten automatisch verbinden…',
+  'Place photos from GPX track…': 'Fotos per GPX-Track platzieren…',
+  'Blur faces & plates…': 'Gesichter & Kennzeichen verpixeln…',
+  'selected node': 'ausgewählter Knoten',
+  'Save project as…': 'Projekt speichern unter…',
+  'Export tour as website (.zip)': 'Tour als Website exportieren (.zip)',
+  'Headings from walking direction…': 'Blickrichtung aus Laufrichtung…',
+  'Check tour…': 'Tour prüfen…',
+  'Check status on Google': 'Status bei Google prüfen',
+  'Check for updates': 'Nach Updates suchen',
+  'Add point at map center': 'Punkt in der Kartenmitte hinzufügen',
+  'Export tour': 'Tour exportieren',
+  'Upload to Google Street View': 'Zu Google Street View hochladen',
+  'Save project': 'Projekt speichern',
+  'Open project (.vrtour)': 'Projekt öffnen (.vrtour)',
+  'Blur faces & plates in the selected photo…': 'Gesichter & Kennzeichen im ausgewählten Foto verpixeln…',
+  'Export CSV manifest': 'CSV-Liste exportieren',
+  'Set save target folder': 'Speicherordner festlegen',
+  'Estimate headings from anchor': 'Blickrichtungen vom Anker aus schätzen',
+  'Undo': 'Rückgängig',
+  'Redo': 'Wiederholen',
+  'Show keyboard shortcuts': 'Tastenkürzel anzeigen',
+  'Jump to node': 'Zum Knoten springen',
+  'Type a command or search nodes…': 'Befehl eingeben oder Knoten suchen…',
+  'No matching commands': 'Keine passenden Befehle',
+  'Switch to English': 'Switch to English',
+
+  // Map
+  'Street map': 'Straßenkarte',
+  'Satellite': 'Satellit',
+  'Place names': 'Ortsnamen',
+  'Drop 360 JPG files here': '360°-JPGs hier ablegen',
+
+  // Sidebar
+  'Search nodes…': 'Knoten suchen…',
+  'No matches': 'Keine Treffer',
+  'No nodes yet': 'Noch keine Knoten',
+  'Delete': 'Löschen',
+  'Drop 360 JPG files onto the map to plan links and orientation.': '360°-JPGs auf die Karte ziehen, um Verbindungen und Ausrichtung zu planen.',
+  'How to Use': 'So geht’s',
+  'Drop photos onto the map, or double-click empty map area to add a point': 'Fotos auf die Karte ziehen oder auf eine freie Stelle doppelklicken, um einen Punkt hinzuzufügen',
+  'If GPS exists, photos are placed automatically; otherwise they are placed at the drop point': 'Fotos mit GPS werden automatisch platziert, sonst dort, wo sie abgelegt wurden',
+  'Click a node to select it — a quick-action ring pops up for start / connect / duplicate / delete': 'Knoten anklicken zum Auswählen – ein Schnellmenü bietet Start / Verbinden / Duplizieren / Löschen',
+  'Right-click a node, then right-click a second node to connect them (right-click again to cancel)': 'Knoten rechtsklicken, dann einen zweiten rechtsklicken, um sie zu verbinden (erneuter Rechtsklick bricht ab)',
+  'Type exact coordinates, adjust heading, and use the compare view on the selected node': 'Beim ausgewählten Knoten Koordinaten eingeben, Blickrichtung anpassen und die Vergleichsansicht nutzen',
+  'Walk to linked nodes inside the same file while checking the result': 'Zu verbundenen Knoten laufen und das Ergebnis direkt prüfen',
+  'Power tools': 'Profi-Funktionen',
+  'Ctrl/Shift-click nodes or Shift-drag on the map to multi-select, then bulk-connect or delete': 'Strg/Umschalt-Klick oder Umschalt+Ziehen auf der Karte wählt mehrere Knoten aus – dann gemeinsam verbinden oder löschen',
+  'Everything autosaves — closing the tab is safe, a restore prompt appears next time': 'Alles wird automatisch gesichert – beim nächsten Öffnen wird die Wiederherstellung angeboten',
+  'Node Settings': 'Knoten-Einstellungen',
+  'Name': 'Name',
+  'Node name': 'Knotenname',
+  'Position': 'Position',
+  'Latitude': 'Breitengrad',
+  'Longitude': 'Längengrad',
+  'Type exact coordinates, or drag the marker on the map.': 'Genaue Koordinaten eingeben oder den Marker auf der Karte ziehen.',
+  '360 Photo': '360°-Foto',
+  'No photo': 'Kein Foto',
+  'Replace Photo': 'Foto ersetzen',
+  'Choose a photo to check north alignment here.': 'Foto wählen, um hier die Nordausrichtung zu prüfen.',
+  'Heading / North': 'Blickrichtung / Norden',
+  'Set This Direction as North': 'Diese Richtung als Norden setzen',
+  'Reset to EXIF': 'Auf EXIF zurücksetzen',
+  'Heading not set': 'Blickrichtung nicht gesetzt',
+  'Only horizontal alignment matters here, not up/down.': 'Nur die waagerechte Ausrichtung zählt, nicht oben/unten.',
+  'Info points': 'Info-Punkte',
+  'Add info point at current view': 'Info-Punkt in aktueller Blickrichtung hinzufügen',
+  'Shown as clickable "i" markers in the preview and the exported tour.': 'Erscheinen als anklickbare „i“-Marker in der Vorschau und der exportierten Tour.',
+  'No info points yet.': 'Noch keine Info-Punkte.',
+  'Look at it': 'Hinschauen',
+  '(no title)': '(ohne Titel)',
+  'Edit': 'Bearbeiten',
+  'Use as Start Node': 'Als Startknoten verwenden',
+  'Walkthrough Check': 'Rundgang prüfen',
+  'Back One Step': 'Einen Schritt zurück',
+  'Back to Start': 'Zurück zum Start',
+  'Move to linked nodes directly inside the editor.': 'Direkt im Editor zu verbundenen Knoten wechseln.',
+  'Select a node with links and you can walk from here inside the editor.': 'Einen Knoten mit Verbindungen auswählen, um von hier aus durch den Rundgang zu gehen.',
+  'Linked Nodes': 'Verbundene Knoten',
+  'None': 'Keine',
+  'Compare / Walkthrough Check': 'Vergleich / Rundgang prüfen',
+  'Move': 'Wechseln',
+  'Match Same View': 'Gleiche Ansicht',
+  'Swap Front/Back': 'Vorne/Hinten tauschen',
+  'Pick a linked node to overlay the current and next viewpoints for alignment.': 'Einen verbundenen Knoten wählen, um beide Standpunkte zur Ausrichtung zu überlagern.',
+  'If a linked node has a photo, you can overlay-compare it here.': 'Hat ein verbundener Knoten ein Foto, lässt es sich hier überlagern und vergleichen.',
+  'No comparable linked nodes': 'Keine vergleichbaren verbundenen Knoten',
+  'Choose linked node': 'Verbundenen Knoten wählen',
+  'Use the translucent overlap and align it by eye.': 'Die durchscheinende Überlagerung nutzen und nach Augenmaß ausrichten.',
+  'Comparing with the same view heading. Align where the overlap looks natural.': 'Vergleich mit gleicher Blickrichtung. Dort ausrichten, wo die Überlagerung natürlich wirkt.',
+  'Comparing with front/back swapped. Align where the overlap looks natural.': 'Vergleich mit getauschtem Vorne/Hinten. Dort ausrichten, wo die Überlagerung natürlich wirkt.',
+  'Swapped comparison order. Use whichever view makes the overlap easier to read.': 'Reihenfolge getauscht. Die Ansicht nehmen, in der die Überlagerung besser zu erkennen ist.',
+  'Delete This Node': 'Diesen Knoten löschen',
+  'blurred': 'verpixelt',
+  'EXIF': 'EXIF',
+  'manual': 'manuell',
+  'auto': 'automatisch',
+
+  // Quick menu / multibar
+  'Set / unset as start node': 'Als Startknoten setzen / entfernen',
+  'Connect to another node': 'Mit anderem Knoten verbinden',
+  'Duplicate node': 'Knoten duplizieren',
+  'Delete node': 'Knoten löschen',
+  '0 selected': '0 ausgewählt',
+  'Connect in Sequence': 'Der Reihe nach verbinden',
+  'Delete Selected': 'Auswahl löschen',
+  'Clear': 'Leeren',
+  'Those nodes are already connected': 'Diese Knoten sind bereits verbunden',
+
+  // Restore banner
+  'Restore': 'Wiederherstellen',
+  'Discard': 'Verwerfen',
+  'Session restored': 'Sitzung wiederhergestellt',
+
+  // Shortcuts
+  'Keyboard Shortcuts': 'Tastenkürzel',
+  'Close': 'Schließen',
+  'Command palette': 'Befehlspalette',
+  'Show this cheatsheet': 'Diese Übersicht anzeigen',
+  'Add point': 'Punkt hinzufügen',
+  'Dbl-click map': 'Doppelklick Karte',
+  'Select node': 'Knoten auswählen',
+  'Click': 'Klick',
+  'Multi-select': 'Mehrfachauswahl',
+  'Ctrl+Click': 'Strg+Klick',
+  'Connect two nodes': 'Zwei Knoten verbinden',
+  'Right-click ×2': '2× Rechtsklick',
+  'Delete selection': 'Auswahl löschen',
+  'Cancel / deselect': 'Abbrechen / abwählen',
+  'Esc': 'Esc',
+  'Ctrl K': 'Strg K',
+  'Ctrl Z': 'Strg Z',
+  'Ctrl Y': 'Strg Y',
+  'Ctrl S': 'Strg S',
+  'Ctrl O': 'Strg O',
+  'Ctrl Shift S': 'Strg Umschalt S',
+  'Open project': 'Projekt öffnen',
+
+  // Upload dialog
+  'Client ID': 'Client-ID',
+  'Client Secret': 'Client-Secret',
+  'Save & Continue': 'Speichern & weiter',
+  'Checking sign-in status...': 'Anmeldestatus wird geprüft…',
+  'Sign in with Google': 'Mit Google anmelden',
+  'Sign in again': 'Erneut anmelden',
+  'Signed in to Google': 'Bei Google angemeldet',
+  'Not signed in': 'Nicht angemeldet',
+  'Use a different Google API client': 'Anderen Google-API-Client verwenden',
+  'Google Place ID (optional, links the tour to a location)': 'Google Place ID (optional, verknüpft die Tour mit einem Ort)',
+  'Nothing to upload yet.': 'Noch nichts zum Hochladen.',
+  'Upload photos again that were already uploaded': 'Bereits hochgeladene Fotos erneut hochladen',
+  'Start Upload': 'Upload starten',
+  'Opening Google sign-in in your browser...': 'Google-Anmeldung öffnet sich im Browser…',
+  'Could not reach local server. Start it with: python run_editor.py': 'Lokaler Server nicht erreichbar. Starten mit: python run_editor.py',
+  'Google API client saved': 'Google-API-Client gespeichert',
+  'Detected client_secrets.json — filled both fields': 'client_secrets.json erkannt – beide Felder ausgefüllt',
+  'Filled Client ID and Client Secret from the JSON file': 'Client-ID und Client-Secret aus der JSON-Datei übernommen',
+  'Could not save credentials': 'Zugangsdaten konnten nicht gespeichert werden',
+  'Sign-in failed': 'Anmeldung fehlgeschlagen',
+  'Signed in.': 'Angemeldet.',
+  'FAILED': 'FEHLGESCHLAGEN',
+  'update': 'Aktualisierung',
+  'Status on Google': 'Status bei Google',
+  'No nodes with a loaded photo and GPS position to upload.': 'Keine Knoten mit geladenem Foto und Position zum Hochladen.',
+  '{n} warning(s) - see Tools → Check tour': '{n} Warnung(en) – siehe Werkzeuge → Tour prüfen',
+  'Uploading {n} photo(s)...': '{n} Foto(s) werden hochgeladen…',
+  'Skipping {n} photo(s) uploaded earlier.': '{n} bereits hochgeladene(s) Foto(s) übersprungen.',
+  '{name}: not signed in - click "Sign in with Google" first.': '{name}: nicht angemeldet – zuerst „Mit Google anmelden“ klicken.',
+  'Updating position, heading and links of {n} photo(s)...': 'Position, Blickrichtung und Verbindungen von {n} Foto(s) werden aktualisiert…',
+  'Updating on Google failed: {msg}': 'Aktualisierung bei Google fehlgeschlagen: {msg}',
+  'Nothing changed since the last upload.': 'Seit dem letzten Upload hat sich nichts geändert.',
+  'Done: {a}/{b} uploaded.': 'Fertig: {a}/{b} hochgeladen.',
+  'Check: https://www.google.com/maps/contrib/': 'Kontrolle: https://www.google.com/maps/contrib/',
+  '{n} photo(s) to upload': '{n} Foto(s) zum Hochladen',
+  '{n} already uploaded (will be uploaded again)': '{n} bereits hochgeladen (werden erneut hochgeladen)',
+  '{n} already uploaded, {c} of them changed since (will be updated)': '{n} bereits hochgeladen, davon {c} seitdem geändert (werden aktualisiert)',
+  '{n} without a photo loaded (drop the file again to include it)': '{n} ohne geladenes Foto (Datei erneut ablegen, um es einzubeziehen)',
+
+  // Google setup wizard
+  'One-time setup, about 5 minutes: Google needs you to register this app as your own free "OAuth client". Work through the steps, each link opens the right page of Google Cloud Console.': 'Einmalige Einrichtung, etwa 5 Minuten: Google verlangt, dass du diese App als deinen eigenen kostenlosen „OAuth-Client“ registrierst. Geh die Schritte durch – jeder Link öffnet die passende Seite der Google Cloud Console.',
+  'Create a Google Cloud project': 'Google-Cloud-Projekt anlegen',
+  'Enable the Street View Publish API': 'Street View Publish API aktivieren',
+  'Set up the consent screen': 'Zustimmungsbildschirm einrichten',
+  'Create the OAuth client': 'OAuth-Client anlegen',
+  'Paste the two values here': 'Die beiden Werte hier einfügen',
+  'Open "New project"': '„Neues Projekt“ öffnen',
+  'Open the API page': 'API-Seite öffnen',
+  'Open consent screen': 'Zustimmungsbildschirm öffnen',
+  'Open "Create OAuth client"': '„OAuth-Client erstellen“ öffnen',
+  'Done': 'Erledigt',
+  'Choose JSON file…': 'JSON-Datei wählen…',
+  'That file does not contain an OAuth client ID and secret.': 'Diese Datei enthält keine OAuth-Client-ID mit Secret.',
+  'Remove the saved Google API client and sign-in? You will need to paste a Client ID / Secret again.': 'Gespeicherten Google-API-Client und Anmeldung entfernen? Client-ID und Secret müssen dann erneut eingegeben werden.',
+
+  // Preview / export
+  'Tour Preview': 'Tour-Vorschau',
+  'Tour preview': 'Tour-Vorschau',
+  'Drag to look around, scroll to zoom — exactly like the exported tour.': 'Ziehen zum Umsehen, scrollen zum Zoomen – genau wie in der exportierten Tour.',
+  'Export Now': 'Jetzt exportieren',
+  'Export as website with photos (.zip)': 'Als Website mit Fotos exportieren (.zip)',
+  'Exported tour-viewer.html and tour-config.json': 'tour-viewer.html und tour-config.json exportiert',
+  'No nodes found.': 'Keine Knoten vorhanden.',
+  'None of the nodes has a photo loaded.': 'Keiner der Knoten hat ein geladenes Foto.',
+  'None of the nodes has a photo loaded in this session - drop the photos again (or open a .vrtour project) to preview.': 'Keiner der Knoten hat in dieser Sitzung ein geladenes Foto – Fotos erneut ablegen (oder ein .vrtour-Projekt öffnen), um die Vorschau zu sehen.',
+  'Map': 'Karte',
+
+  // Project files
+  'Tour project': 'Tour-Projekt',
+  'Opening a project replaces the current tour (Ctrl+Z undoes it). Continue?': 'Das Öffnen ersetzt die aktuelle Tour (Strg+Z macht es rückgängig). Fortfahren?',
+  'Not a .vrtour / zip file': 'Keine .vrtour- oder Zip-Datei',
+  'Corrupt zip directory': 'Beschädigtes Zip-Verzeichnis',
+  'No nodes in project': 'Keine Knoten im Projekt',
+  'project.json missing - not a .vrtour file': 'project.json fehlt – keine .vrtour-Datei',
+  'Project too large (over 4 GB)': 'Projekt zu groß (über 4 GB)',
+  'This browser does not support saving directly to a folder.': 'Dieser Browser kann nicht direkt in einen Ordner speichern.',
+
+  // Auto-connect
+  'Auto-connect nodes': 'Knoten automatisch verbinden',
+  'In the order the photos were taken': 'In Aufnahmereihenfolge',
+  "Follows your walk using each photo's capture time (EXIF). Photos without a capture time keep their list order.": 'Folgt deinem Weg anhand der Aufnahmezeit (EXIF). Fotos ohne Aufnahmezeit behalten ihre Listenreihenfolge.',
+  'Nearest neighbours': 'Nächste Nachbarn',
+  'Links every node to its closest nodes (up to 3) within the distance below.': 'Verbindet jeden Knoten mit seinen nächsten Nachbarn (bis zu 3) innerhalb der Entfernung unten.',
+  'Only link nodes up to': 'Nur Knoten verbinden, die höchstens',
+  'm apart': 'm auseinander liegen',
+  'Remove existing connections between these nodes first': 'Bestehende Verbindungen zwischen diesen Knoten vorher entfernen',
+  'Connect': 'Verbinden',
+  'Add at least two nodes first.': 'Zuerst mindestens zwei Knoten hinzufügen.',
+
+  // GPX
+  'Place photos from a GPX track': 'Fotos per GPX-Track platzieren',
+  'Record a track with your phone (any GPS logger app) while taking the photos. Each photo is placed where the track was at its capture time.': 'Während der Aufnahmen mit dem Handy einen Track aufzeichnen (beliebige GPS-Logger-App). Jedes Foto wird dort platziert, wo der Track zur Aufnahmezeit war.',
+  'GPX file': 'GPX-Datei',
+  'Camera clock time zone: UTC': 'Zeitzone der Kamerauhr: UTC',
+  'hours': 'Stunden',
+  'Photos store local time without a zone, so set the offset your camera clock was on (e.g. 2 for German summer time).': 'Fotos speichern die Ortszeit ohne Zeitzone – daher die Abweichung der Kamerauhr angeben (z. B. 2 für deutsche Sommerzeit).',
+  'Also move photos that already have GPS': 'Auch Fotos mit vorhandenem GPS verschieben',
+  'Place photos': 'Fotos platzieren',
+  'Choose a GPX file first.': 'Zuerst eine GPX-Datei wählen.',
+  'Add photos first.': 'Zuerst Fotos hinzufügen.',
+  'All photos already have GPS - tick "Also move photos that already have GPS" to override.': 'Alle Fotos haben bereits GPS – „Auch Fotos mit vorhandenem GPS verschieben“ anhaken, um sie trotzdem zu verschieben.',
+  'Not a valid GPX file': 'Keine gültige GPX-Datei',
+  'The GPX file has no timed track points': 'Die GPX-Datei enthält keine Trackpunkte mit Zeitstempel',
+
+  // Blur
+  'Blur faces & licence plates': 'Gesichter & Kennzeichen verpixeln',
+  'Drag boxes over faces and plates.': 'Rahmen über Gesichter und Kennzeichen ziehen.',
+  'Scroll to zoom · right-drag to pan': 'Scrollen zum Zoomen · Rechts-Ziehen zum Verschieben',
+  'Detect faces': 'Gesichter erkennen',
+  'Undo box': 'Rahmen zurück',
+  'Apply to photo': 'Auf Foto anwenden',
+  'Applying…': 'Wird angewendet…',
+  'Loading photo…': 'Foto wird geladen…',
+  'Select a node with a photo first.': 'Zuerst einen Knoten mit Foto auswählen.',
+  'The blurred photo replaces the original in this project (Ctrl+Z undoes it). Its EXIF block, which can hold an unblurred thumbnail, is dropped; the 360° (XMP) metadata is kept. The Street View Publish API does not blur anything itself, so do this before uploading.': 'Das verpixelte Foto ersetzt das Original in diesem Projekt (Strg+Z macht es rückgängig). Der EXIF-Block, der ein unverpixeltes Vorschaubild enthalten kann, wird entfernt; die 360°-Metadaten (XMP) bleiben erhalten. Die Street View Publish API verpixelt selbst nichts – also vor dem Hochladen erledigen.',
+  'Loading face detection…': 'Gesichtserkennung wird geladen…',
+  'Looking for faces… {p}%': 'Suche nach Gesichtern… {p} %',
+  '{n} face(s) suggested (dashed) - click a box to remove it, drag to add more.': '{n} Gesicht(er) vorgeschlagen (gestrichelt) – Rahmen anklicken zum Entfernen, ziehen für weitere.',
+  'No faces found - mark them by hand if there are any.': 'Keine Gesichter gefunden – falls doch welche da sind, von Hand markieren.',
+  'Face detection failed: {msg}': 'Gesichtserkennung fehlgeschlagen: {msg}',
+
+  // Headings from walking direction
+  'Headings from walking direction': 'Blickrichtung aus Laufrichtung',
+  "Sets each photo's north so the camera faces the way you walked. Align one photo by hand first and pick it as reference: its offset is then copied to all others (as long as you held the camera the same way).": 'Setzt die Nordausrichtung jedes Fotos so, dass die Kamera in Laufrichtung zeigt. Am besten ein Foto von Hand ausrichten und als Referenz wählen: Seine Abweichung wird auf alle anderen übertragen (solange die Kamera gleich gehalten wurde).',
+  'Walk order by capture time': 'Laufreihenfolge nach Aufnahmezeit',
+  "From the photos' EXIF time stamps.": 'Aus den EXIF-Zeitstempeln der Fotos.',
+  'Walk order as in the node list': 'Laufreihenfolge wie in der Knotenliste',
+  'Drag nodes in the list to change it.': 'Knoten in der Liste ziehen, um sie zu ändern.',
+  'Reference photo': 'Referenzfoto',
+  'Also overwrite headings from EXIF or set by hand': 'Auch Blickrichtungen aus EXIF oder von Hand überschreiben',
+  'Set headings': 'Blickrichtungen setzen',
+  'None - the camera front faced the walking direction': 'Keins – die Kamerafront zeigte in Laufrichtung',
+  'The reference photo has no neighbour to walk from or to.': 'Das Referenzfoto hat keinen Nachbarn, von dem oder zu dem gelaufen wurde.',
+  'Set the heading of {n} photo(s)': 'Blickrichtung von {n} Foto(s) gesetzt',
+  'Select one anchor node and align north there first.': 'Zuerst einen Ankerknoten auswählen und dort Norden ausrichten.',
+  'The selected node has no heading yet. Align north first.': 'Der ausgewählte Knoten hat noch keine Blickrichtung. Zuerst Norden ausrichten.',
+
+  // Tour check
+  'Tour check': 'Tour-Prüfung',
+  'Check again': 'Erneut prüfen',
+  'Upload anyway': 'Trotzdem hochladen',
+  'Checking…': 'Wird geprüft…',
+  'Everything looks good.': 'Alles in Ordnung.',
+  'Show': 'Zeigen',
+  '{e} problem(s) that stop the upload, {w} warning(s).': '{e} Problem(e), die den Upload verhindern, {w} Warnung(en).',
+  'No photo loaded - this node is not uploaded': 'Kein Foto geladen – dieser Knoten wird nicht hochgeladen',
+  'Could not read the image size': 'Bildgröße nicht lesbar',
+  'Not a 360° panorama: {w}×{h}, Google needs a 2:1 image': 'Kein 360°-Panorama: {w}×{h}, Google verlangt ein Bild im Format 2:1',
+  'Only {w}×{h} - Google recommends at least 4096×2048': 'Nur {w}×{h} – Google empfiehlt mindestens 4096×2048',
+  'No 360° (GPano) metadata - Google may not show it as a panorama': 'Keine 360°-Metadaten (GPano) – Google zeigt es eventuell nicht als Panorama',
+  "Larger than Google's 75 MB limit": 'Größer als Googles Grenze von 75 MB',
+  'Position was placed by hand, not from GPS - check that it is right': 'Position von Hand gesetzt, nicht per GPS – bitte prüfen',
+  'No heading (north) set': 'Keine Blickrichtung (Norden) gesetzt',
+  'Not connected to any other node': 'Mit keinem anderen Knoten verbunden',
+  'Rejected by Google': 'Von Google abgelehnt',
+  'Link to {name} is {d} long': 'Verbindung zu {name} ist {d} lang',
+  'Same position as {name}': 'Gleiche Position wie {name}',
+
+  // Google status
+  'Published on Google Maps': 'Auf Google Maps veröffentlicht',
+  'Uploaded, still being processed by Google': 'Hochgeladen, wird von Google noch verarbeitet',
+  'No longer on Google (deleted?)': 'Nicht mehr bei Google (gelöscht?)',
+  'Google status unknown': 'Status bei Google unbekannt',
+  'Uploaded to Google': 'Zu Google hochgeladen',
+  'changes not on Google yet': 'Änderungen noch nicht bei Google',
+  'open': 'öffnen',
+  'published': 'veröffentlicht',
+  'processing': 'in Bearbeitung',
+  'rejected': 'abgelehnt',
+  'missing': 'fehlt',
+  'error': 'Fehler',
+  'No photos uploaded yet': 'Noch keine Fotos hochgeladen',
+  'Sign in with Google first (Upload to Google)': 'Zuerst bei Google anmelden (Zu Google hochladen)',
+  'Google status: {summary}': 'Status bei Google: {summary}',
+  'Could not get the status from Google: {msg}': 'Status konnte nicht von Google abgerufen werden: {msg}',
+
+  // Info point dialog
+  'Info point': 'Info-Punkt',
+  'New info point': 'Neuer Info-Punkt',
+  'Edit info point': 'Info-Punkt bearbeiten',
+  'Title': 'Titel',
+  'e.g. Entrance': 'z. B. Eingang',
+  'Text': 'Text',
+  'Shown when the point is clicked': 'Erscheint beim Anklicken des Punkts',
+  'Link (optional)': 'Link (optional)',
+  'Height': 'Höhe',
+  'Save': 'Speichern',
+
+  // Box select
+  '{n} node(s) selected': '{n} Knoten ausgewählt',
+  'Point {n}': 'Punkt {n}',
+
+  // Updates
+  'Update now': 'Jetzt aktualisieren',
+  'Download': 'Herunterladen',
+  "What's new": 'Neuigkeiten',
+  'Later': 'Später',
+  'Updating': 'Aktualisierung',
+  'No release notes.': 'Keine Versionshinweise.',
+  'Open the release page': 'Release-Seite öffnen',
+  'Your work is saved first. The editor closes briefly while the new version installs, then this page reloads by itself.': 'Deine Arbeit wird zuerst gesichert. Der Editor schließt sich kurz, während die neue Version installiert wird, danach lädt diese Seite von selbst neu.',
+  'Saving your work…': 'Deine Arbeit wird gesichert…',
+  'Installing… the editor restarts in a moment.': 'Wird installiert… der Editor startet gleich neu.',
+  'Could not start the update.': 'Update konnte nicht gestartet werden.',
+  'The update failed.': 'Das Update ist fehlgeschlagen.',
+  'This is taking unusually long. Start the editor again from the Start menu, then reload this page.': 'Das dauert ungewöhnlich lange. Den Editor über das Startmenü neu starten und diese Seite neu laden.',
+  'Running from source - update with git pull': 'Läuft aus dem Quellcode – Update per git pull',
+  'Update check failed - is the app still running?': 'Update-Prüfung fehlgeschlagen – läuft die App noch?',
+};
+
+// Rendered texts with values baked in (toasts, status lines, alerts).
+const DE_RX = [
+  [/^Previous session found: (\d+) node\(s\), (\d+) connection\(s\)\.$/, 'Vorherige Sitzung gefunden: $1 Knoten, $2 Verbindung(en).'],
+  [/^Session restored - (\d+) photo\(s\) could not be recovered, drop them again$/, 'Sitzung wiederhergestellt – $1 Foto(s) nicht wiederherstellbar, bitte erneut ablegen'],
+  [/^(\d+) selected$/, '$1 ausgewählt'],
+  [/^Save target: (.+)$/, 'Speicherort: $1'],
+  [/^Save target set to (.+)$/, 'Speicherort: $1'],
+  [/^(.+\.\w+) saved to (.+)$/, '$1 in $2 gespeichert'],
+  [/^(.+): folder save failed, downloading instead$/, '$1: Speichern im Ordner fehlgeschlagen, wird stattdessen heruntergeladen'],
+  [/^Failed to set save target: (.+)$/, 'Speicherort konnte nicht gesetzt werden: $1'],
+  [/^Saved (.+\.\w+)$/, '$1 gespeichert'],
+  [/^Saving the project failed: (.+)$/, 'Speichern des Projekts fehlgeschlagen: $1'],
+  [/^Could not open (.+?): (.+)$/, '$1 konnte nicht geöffnet werden: $2'],
+  [/^Opened (.+) - (\d+) photo\(s\) not included, drop them again$/, '$1 geöffnet – $2 Foto(s) fehlen, bitte erneut ablegen'],
+  [/^Opened (.+) \((\d+) nodes\)$/, '$1 geöffnet ($2 Knoten)'],
+  [/^Opening (.+)…$/, '$1 wird geöffnet…'],
+  [/^(.+): no GPS found, placed at the drop point$/, '$1: kein GPS gefunden, am Ablageort platziert'],
+  [/^(.+): heading set to (.+)°$/, '$1: Blickrichtung auf $2° gesetzt'],
+  [/^heading (.+)° \(EXIF\)$/, 'Blickrichtung $1° (EXIF)'],
+  [/^heading (.+)° \(manual\)$/, 'Blickrichtung $1° (manuell)'],
+  [/^(\d+) node headings estimated$/, '$1 Blickrichtungen geschätzt'],
+  [/^Duplicated (.+)$/, '$1 dupliziert'],
+  [/^View yaw (.+)°\. Rotate horizontally only and face north\.$/, 'Blickwinkel $1°. Nur waagerecht drehen und nach Norden schauen.'],
+  [/^Current: (.+)\. Click a linked node to move there\.$/, 'Aktuell: $1. Verbundenen Knoten anklicken, um dorthin zu wechseln.'],
+  [/^There are (\d+) nodes without photos\. Continue\?$/, 'Es gibt $1 Knoten ohne Foto. Fortfahren?'],
+  [/^(\d+) node\(s\) without a loaded photo are left out of the preview$/, '$1 Knoten ohne geladenes Foto fehlen in der Vorschau'],
+  [/^(\d+) node\(s\) without a photo were left out$/, '$1 Knoten ohne Foto wurden weggelassen'],
+  [/^Added (\d+) connection\(s\)$/, '$1 Verbindung(en) hinzugefügt'],
+  [/^Added (\d+) connection\(s\) - (.+)$/, (m, n, rest) => `${n} Verbindung(en) hinzugefügt – ${rest.replace(/(\d+) without capture time/, '$1 ohne Aufnahmezeit').replace(/(\d+) gap\(s\) over (\d+) m skipped/, '$1 Lücke(n) über $2 m übersprungen')}`],
+  [/^Connected (\d+) nodes in sequence$/, '$1 Knoten der Reihe nach verbunden'],
+  [/^Applies to the (\d+) selected nodes\.$/, 'Gilt für die $1 ausgewählten Knoten.'],
+  [/^Applies to all (\d+) nodes \(select nodes first to limit it\)\.$/, 'Gilt für alle $1 Knoten (vorher Knoten auswählen, um es einzuschränken).'],
+  [/^Placed (\d+) of (\d+) photo\(s\)\.(.*)$/, (m, a, b, rest) => `${a} von ${b} Foto(s) platziert.${rest.replace(/(\d+) without capture time/, '$1 ohne Aufnahmezeit').replace(/(\d+) outside the track's time range - check the time zone/, '$1 außerhalb des Track-Zeitraums – Zeitzone prüfen')}`],
+  [/^Placed (\d+) photo\(s\) from (.+)$/, '$1 Foto(s) aus $2 platziert'],
+  [/^(\d+) area\(s\) marked\.$/, '$1 Bereich(e) markiert.'],
+  [/^Blurred (\d+) area\(s\) in (.+)$/, '$1 Bereich(e) in $2 verpixelt'],
+  [/^Could not load the photo: (.+)$/, 'Foto konnte nicht geladen werden: $1'],
+  [/^Blurring failed: (.+)$/, 'Verpixeln fehlgeschlagen: $1'],
+  [/^Export failed: (.+)$/, 'Export fehlgeschlagen: $1'],
+  [/^Version$/, 'Version'],
+  [/^is available$/, 'ist verfügbar'],
+  [/^\(you have (.+)\)$/, '(installiert: $1)'],
+  [/^What's new in (.+)$/, 'Neu in $1'],
+  [/^Updating to (.+)$/, 'Aktualisierung auf $1'],
+  [/^Downloading… (\d+)%$/, 'Wird heruntergeladen… $1 %'],
+  [/^Updated to (.+) - reloading…$/, 'Auf $1 aktualisiert – wird neu geladen…'],
+  [/^Update check failed: (.+)$/, 'Update-Prüfung fehlgeschlagen: $1'],
+  [/^You're on the latest version \((.+)\)$/, 'Du hast die neueste Version ($1)'],
+  [/^Could not start the update: (.+)$/, 'Update konnte nicht gestartet werden: $1'],
+  [/^Sign-in error: (.+)$/, 'Anmeldefehler: $1'],
+  [/^(.+): FAILED \((.+)\)$/, '$1: FEHLGESCHLAGEN ($2)'],
+  [/^connect (.+): (.+)$/, 'verbinden $1: $2'],
+];
+
+// Blocks with inline markup, marked with data-i18n="key".
+const DE_HTML = {
+  'tip-keys': '<kbd>Strg K</kbd> öffnet die Befehlspalette, <kbd>?</kbd> alle Tastenkürzel',
+  'tip-vrtour': 'Das ganze Projekt mit Fotos als <code>.vrtour</code>-Datei speichern (Strg+S); wieder öffnen oder einfach auf die Karte ziehen',
+  'wiz1': 'Mit dem Google-Konto anmelden, dem die Fotos gehören sollen, dem Projekt einen beliebigen Namen geben (z. B. <i>Street View Upload</i>) und auf <b>Erstellen</b> klicken. Danach prüfen, dass es oben in der Projektauswahl ausgewählt ist.',
+  'wiz2': 'Auf der API-Seite auf <b>Aktivieren</b> klicken. Das ist kostenlos.',
+  'wiz3': '<ul><li><b>Jetzt starten</b>: beliebiger App-Name, deine E-Mail als Support- und Kontaktadresse</li><li>Zielgruppe: <b>Extern</b></li><li>Danach unter <b>Zielgruppe → Testnutzer</b> deine eigene Google-Adresse hinzufügen</li></ul>',
+  'wiz4': 'Anwendungstyp <b>Desktop-App</b>, beliebiger Name, <b>Erstellen</b>. Den Dialog mit Client-ID und Client-Secret offen lassen oder <b>JSON herunterladen</b> klicken.',
+  'wiz5': 'Beide Werte in die Felder unten kopieren oder die heruntergeladene <code>client_secret_….json</code> wählen – das füllt beide aus.',
+};
 
 const S = {
   nodes: [],
@@ -829,14 +1496,43 @@ const gcbs = (a, b) => S.conns.filter(c => (c.from === a && c.to === b) || (c.fr
 
 const map = L.map('map', { zoomControl: true, doubleClickZoom: false }).setView([54.3233, 10.1228], 13);
 // CARTO's free basemap tiles (basemaps.cartocdn.com) now require signing up for an
-// API key - unauthenticated requests just return tiles watermarked "API KEY REQUIRED".
-// OpenStreetMap's own raster tiles are still free with no key, so we use those and
-// fake the dark look with a CSS filter on the tile pane (see .leaflet-tile-pane below).
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  subdomains: 'abc',
-  maxZoom: 19,
-}).addTo(map);
+// API key, so the street map uses OpenStreetMap's own tiles, darkened with a CSS
+// filter (.osm-dark). Satellite imagery comes from Esri World Imagery, which is
+// much better for placing photos and checking north against buildings.
+const baseLayers = {
+  street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    subdomains: 'abc',
+    maxZoom: 20,
+    maxNativeZoom: 19,
+    className: 'osm-dark',
+  }),
+  satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics',
+    maxZoom: 20,
+    maxNativeZoom: 19,
+  }),
+};
+const labelLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 20,
+  maxNativeZoom: 19,
+});
+map.setMaxZoom(20);
+const savedLayer = storageGet('mapLayer') === 'satellite' ? 'satellite' : 'street';
+baseLayers[savedLayer].addTo(map);
+if (savedLayer === 'satellite' && storageGet('mapLabels') !== '0') labelLayer.addTo(map);
+const layerControl = L.control.layers(
+  { 'Street map': baseLayers.street, 'Satellite': baseLayers.satellite },
+  { 'Place names': labelLayer },
+  { position: 'topright' },
+).addTo(map);
+map.on('baselayerchange', e => {
+  const sat = e.layer === baseLayers.satellite;
+  storageSet('mapLayer', sat ? 'satellite' : 'street');
+  if (sat && storageGet('mapLabels') !== '0') labelLayer.addTo(map);
+  if (!sat) map.removeLayer(labelLayer);
+});
+map.on('overlayadd overlayremove', e => { if (e.layer === labelLayer) storageSet('mapLabels', e.type === 'overlayadd' ? '1' : '0'); });
 
 const niN = document.getElementById('ni-n');
 const niP = document.getElementById('ni-p');
@@ -1262,6 +1958,10 @@ function projectData() {
       captureOffset: n.captureOffset ?? null,
       blurred: !!n.blurred,
       gsvPhotoId: n.gsvPhotoId ?? null,
+      gsvStatus: n.gsvStatus ?? null,
+      gsvShareLink: n.gsvShareLink ?? null,
+      gsvSig: n.gsvSig ?? null,
+      hotspots: n.hotspots || [],
     })),
     conns: S.conns.map(c => ({ id: c.id, from: c.from, to: c.to })),
     startId: S.startId,
@@ -1288,7 +1988,7 @@ let projectDirty = false;
 const PROJECT_PICKER_TYPES = [{ description: 'Tour project', accept: { 'application/zip': ['.vrtour'] } }];
 
 function updateTitle() {
-  document.title = `${projectDirty ? '• ' : ''}${projectName || 'Untitled'} – Tour Editor`;
+  document.title = `${projectDirty ? '• ' : ''}${projectName || t('Untitled')} – ${t('Tour Editor')}`;
 }
 function markDirty() { if (!projectDirty) { projectDirty = true; updateTitle(); } }
 function markClean() { projectDirty = false; updateTitle(); }
@@ -1404,6 +2104,10 @@ async function openProjectFile(file, handle = null) {
           captureOffset: nd.captureOffset ?? null,
           blurred: !!nd.blurred,
           gsvPhotoId: nd.gsvPhotoId ?? null,
+          gsvStatus: nd.gsvStatus ?? null,
+          gsvShareLink: nd.gsvShareLink ?? null,
+          gsvSig: nd.gsvSig ?? null,
+          hotspots: Array.isArray(nd.hotspots) ? nd.hotspots : [],
         };
       }),
       conns: (data.conns || []).map(c => ({ id: c.id, from: c.from, to: c.to })),
@@ -1573,6 +2277,7 @@ function buildTourConfig() {
       lng: n.lng,
       heading: n.heading,
       links,
+      ...(n.hotspots?.length ? { markers: hotspotMarkers(n) } : {}),
     };
   });
   return { startId, nodesConf };
@@ -1669,6 +2374,10 @@ function staticCommands() {
     { icon: ICONS.eye, label: 'Blur faces & plates in the selected photo…', run: () => openBlurTool(S.selId) },
     { icon: ICONS.download, label: 'Export tour as website (.zip)', run: exportTourWebsite },
     { icon: ICONS.redo, label: 'Check for updates', run: () => checkForUpdates({ force: true, quiet: false }) },
+    { icon: ICONS.compass, label: 'Headings from walking direction…', run: openWalkHeadings },
+    { icon: ICONS.grid, label: 'Check tour…', run: () => openTourCheck() },
+    { icon: ICONS.upload, label: 'Check status on Google', run: () => refreshGoogleStatus() },
+    { icon: ICONS.keyboard, label: currentLang === 'de' ? 'Switch to English' : 'Auf Deutsch umschalten', run: () => setLang(currentLang === 'de' ? 'en' : 'de') },
     { icon: ICONS.grid, label: 'Export CSV manifest', run: () => document.getElementById('bcsv').click() },
     { icon: ICONS.folder, label: 'Set save target folder', run: () => document.getElementById('bdir').click() },
     { icon: ICONS.compass, label: 'Estimate headings from anchor', run: () => document.getElementById('best').click() },
@@ -1683,7 +2392,7 @@ function staticCommands() {
 function renderCmdk() {
   const q = cmdkInput.value.trim().toLowerCase();
   const all = staticCommands();
-  cmdkItems = q ? all.filter(c => c.label.toLowerCase().includes(q)) : all;
+  cmdkItems = q ? all.filter(c => c.label.toLowerCase().includes(q) || t(c.label).toLowerCase().includes(q)) : all;
   cmdkActive = 0;
   cmdkList.innerHTML = '';
   if (!cmdkItems.length) {
@@ -1747,6 +2456,7 @@ const uplStart = document.getElementById('upl-start');
 const uplLog = document.getElementById('upl-log');
 
 function uplLine(msg) {
+  msg = t(msg);
   uplLog.textContent += `${msg}\n`;
   uplLog.scrollTop = uplLog.scrollHeight;
 }
@@ -1787,12 +2497,17 @@ function uploadCandidates() {
 
 function refreshUploadSummary() {
   const ready = uploadCandidates();
-  const done = ready.filter(n => n.gsvPhotoId).length;
+  const done = ready.filter(n => n.gsvPhotoId);
+  const changed = done.filter(gsvChanged).length;
   const missing = S.nodes.length - ready.length;
   const reupload = document.getElementById('upl-reupload').checked;
-  const parts = [`${reupload ? ready.length : ready.length - done} photo(s) to upload`];
-  if (done) parts.push(`${done} already uploaded${reupload ? ' (will be uploaded again)' : ' (skipped, links are still updated)'}`);
-  if (missing) parts.push(`${missing} without a photo loaded (drop the file again to include it)`);
+  const parts = [t('{n} photo(s) to upload', { n: reupload ? ready.length : ready.length - done.length })];
+  if (done.length) {
+    parts.push(reupload
+      ? t('{n} already uploaded (will be uploaded again)', { n: done.length })
+      : t('{n} already uploaded, {c} of them changed since (will be updated)', { n: done.length, c: changed }));
+  }
+  if (missing) parts.push(t('{n} without a photo loaded (drop the file again to include it)', { n: missing }));
   uplSummary.textContent = `${parts.join(' · ')}.`;
 }
 document.getElementById('upl-reupload').addEventListener('change', refreshUploadSummary);
@@ -1875,19 +2590,35 @@ uplSignin.onclick = async () => {
   }
 };
 
+let uplSkipCheck = false;
+
 uplStart.onclick = async () => {
   const nodes = uploadCandidates();
   if (!nodes.length) {
-    uplLine('No nodes with a loaded photo and GPS position to upload.');
+    uplLine(t('No nodes with a loaded photo and GPS position to upload.'));
     return;
   }
+  // Check the tour first: a photo Google rejects (not 2:1, too big) only fails
+  // after the whole upload otherwise.
+  if (!uplSkipCheck) {
+    const issues = await checkTour();
+    const ids = new Set(nodes.map(n => n.id));
+    if (issues.some(i => i.level === 'error' && ids.has(i.id))) {
+      openTourCheck({ onContinue: () => { uplSkipCheck = true; uplStart.click(); } });
+      return;
+    }
+    const warns = issues.filter(i => i.level !== 'error').length;
+    if (warns) uplLine(t('{n} warning(s) - see Tools → Check tour', { n: warns }));
+  }
+  uplSkipCheck = false;
+
   const reupload = document.getElementById('upl-reupload').checked;
   const todo = nodes.filter(n => reupload || !n.gsvPhotoId);
   uplStart.disabled = true;
   const placeId = uplPlace.value.trim() || null;
-  let uploaded = 0;
-  if (todo.length) uplLine(`Uploading ${todo.length} photo(s)...`);
-  if (todo.length < nodes.length) uplLine(`Skipping ${nodes.length - todo.length} photo(s) uploaded earlier.`);
+  const justUploaded = new Set();
+  if (todo.length) uplLine(t('Uploading {n} photo(s)...', { n: todo.length }));
+  if (todo.length < nodes.length) uplLine(t('Skipping {n} photo(s) uploaded earlier.', { n: nodes.length - todo.length }));
 
   for (const n of todo) {
     try {
@@ -1898,53 +2629,71 @@ uplStart.onclick = async () => {
       const r = await fetch(`/api/upload-photo?${params}`, { method: 'POST', body: buf });
       const j = await r.json();
       if (r.status === 401) {
-        uplLine(`${n.photoName}: not signed in - click "Sign in with Google" first.`);
+        uplLine(t('{name}: not signed in - click "Sign in with Google" first.', { name: n.photoName }));
         break;
       }
       if (!j.ok) {
-        uplLine(`${n.photoName}: FAILED (${j.error || 'unknown error'})`);
+        uplLine(`${n.photoName}: ${t('FAILED')} (${j.error || 'unknown error'})`);
         continue;
       }
       // Remember the Google photo ID so a later run can skip this photo.
       n.gsvPhotoId = j.photoId;
-      uploaded++;
+      n.gsvStatus = 'processing';
+      n.gsvSig = null;
+      justUploaded.add(n);
       scheduleAutosave();
       uplLine(`${n.photoName}: OK`);
     } catch (err) {
-      uplLine(`${n.photoName}: FAILED (${err.message})`);
+      uplLine(`${n.photoName}: ${t('FAILED')} (${err.message})`);
     }
   }
 
-  // Links are keyed by node id, so two photos with the same file name can't clash.
-  const idOf = Object.fromEntries(nodes.filter(n => n.gsvPhotoId).map(n => [n.id, n.gsvPhotoId]));
-  if (Object.keys(idOf).length > 1) {
-    uplLine('Linking connections...');
-    const connects = {};
-    for (const n of nodes) {
-      if (!idOf[n.id]) continue;
-      const linked = getLinkedNodes(n.id).filter(o => idOf[o.id]).map(o => o.id);
-      if (linked.length) connects[n.id] = linked;
-    }
+  // Push links for new photos, and position / heading / links for photos that
+  // changed in the editor since they were uploaded.
+  const items = nodes.filter(n => n.gsvPhotoId && (justUploaded.has(n) || gsvChanged(n)));
+  if (items.length) {
+    uplLine(t('Updating position, heading and links of {n} photo(s)...', { n: items.length }));
     try {
-      const r = await fetch('/api/connect', {
+      const r = await fetch('/api/update-photos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name_to_id: idOf, connects }),
+        body: JSON.stringify({
+          items: items.map(n => ({
+            id: n.gsvPhotoId, lat: n.lat, lng: n.lng, heading: n.heading,
+            connections: getLinkedNodes(n.id).map(o => o.gsvPhotoId).filter(Boolean),
+          })),
+        }),
       });
       const j = await r.json();
+      if (!j.ok) throw new Error(j.error || 'failed');
       (j.results || []).forEach(res => {
-        const name = gn(res.filename)?.photoName || res.filename;
-        uplLine(`connect ${name}: ${res.ok ? 'OK' : 'FAILED (' + res.error + ')'}`);
+        const n = items.find(x => x.gsvPhotoId === res.id);
+        if (!n) return;
+        if (res.ok) n.gsvSig = gsvSignature(n);
+        uplLine(`${t('update')} ${n.photoName}: ${res.ok ? 'OK' : `${t('FAILED')} (${res.error})`}`);
       });
+      scheduleAutosave();
     } catch (err) {
-      uplLine(`Connection step failed: ${err.message}`);
+      uplLine(t('Updating on Google failed: {msg}', { msg: err.message }));
     }
+  } else if (!todo.length) {
+    uplLine(t('Nothing changed since the last upload.'));
   }
 
-  uplLine(`\nDone: ${uploaded}/${todo.length} uploaded.`);
-  uplLine('Check: https://www.google.com/maps/contrib/');
+  uplLine(`\n${t('Done: {a}/{b} uploaded.', { a: justUploaded.size, b: todo.length })}`);
+  const counts = await refreshGoogleStatus({ quiet: true });
+  if (counts) uplLine(`${t('Status on Google')}: ${Object.entries(counts).map(([k, v]) => `${v} ${t(k)}`).join(', ')}`);
+  uplLine(t('Check: https://www.google.com/maps/contrib/'));
   refreshUploadSummary();
+  refreshAllMarkers();
+  updateSb();
   uplStart.disabled = false;
+};
+
+document.getElementById('upl-refresh-status').onclick = async () => {
+  const counts = await refreshGoogleStatus();
+  if (counts) uplLine(`${t('Status on Google')}: ${Object.entries(counts).map(([k, v]) => `${v} ${t(k)}`).join(', ')}`);
+  refreshUploadSummary();
 };
 
 function normalizeHeading(v) {
@@ -2088,7 +2837,7 @@ function addEmptyNode(lat, lng) {
   pushUndo();
   const node = {
     id: uid(),
-    name: `Point ${S.nodes.length + 1}`,
+    name: t('Point {n}', { n: S.nodes.length + 1 }),
     lat,
     lng,
     heading: null,
@@ -2113,9 +2862,6 @@ function addEmptyNode(lat, lng) {
 
 function markerHtml(n) {
   const i = S.nodes.indexOf(n);
-  const title = n.id === S.connFrom
-    ? 'Right-click a node to finish the connection'
-    : 'Click to select · Ctrl/Shift-click to multi-select · right-click (or long-press) to connect';
   const cls = ['nd'];
   if (n.id === S.selId) cls.push('sel');
   if (n.id === S.startId) cls.push('start');
@@ -2125,7 +2871,8 @@ function markerHtml(n) {
   const wedge = n.heading != null
     ? `<svg class="nd-wedge" viewBox="0 0 44 44" style="transform:rotate(${n.heading}deg)"><path d="M22 3 L28 16 L16 16 Z" fill="rgba(255,255,255,.85)"/></svg>`
     : '';
-  return `<div class="${cls.join(' ')}" title="${title}">${wedge}${i + 1}<div class="nl">${escapeHtml(n.name)}${n.id === S.startId ? ' start' : ''}</div></div>`;
+  const gs = n.gsvPhotoId ? `<span class="gs ${n.gsvStatus || ''}${gsvChanged(n) ? ' changed' : ''}"></span>` : '';
+  return `<div class="${cls.join(' ')}">${wedge}${gs}${i + 1}<div class="nl">${escapeHtml(n.name)}${n.id === S.startId ? ' start' : ''}</div></div>`;
 }
 
 let suppressNextNodeClick = false;
@@ -2170,6 +2917,7 @@ function createMarker(n, { animate = true } = {}) {
     scheduleAutosave();
   });
   n.marker = mk;
+  bindMarkerTip(n);
 }
 
 function attachLongPress(el, id) {
@@ -2380,7 +3128,9 @@ function updateSb() {
   refreshLatLngUi(n);
   gpsBadge.innerHTML = n.hasGps ? '<span class="gok">GPS</span>' : '<span class="gno">No GPS</span>';
   phB.innerHTML = n.photoUrl ? `<img src="${n.photoUrl}" alt="">` : '<span>No photo</span>';
-  phN.textContent = [n.photoName, n.blurred && 'blurred', n.gsvPhotoId && 'uploaded to Google'].filter(Boolean).join(' · ');
+  phN.innerHTML = [escapeHtml(n.photoName || ''), n.blurred && t('blurred')].filter(Boolean).join(' · ') +
+    (n.gsvPhotoId ? `<div style="margin-top:4px">${gsvStatusHtml(n)}</div>` : '');
+  renderHotspots(n);
   document.getElementById('bn-blur').style.display = n.photoFile ? '' : 'none';
   refreshHeadingUi(n);
   ensurePanoViewer(n);
@@ -2413,6 +3163,7 @@ async function ensurePanoViewer(n) {
   if (!panoViewer) {
     panoViewer = new Viewer({
       container: document.getElementById('pano-view'),
+      plugins: [MarkersPlugin],
       panorama: n.photoUrl,
       navbar: ['zoom', 'move'],
       defaultYaw: getNodeEditorYaw(n),
@@ -2437,6 +3188,7 @@ async function ensurePanoViewer(n) {
   } else {
     panoViewer.rotate({ yaw: getNodeEditorYaw(n), pitch: 0 });
   }
+  refreshPanoMarkers(n);
 }
 
 function renderConnList() {
@@ -2604,6 +3356,8 @@ function snapshotState() {
       photoName: n.photoName, photoFile: n.photoFile || null,
       captureTime: n.captureTime, captureOffset: n.captureOffset ?? null,
       blurred: !!n.blurred, gsvPhotoId: n.gsvPhotoId ?? null,
+      gsvStatus: n.gsvStatus ?? null, gsvShareLink: n.gsvShareLink ?? null, gsvSig: n.gsvSig ?? null,
+      hotspots: (n.hotspots || []).map(h => ({ ...h })),
     })),
     conns: S.conns.map(c => ({ id: c.id, from: c.from, to: c.to })),
     selId: S.selId, startId: S.startId, nxt: S.nxt,
@@ -2823,7 +3577,7 @@ function renderNodeList() {
     const row = document.createElement('div');
     row.className = `nrow${n.id === S.selId ? ' sel' : ''}${S.multiSel.has(n.id) ? ' multi' : ''}`;
     row.draggable = true;
-    row.innerHTML = `<span class="nrow-drag">⠿</span><span class="nrow-idx">${i + 1}</span><span class="nrow-name">${escapeHtml(n.name)}</span><span class="cx" title="Delete">×</span>`;
+    row.innerHTML = `<span class="nrow-drag">⠿</span><span class="nrow-idx">${i + 1}</span>${thumbImg(n)}<span class="nrow-name">${escapeHtml(n.name)}</span><span class="cx" title="Delete">×</span>`;
     row.addEventListener('click', e => {
       if (e.target.classList.contains('cx')) return;
       if (e.ctrlKey || e.metaKey || e.shiftKey) toggleMultiSelect(n.id);
@@ -3093,6 +3847,10 @@ const TOOL_ACTIONS = {
   website: exportTourWebsite,
   updates: () => checkForUpdates({ force: true, quiet: false }),
   saveas: () => saveProject({ saveAs: true }),
+  walkheadings: () => openWalkHeadings(),
+  check: () => openTourCheck(),
+  gstatus: () => refreshGoogleStatus(),
+  lang: () => setLang(currentLang === 'de' ? 'en' : 'de'),
 };
 
 // ── Capture time (EXIF) ───────────────────────────
@@ -3327,9 +4085,11 @@ function drawBlur() {
   all.forEach(r => {
     const x = (r.x - ox) * scale, y = (r.y - oy) * scale, w = r.w * scale, h = r.h * scale;
     pixelate(blurCtx, x, y, w, h, Math.max(3, blurBlockSize(r) * scale));
-    blurCtx.strokeStyle = '#c4b5fd';
+    blurCtx.strokeStyle = r.auto ? '#f6b93b' : '#c4b5fd';
     blurCtx.lineWidth = 2;
+    blurCtx.setLineDash(r.auto ? [8, 5] : []);
     blurCtx.strokeRect(x, y, w, h);
+    blurCtx.setLineDash([]);
   });
   document.getElementById('blur-count').textContent = blur.rects.length
     ? `${blur.rects.length} area(s) marked.` : 'Drag boxes over faces and plates.';
@@ -3367,7 +4127,13 @@ blurCanvas.addEventListener('pointerup', () => {
   const d = blur.drag;
   blur.drag = null;
   blurStage.classList.remove('panning');
-  if (d?.kind === 'rect' && d.rect && d.rect.w * blur.scale > 4 && d.rect.h * blur.scale > 4) blur.rects.push(d.rect);
+  if (d?.kind === 'rect' && d.rect && d.rect.w * blur.scale > 4 && d.rect.h * blur.scale > 4) {
+    blur.rects.push(d.rect);
+  } else if (d?.kind === 'rect') {
+    // A click without dragging removes the box under the pointer.
+    const i = blur.rects.findLastIndex(r => d.x0 >= r.x && d.x0 <= r.x + r.w && d.y0 >= r.y && d.y0 <= r.y + r.h);
+    if (i >= 0) blur.rects.splice(i, 1);
+  }
   drawBlur();
 });
 blurCanvas.addEventListener('wheel', e => {
@@ -3641,6 +4407,517 @@ async function openPendingProject() {
   }
 }
 
+// ── Box select (Shift + drag on the map) ──────────
+// Leaflet's own Shift+drag zooms to a box; here it selects nodes instead.
+map.boxZoom.disable();
+let boxSel = null;
+// Pointer events throughout: cancelling pointerdown also suppresses the mouse events.
+map.getContainer().addEventListener('pointerdown', e => {
+  if (!e.shiftKey || e.button !== 0 || e.target.closest('.leaflet-marker-icon, .leaflet-control')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  map.dragging.disable();
+  const start = map.mouseEventToLatLng(e);
+  boxSel = { start, rect: L.rectangle([start, start], { color: '#c4b5fd', weight: 1.5, dashArray: '4 4', fillOpacity: 0.12, interactive: false }).addTo(map) };
+}, true);
+document.addEventListener('pointermove', e => {
+  if (boxSel) boxSel.rect.setBounds(L.latLngBounds(boxSel.start, map.mouseEventToLatLng(e)));
+});
+document.addEventListener('pointerup', () => {
+  if (!boxSel) return;
+  const bounds = boxSel.rect.getBounds();
+  map.removeLayer(boxSel.rect);
+  boxSel = null;
+  map.dragging.enable();
+  const hit = S.nodes.filter(n => bounds.contains([n.lat, n.lng]));
+  if (!hit.length) return;
+  if (S.connFrom) cancelConnect();
+  hideQuickMenu();
+  hit.forEach(n => S.multiSel.add(n.id));
+  refreshAllMarkers();
+  updateMultiBar();
+  renderNodeList();
+  toast(t('{n} node(s) selected', { n: S.multiSel.size }));
+});
+
+// ── Thumbnails (node list, marker hover) ──────────
+const thumbCache = new WeakMap(); // photoFile -> object URL ('' = failed, PENDING = queued)
+const PENDING = Symbol('pending');
+const thumbQueue = [];
+let thumbBusy = false;
+
+function requestThumb(n) {
+  const f = n?.photoFile;
+  if (!f) return null;
+  const v = thumbCache.get(f);
+  if (typeof v === 'string') return v || null;
+  if (v !== PENDING) {
+    thumbCache.set(f, PENDING);
+    thumbQueue.push(f);
+    pumpThumbs();
+  }
+  return null;
+}
+
+// Decode one photo at a time: 8K panoramas are big, and a whole tour dropped
+// at once would otherwise decode dozens in parallel.
+async function pumpThumbs() {
+  if (thumbBusy) return;
+  thumbBusy = true;
+  while (thumbQueue.length) {
+    const f = thumbQueue.shift();
+    try {
+      const bmp = await createImageBitmap(f, { resizeWidth: 192, resizeHeight: 96, resizeQuality: 'medium' });
+      const c = new OffscreenCanvas(192, 96);
+      c.getContext('2d').drawImage(bmp, 0, 0);
+      bmp.close();
+      const url = URL.createObjectURL(await c.convertToBlob({ type: 'image/jpeg', quality: 0.75 }));
+      thumbCache.set(f, url);
+      S.nodes.filter(n => n.photoFile === f).forEach(n => {
+        document.querySelectorAll(`img[data-thumb="${n.id}"]`).forEach(img => { img.src = url; img.hidden = false; });
+        if (n.marker?.isTooltipOpen()) n.marker.setTooltipContent(markerTipHtml(n));
+      });
+    } catch {
+      thumbCache.set(f, '');
+    }
+  }
+  thumbBusy = false;
+}
+
+function thumbImg(n) {
+  const src = requestThumb(n);
+  if (!n.photoFile) return '';
+  return `<img class="nrow-thumb" data-thumb="${n.id}" alt=""${src ? ` src="${src}"` : ' hidden'}>`;
+}
+
+function markerTipHtml(n) {
+  const src = requestThumb(n);
+  const status = gsvLabel(n);
+  return `${src ? `<img src="${src}" alt="">` : ''}<div>${escapeHtml(n.name)}</div>${status ? `<div class="sub">${escapeHtml(status)}</div>` : ''}`;
+}
+
+function bindMarkerTip(n) {
+  n.marker?.bindTooltip(() => markerTipHtml(n), { direction: 'top', offset: [0, -20], className: 'thumb-tip', opacity: 1 });
+}
+
+// ── Google status (published / processing / rejected) ─
+const GSV_LABELS = {
+  published: 'Published on Google Maps',
+  processing: 'Uploaded, still being processed by Google',
+  rejected: 'Rejected by Google',
+  missing: 'No longer on Google (deleted?)',
+  error: 'Google status unknown',
+};
+
+// What Google should know about a node: when this changes after an upload,
+// the next upload run pushes the new position / heading / links.
+function gsvSignature(n) {
+  const links = getLinkedNodes(n.id).map(o => o.gsvPhotoId).filter(Boolean).sort();
+  return JSON.stringify([n.lat.toFixed(7), n.lng.toFixed(7), n.heading == null ? null : n.heading.toFixed(2), links]);
+}
+
+function gsvChanged(n) {
+  return !!n.gsvPhotoId && n.gsvSig !== gsvSignature(n);
+}
+
+function gsvLabel(n) {
+  if (!n.gsvPhotoId) return '';
+  const base = t(GSV_LABELS[n.gsvStatus] || 'Uploaded to Google');
+  return gsvChanged(n) ? `${base} · ${t('changes not on Google yet')}` : base;
+}
+
+function gsvStatusHtml(n) {
+  if (!n.gsvPhotoId) return '';
+  const link = n.gsvShareLink ? ` <a href="${escapeHtml(n.gsvShareLink)}" target="_blank" rel="noopener">${t('open')}</a>` : '';
+  return `<span class="gstat"><span class="dot ${n.gsvStatus || ''}"></span>${escapeHtml(gsvLabel(n))}${link}</span>`;
+}
+
+async function refreshGoogleStatus({ quiet = false } = {}) {
+  const nodes = S.nodes.filter(n => n.gsvPhotoId);
+  if (!nodes.length) { if (!quiet) toast(t('No photos uploaded yet')); return null; }
+  try {
+    const r = await fetch('/api/photo-status', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: nodes.map(n => n.gsvPhotoId) }),
+    });
+    const j = await r.json();
+    if (r.status === 401) { if (!quiet) toast(t('Sign in with Google first (Upload to Google)')); return null; }
+    if (!j.ok) throw new Error(j.error || 'failed');
+    const counts = {};
+    nodes.forEach(n => {
+      const s = j.photos[n.gsvPhotoId];
+      if (!s) return;
+      n.gsvStatus = s.status;
+      n.gsvShareLink = s.shareLink || null;
+      counts[s.status] = (counts[s.status] || 0) + 1;
+      // Deleted on Google's side: forget the ID so the next upload sends it again.
+      if (s.status === 'missing') { n.gsvPhotoId = null; n.gsvSig = null; }
+    });
+    refreshAllMarkers();
+    updateSb();
+    scheduleAutosave();
+    const summary = Object.entries(counts).map(([k, v]) => `${v} ${t(k)}`).join(' · ');
+    if (!quiet) toast(t('Google status: {summary}', { summary }));
+    return counts;
+  } catch (err) {
+    if (!quiet) toast(t('Could not get the status from Google: {msg}', { msg: err.message }));
+    return null;
+  }
+}
+
+// ── Headings from walking direction ───────────────
+function openWalkHeadings() {
+  const list = scopeNodes();
+  if (list.length < 2) { alert(t('Add at least two nodes first.')); return; }
+  document.getElementById('walkh-scope').textContent = scopeLabel(list);
+  const sel = document.getElementById('walkh-ref');
+  const withHeading = list.filter(n => n.heading != null && n.headingSource !== 'auto');
+  sel.innerHTML = `<option value="">${escapeHtml(t('None - the camera front faced the walking direction'))}</option>` +
+    withHeading.map(n => `<option value="${n.id}">${escapeHtml(n.name)} (${n.heading.toFixed(1)}°)</option>`).join('');
+  const cur = withHeading.find(n => n.id === S.selId);
+  sel.value = cur ? cur.id : (withHeading[0]?.id || '');
+  openModal('walkh-back');
+}
+
+function walkBearing(order, i) {
+  const cur = order[i], prev = order[i - 1], next = order[i + 1];
+  const far = (a, b) => a && b && distanceMeters(a, b) > 0.3;
+  if (far(prev, next)) return bearingDeg(prev, next);
+  if (far(cur, next)) return bearingDeg(cur, next);
+  if (far(prev, cur)) return bearingDeg(prev, cur);
+  return null;
+}
+
+document.getElementById('walkh-go').onclick = async () => {
+  const list = scopeNodes();
+  const byTime = document.querySelector('input[name="walkh-order"]:checked').value === 'time';
+  const overwrite = document.getElementById('walkh-overwrite').checked;
+  const ref = gn(document.getElementById('walkh-ref').value);
+  let order = list;
+  if (byTime) {
+    for (const n of list) await ensureCaptureTime(n);
+    order = list.map((n, i) => ({ n, i, t: n.captureTime ? Date.parse(`${n.captureTime}Z`) : Infinity }))
+      .sort((a, b) => a.t - b.t || a.i - b.i).map(o => o.n);
+  }
+  let offset = 0;
+  if (ref) {
+    const wb = walkBearing(order, order.indexOf(ref));
+    if (wb == null) { alert(t('The reference photo has no neighbour to walk from or to.')); return; }
+    offset = ref.heading - wb;
+  }
+  pushUndo();
+  let changed = 0;
+  order.forEach((n, i) => {
+    if (n === ref) return;
+    if (!overwrite && n.heading != null && n.headingSource !== 'auto') return;
+    const wb = walkBearing(order, i);
+    if (wb == null) return;
+    n.heading = normalizeHeading(wb + offset);
+    n.headingSource = 'auto';
+    n.viewYaw = normalizeRad(-degToRad(n.heading));
+    changed++;
+  });
+  refreshAllMarkers();
+  panoNodeId = null;
+  updateSb();
+  scheduleAutosave();
+  closeModal('walkh-back');
+  toast(t('Set the heading of {n} photo(s)', { n: changed }));
+};
+
+// ── Tour check ────────────────────────────────────
+const jpegInfoCache = new WeakMap();
+
+// Size and 360° metadata straight from the JPEG header, without decoding the image.
+async function jpegInfo(file) {
+  if (jpegInfoCache.has(file)) return jpegInfoCache.get(file);
+  const buf = new Uint8Array(await file.slice(0, Math.min(file.size, 2 * 1024 * 1024)).arrayBuffer());
+  const info = { width: null, height: null, gpano: false };
+  let p = 2;
+  while (p + 9 < buf.length && buf[p] === 0xFF) {
+    const m = buf[p + 1];
+    const len = (buf[p + 2] << 8) | buf[p + 3];
+    if (m >= 0xC0 && m <= 0xCF && ![0xC4, 0xC8, 0xCC].includes(m)) {
+      info.height = (buf[p + 5] << 8) | buf[p + 6];
+      info.width = (buf[p + 7] << 8) | buf[p + 8];
+      break;
+    }
+    if (m === 0xE1 && !info.gpano) {
+      const seg = new TextDecoder('latin1').decode(buf.subarray(p + 4, Math.min(buf.length, p + 2 + len)));
+      if (seg.includes('GPano') || seg.includes('equirectangular')) info.gpano = true;
+    }
+    if (m === 0xDA) break;
+    p += 2 + len;
+  }
+  jpegInfoCache.set(file, info);
+  return info;
+}
+
+async function checkTour() {
+  const issues = [];
+  const add = (n, level, msg) => issues.push({ id: n.id, level, msg });
+  for (const n of S.nodes) {
+    if (!n.photoFile) {
+      add(n, 'warn', t('No photo loaded - this node is not uploaded'));
+    } else {
+      const info = await jpegInfo(n.photoFile);
+      if (!info.width) add(n, 'warn', t('Could not read the image size'));
+      else if (Math.abs(info.width / info.height - 2) > 0.02) add(n, 'error', t('Not a 360° panorama: {w}×{h}, Google needs a 2:1 image', { w: info.width, h: info.height }));
+      else if (info.width < 4096) add(n, 'warn', t('Only {w}×{h} - Google recommends at least 4096×2048', { w: info.width, h: info.height }));
+      if (!info.gpano) add(n, 'warn', t('No 360° (GPano) metadata - Google may not show it as a panorama'));
+      if (n.photoFile.size > 75 * 1024 * 1024) add(n, 'error', t('Larger than Google\'s 75 MB limit'));
+    }
+    if (!n.hasGps) add(n, 'warn', t('Position was placed by hand, not from GPS - check that it is right'));
+    if (n.heading == null) add(n, 'warn', t('No heading (north) set'));
+    if (S.nodes.length > 1 && !getLinkedNodes(n.id).length) add(n, 'warn', t('Not connected to any other node'));
+    if (n.gsvStatus === 'rejected') add(n, 'error', t('Rejected by Google'));
+  }
+  S.conns.forEach(c => {
+    const a = gn(c.from), b = gn(c.to);
+    if (a && b && distanceMeters(a, b) > 50) add(a, 'warn', t('Link to {name} is {d} long', { name: b.name, d: formatDistance(distanceMeters(a, b)) }));
+  });
+  for (let i = 0; i < S.nodes.length; i++) {
+    for (let k = i + 1; k < S.nodes.length; k++) {
+      if (distanceMeters(S.nodes[i], S.nodes[k]) < 0.5) add(S.nodes[i], 'warn', t('Same position as {name}', { name: S.nodes[k].name }));
+    }
+  }
+  return issues.sort((a, b) => (a.level === 'error' ? 0 : 1) - (b.level === 'error' ? 0 : 1));
+}
+
+let checkContinue = null;
+async function openTourCheck({ onContinue = null } = {}) {
+  checkContinue = onContinue;
+  const list = document.getElementById('check-list');
+  list.innerHTML = `<div class="check-ok" style="color:var(--text-dim)">${t('Checking…')}</div>`;
+  openModal('check-back');
+  const issues = await checkTour();
+  const errors = issues.filter(i => i.level === 'error').length;
+  document.getElementById('check-summary').textContent = issues.length
+    ? t('{e} problem(s) that stop the upload, {w} warning(s).', { e: errors, w: issues.length - errors })
+    : '';
+  list.innerHTML = issues.length ? '' : `<div class="check-ok">${t('Everything looks good.')}</div>`;
+  issues.forEach(i => {
+    const n = gn(i.id);
+    const row = document.createElement('div');
+    row.className = `check-row ${i.level}`;
+    row.innerHTML = `<span class="lv"></span><span class="nm">${escapeHtml(n?.name)}</span><span class="msg">${escapeHtml(i.msg)}</span><button class="btn">${t('Show')}</button>`;
+    row.querySelector('button').onclick = () => {
+      document.querySelectorAll('.modal-back.show').forEach(el => el.classList.remove('show'));
+      jumpToNode(i.id, false);
+    };
+    list.appendChild(row);
+  });
+  document.getElementById('check-continue').style.display = onContinue ? '' : 'none';
+  return issues;
+}
+document.getElementById('check-rerun').onclick = () => openTourCheck({ onContinue: checkContinue });
+document.getElementById('check-continue').onclick = () => {
+  closeModal('check-back');
+  const fn = checkContinue;
+  checkContinue = null;
+  fn?.();
+};
+
+// ── Face detection in the blur tool ───────────────
+const MEDIAPIPE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1';
+const FACE_MODELS = [
+  'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite',
+  'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+];
+let faceDetectorPromise = null;
+
+function loadFaceDetector() {
+  faceDetectorPromise ??= (async () => {
+    const { FilesetResolver, FaceDetector } = await import(`${MEDIAPIPE}/vision_bundle.mjs`);
+    const fileset = await FilesetResolver.forVisionTasks(`${MEDIAPIPE}/wasm`);
+    let lastErr;
+    for (const model of FACE_MODELS) {
+      try {
+        return await FaceDetector.createFromOptions(fileset, {
+          baseOptions: { modelAssetPath: model, delegate: 'CPU' },
+          runningMode: 'IMAGE',
+          minDetectionConfidence: 0.6,
+        });
+      } catch (err) { lastErr = err; }
+    }
+    throw lastErr;
+  })();
+  faceDetectorPromise.catch(() => { faceDetectorPromise = null; });
+  return faceDetectorPromise;
+}
+
+function iou(a, b) {
+  const x = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+  const y = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  const inter = x * y;
+  return inter / Math.min(a.w * a.h, b.w * b.h);
+}
+
+// The detector expects ordinary photos with fairly large faces, while faces in a
+// 360° panorama are small. So scan the band around the horizon in overlapping
+// square tiles at a few sizes and merge what it finds.
+async function detectFaces() {
+  const btn = document.getElementById('blur-detect');
+  const label = document.getElementById('blur-count');
+  btn.disabled = true;
+  try {
+    label.textContent = t('Loading face detection…');
+    const detector = await loadFaceDetector();
+    const { bmp } = blur;
+    const W = bmp.width, H = bmp.height;
+    const y0 = Math.round(H * 0.2), y1 = Math.round(H * 0.8);
+    const sizes = [H / 16, H / 8, H / 4].map(Math.round).filter(s => s >= 96);
+    const tiles = [];
+    sizes.forEach(T => {
+      const step = Math.round(T / 2);
+      for (let y = y0; y <= y1 - T + step; y += step) {
+        for (let x = 0; x < W; x += step) tiles.push({ x: Math.min(x, W - T), y: Math.min(y, H - T), T });
+      }
+    });
+    const tile = document.createElement('canvas');
+    const tctx = tile.getContext('2d');
+    const found = [];
+    for (let i = 0; i < tiles.length; i++) {
+      const { x, y, T } = tiles[i];
+      const cs = Math.min(T, 320);
+      if (tile.width !== cs) { tile.width = cs; tile.height = cs; }
+      tctx.drawImage(bmp, x, y, T, T, 0, 0, cs, cs);
+      const k = T / cs;
+      detector.detect(tile).detections.forEach(d => {
+        const b = d.boundingBox;
+        found.push({ x: x + b.originX * k, y: y + b.originY * k, w: b.width * k, h: b.height * k, score: d.categories?.[0]?.score ?? 0.5 });
+      });
+      if (i % 25 === 0) {
+        label.textContent = t('Looking for faces… {p}%', { p: Math.round((i / tiles.length) * 100) });
+        await new Promise(r => setTimeout(r));
+      }
+    }
+    const minSide = Math.max(16, W / 400);
+    found.splice(0, found.length, ...found.filter(f => f.w >= minSide && f.h >= minSide));
+    found.sort((a, b) => b.score - a.score);
+    const kept = [];
+    found.forEach(f => {
+      if (!kept.some(k => iou(k, f) > 0.3) && !blur.rects.some(r => iou(r, f) > 0.3)) kept.push(f);
+    });
+    kept.forEach(f => {
+      // Grow the box a bit so hair and chin are covered too.
+      const g = 0.35;
+      const x = Math.max(0, f.x - f.w * g), y = Math.max(0, f.y - f.h * g);
+      blur.rects.push({ x, y, w: Math.min(W - x, f.w * (1 + 2 * g)), h: Math.min(H - y, f.h * (1 + 2 * g)), auto: true });
+    });
+    drawBlur();
+    label.textContent = kept.length
+      ? t('{n} face(s) suggested (dashed) - click a box to remove it, drag to add more.', { n: kept.length })
+      : t('No faces found - mark them by hand if there are any.');
+  } catch (err) {
+    label.textContent = t('Face detection failed: {msg}', { msg: err.message || err });
+  } finally {
+    btn.disabled = false;
+  }
+}
+document.getElementById('blur-detect').onclick = detectFaces;
+
+// ── Info points (hotspots) ────────────────────────
+let hsEditing = null; // { nodeId, id } of the point in the dialog
+
+function renderHotspots(n) {
+  const list = document.getElementById('hs-list');
+  const items = n.hotspots || [];
+  list.innerHTML = items.length ? '' : `<div class="mini" style="margin:0 0 6px">${t('No info points yet.')}</div>`;
+  items.forEach(h => {
+    const row = document.createElement('div');
+    row.className = 'hs-row';
+    row.innerHTML = `<span class="t" title="${escapeHtml(t('Look at it'))}">ⓘ ${escapeHtml(h.title || t('(no title)'))}</span><button class="e" title="${escapeHtml(t('Edit'))}">✎</button><button class="x" title="${escapeHtml(t('Delete'))}">×</button>`;
+    row.querySelector('.t').onclick = () => panoViewer?.rotate({ yaw: h.yaw, pitch: 0 });
+    row.querySelector('.e').onclick = () => openHotspot(n, h);
+    row.querySelector('.x').onclick = () => deleteHotspot(n, h.id);
+    list.appendChild(row);
+  });
+  document.getElementById('hs-add').disabled = !n.photoUrl;
+}
+
+function refreshPanoMarkers(n) {
+  const plugin = panoViewer?.getPlugin(MarkersPlugin);
+  if (!plugin) return;
+  plugin.setMarkers((n?.hotspots || []).map(h => ({
+    id: h.id,
+    position: { yaw: h.yaw, pitch: h.pitch },
+    html: '<div class="hs-pin">i</div>',
+    anchor: 'center center',
+    tooltip: escapeHtml(h.title || ''),
+  })));
+}
+
+function openHotspot(n, h = null) {
+  if (!h && !panoViewer) return;
+  const yaw = h ? h.yaw : lockViewerPitch(panoViewer).yaw;
+  hsEditing = { nodeId: n.id, id: h?.id || null, yaw };
+  document.getElementById('hs-title-h').textContent = h ? t('Edit info point') : t('New info point');
+  document.getElementById('hs-title').value = h?.title || '';
+  document.getElementById('hs-text').value = h?.text || '';
+  document.getElementById('hs-url').value = h?.url || '';
+  const pitch = document.getElementById('hs-pitch');
+  pitch.value = h ? Math.round(radToDeg(h.pitch)) : 0;
+  pitch.dispatchEvent(new Event('input'));
+  document.getElementById('hs-delete').style.display = h ? '' : 'none';
+  openModal('hs-back');
+  document.getElementById('hs-title').focus();
+}
+
+document.getElementById('hs-pitch').addEventListener('input', e => {
+  document.getElementById('hs-pitch-v').textContent = `${e.target.value}°`;
+});
+document.getElementById('hs-add').onclick = () => { const n = gn(S.selId); if (n) openHotspot(n); };
+
+document.getElementById('hs-save').onclick = () => {
+  const n = gn(hsEditing?.nodeId);
+  if (!n) return;
+  pushUndo();
+  const data = {
+    title: document.getElementById('hs-title').value.trim(),
+    text: document.getElementById('hs-text').value.trim(),
+    url: document.getElementById('hs-url').value.trim(),
+    pitch: degToRad(Number(document.getElementById('hs-pitch').value)),
+  };
+  n.hotspots = n.hotspots || [];
+  const existing = n.hotspots.find(h => h.id === hsEditing.id);
+  if (existing) Object.assign(existing, data);
+  else n.hotspots.push({ id: `h${S.nxt++}`, yaw: hsEditing.yaw, ...data });
+  closeModal('hs-back');
+  renderHotspots(n);
+  refreshPanoMarkers(n);
+  scheduleAutosave();
+};
+
+function deleteHotspot(n, id) {
+  pushUndo();
+  n.hotspots = (n.hotspots || []).filter(h => h.id !== id);
+  renderHotspots(n);
+  refreshPanoMarkers(n);
+  scheduleAutosave();
+}
+document.getElementById('hs-delete').onclick = () => {
+  const n = gn(hsEditing?.nodeId);
+  closeModal('hs-back');
+  if (n) deleteHotspot(n, hsEditing.id);
+};
+
+// Markers for the exported viewer (PSV MarkersPlugin config).
+function hotspotMarkers(n) {
+  return (n.hotspots || []).map(h => {
+    const link = /^https?:\/\//i.test(h.url || '')
+      ? `<p><a href="${escapeHtml(h.url)}" target="_blank" rel="noopener">${escapeHtml(h.url)}</a></p>` : '';
+    return {
+      id: h.id,
+      position: { yaw: +h.yaw.toFixed(4), pitch: +h.pitch.toFixed(4) },
+      html: '<div class="hs-pin">i</div>',
+      anchor: 'center center',
+      tooltip: escapeHtml(h.title || ''),
+      content: `<h2>${escapeHtml(h.title || '')}</h2><p>${escapeHtml(h.text || '').replace(/\n/g, '<br>')}</p>${link}`,
+    };
+  });
+}
+
 document.getElementById('bn-blur').onclick = () => openBlurTool(S.selId);
 
 function computeYaw(from, to) {
@@ -3657,26 +4934,56 @@ function computeYaw(from, to) {
 function genViewer(startId, nodes) {
   const sn = nodes.find(n => n.id === startId) || nodes[0];
   const closeScript = '<' + '/script>';
+  const hasMap = nodes.filter(n => n.lat != null && n.lng != null).length > 1;
+  const PSV = 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer';
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${currentLang}">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Tour Viewer</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/index.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/virtual-tour-plugin@5.11.5/index.css">
-<style>*{margin:0;padding:0;box-sizing:border-box}html,body{height:100%;background:#000}#viewer{width:100vw;height:100vh}#badge{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);color:#fff;padding:5px 16px;border-radius:999px;font-family:system-ui,sans-serif;font-size:13px;backdrop-filter:blur(6px);pointer-events:none}</style>
+<title>${escapeHtml(sn.name)} - Tour</title>
+<link rel="stylesheet" href="${PSV}/core@5.11.5/index.css">
+<link rel="stylesheet" href="${PSV}/virtual-tour-plugin@5.11.5/index.css">
+<link rel="stylesheet" href="${PSV}/markers-plugin@5.11.5/index.css">
+${hasMap ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">' : ''}
+<style>
+*{margin:0;padding:0;box-sizing:border-box}html,body{height:100%;background:#000}#viewer{width:100vw;height:100vh}
+#badge{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);color:#fff;padding:5px 16px;border-radius:999px;font-family:system-ui,sans-serif;font-size:13px;backdrop-filter:blur(6px);pointer-events:none;z-index:10}
+.hs-pin{width:26px;height:26px;border-radius:50%;background:rgba(139,92,246,.92);border:2px solid #fff;color:#fff;font:700 14px/22px Georgia,serif;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.5);cursor:pointer}
+.psv-panel-content h2{font-family:system-ui,sans-serif;margin-bottom:10px}.psv-panel-content p{font-family:system-ui,sans-serif;line-height:1.6;margin-bottom:10px}.psv-panel-content a{color:#c4b5fd}
+#mm{position:fixed;left:12px;bottom:52px;width:240px;height:170px;border-radius:10px;overflow:hidden;border:2px solid rgba(255,255,255,.7);box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:10;transition:height .2s,width .2s}
+#mm.small{width:44px;height:44px}#mm.small .leaflet-control-container,#mm.small .leaflet-pane{display:none}
+#mm-t{position:absolute;right:4px;top:4px;z-index:1000;border:none;border-radius:6px;background:rgba(0,0,0,.65);color:#fff;font:600 11px system-ui,sans-serif;padding:3px 7px;cursor:pointer}
+#mm.small #mm-t{inset:0;width:100%;height:100%;border-radius:8px;font-size:18px}
+</style>
 </head>
 <body>
 <div id="viewer"></div>
 <div id="badge">${escapeHtml(sn.name)}</div>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","@photo-sphere-viewer/core":"https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/index.module.js","@photo-sphere-viewer/virtual-tour-plugin":"https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/virtual-tour-plugin@5.11.5/index.module.js"}}${closeScript}
+${hasMap ? `<div id="mm"><button id="mm-t" title="${escapeHtml(t('Map'))}">✕</button></div>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js">${closeScript}` : ''}
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","@photo-sphere-viewer/core":"${PSV}/core@5.11.5/index.module.js","@photo-sphere-viewer/virtual-tour-plugin":"${PSV}/virtual-tour-plugin@5.11.5/index.module.js","@photo-sphere-viewer/markers-plugin":"${PSV}/markers-plugin@5.11.5/index.module.js"}}${closeScript}
 <script type="module">
 import { Viewer } from '@photo-sphere-viewer/core';
 import { VirtualTourPlugin } from '@photo-sphere-viewer/virtual-tour-plugin';
-const NODES=${JSON.stringify(nodes)};
+import { MarkersPlugin } from '@photo-sphere-viewer/markers-plugin';
+const NODES=${JSON.stringify(nodes).replace(/</g, '\\u003c')};
 const START=${JSON.stringify(startId)};
-const viewer=new Viewer({container:document.getElementById('viewer'),panorama:NODES.find(n=>n.id===START)?.panorama??NODES[0].panorama,navbar:['zoom','move','fullscreen'],defaultZoomLvl:0,plugins:[[VirtualTourPlugin,{nodes:NODES,startNodeId:START,arrowStyle:{scale:[0.5,2]}}]]});
-viewer.getPlugin(VirtualTourPlugin).addEventListener('node-changed',({node})=>{document.getElementById('badge').textContent=node.name;});
+const viewer=new Viewer({container:document.getElementById('viewer'),panorama:NODES.find(n=>n.id===START)?.panorama??NODES[0].panorama,navbar:['zoom','move','fullscreen'],defaultZoomLvl:0,plugins:[MarkersPlugin,[VirtualTourPlugin,{nodes:NODES,startNodeId:START,arrowStyle:{scale:[0.5,2]}}]]});
+const tour=viewer.getPlugin(VirtualTourPlugin);
+const mmEl=document.getElementById('mm');
+let mark=()=>{};
+if(mmEl&&window.L){
+  const mm=L.map(mmEl,{zoomControl:false,attributionControl:false});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{subdomains:'abc',maxZoom:19}).addTo(mm);
+  const pts=NODES.filter(n=>n.lat!=null&&n.lng!=null);const byId=Object.fromEntries(pts.map(n=>[n.id,n]));
+  pts.forEach(n=>n.links.forEach(l=>{const o=byId[l.nodeId];if(o&&n.id<o.id)L.polyline([[n.lat,n.lng],[o.lat,o.lng]],{color:'#8b5cf6',weight:3,opacity:.8}).addTo(mm);}));
+  const dots=Object.fromEntries(pts.map(n=>[n.id,L.circleMarker([n.lat,n.lng],{radius:5,color:'#fff',weight:1.5,fillColor:'#8b5cf6',fillOpacity:1}).addTo(mm).bindTooltip(n.name).on('click',()=>tour.setCurrentNode(n.id))]));
+  mm.fitBounds(L.latLngBounds(pts.map(n=>[n.lat,n.lng])),{padding:[18,18],maxZoom:19});
+  mark=id=>{Object.entries(dots).forEach(([k,d])=>{d.setStyle({fillColor:k===id?'#f6b93b':'#8b5cf6',radius:k===id?7:5});if(k===id)d.bringToFront();});};
+  mark(START);
+  document.getElementById('mm-t').onclick=()=>{const s=mmEl.classList.toggle('small');document.getElementById('mm-t').textContent=s?'🗺':'✕';setTimeout(()=>mm.invalidateSize(),250);};
+}
+tour.addEventListener('node-changed',({node})=>{document.getElementById('badge').textContent=node.name;mark(node.id);});
 ${closeScript}
 </body>
 </html>`;
@@ -3691,6 +4998,10 @@ function dl(content, name) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+document.documentElement.lang = currentLang;
+document.getElementById('lang-label').textContent = currentLang === 'de' ? 'English' : 'Deutsch';
+translateDom();
+i18nObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
 updateStats();
 updateTitle();
 checkSavedSession();
