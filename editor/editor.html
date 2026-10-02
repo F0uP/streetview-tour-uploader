@@ -453,6 +453,14 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 }
 .pi.area { min-height:70px; resize:vertical; font-family:inherit; }
 
+/* ── Heading fine-tune / preview alignment ──── */
+.rowbtn.hnudge .btn { padding:6px 4px; font-variant-numeric:tabular-nums; }
+.pv-align { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:10px; font-size:12px; color:var(--text-dim); }
+.pv-align .btn { padding:5px 10px; font-size:11.5px; font-variant-numeric:tabular-nums; }
+.pv-align .pv-label { margin-right:4px; }
+.pv-align .pv-label b { color:var(--text); }
+.pv-align .pv-val { margin-left:4px; font-variant-numeric:tabular-nums; color:var(--text-faint); }
+
 /* ── Misc ──────────────────────────────────────── */
 .ico { width:14px; height:14px; }
 </style>
@@ -671,6 +679,13 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
           <button class="btn" id="bh-set">Set This Direction as North</button>
           <button class="btn" id="bh-reset">Reset to EXIF</button>
         </div>
+        <div class="rowbtn hnudge">
+          <button class="btn" data-hnudge="-10">−10°</button>
+          <button class="btn" data-hnudge="-1">−1°</button>
+          <button class="btn" data-hnudge="180" title="Turn the photo round">180°</button>
+          <button class="btn" data-hnudge="1">+1°</button>
+          <button class="btn" data-hnudge="10">+10°</button>
+        </div>
         <div class="mini" id="heading-meta">Heading not set</div>
         <div class="mini">Only horizontal alignment matters here, not up/down.</div>
       </div>
@@ -817,6 +832,16 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
   <div class="modal wide">
     <h2>Tour Preview <span class="close" id="preview-close">Close</span></h2>
     <div class="preview-frame-wrap"><iframe id="preview-frame" title="Tour preview"></iframe></div>
+    <div class="pv-align" id="pv-align">
+      <span class="pv-label"><span>Direction of</span> <b id="pv-align-name" data-no-i18n></b>:</span>
+      <button class="btn" data-pvnudge="-10">−10°</button>
+      <button class="btn" data-pvnudge="-1">−1°</button>
+      <button class="btn" data-pvnudge="180">180°</button>
+      <button class="btn" data-pvnudge="1">+1°</button>
+      <button class="btn" data-pvnudge="10">+10°</button>
+      <span class="pv-val" id="pv-align-val"></span>
+    </div>
+    <div class="mini" style="margin-top:4px">If a photo looks turned after a jump (e.g. you face where you came from), turn it here until the view matches the way you walked. Changes are saved to the node.</div>
     <div class="mini" id="preview-help" style="margin:10px 0 12px">Drag to look around, scroll to zoom &mdash; exactly like the exported tour.</div>
     <button class="btn g" id="preview-export" style="width:100%">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1124,6 +1149,9 @@ const DE = {
   'Replace Photo': 'Foto ersetzen',
   'Choose a photo to check north alignment here.': 'Foto wählen, um hier die Nordausrichtung zu prüfen.',
   'Heading / North': 'Blickrichtung / Norden',
+  'Turn the photo round': 'Foto umdrehen',
+  'Direction of': 'Ausrichtung von',
+  'If a photo looks turned after a jump (e.g. you face where you came from), turn it here until the view matches the way you walked. Changes are saved to the node.': 'Wirkt ein Foto nach einem Sprung verdreht (z. B. schaust du dorthin, wo du herkamst), hier drehen, bis die Ansicht zur Laufrichtung passt. Die Änderung wird im Knoten gespeichert.',
   'Set This Direction as North': 'Diese Richtung als Norden setzen',
   'Reset to EXIF': 'Auf EXIF zurücksetzen',
   'Heading not set': 'Blickrichtung nicht gesetzt',
@@ -1739,7 +1767,7 @@ niP.addEventListener('change', async e => {
   }
   n.heading = meta.heading;
   n.origHeading = meta.heading;
-  n.viewYaw = meta.heading != null ? degToRad(meta.heading) : 0;
+  n.viewYaw = meta.heading != null ? normalizeRad(-degToRad(meta.heading)) : 0;
   n.origViewYaw = n.viewYaw;
   n.headingSource = meta.heading != null ? 'exif' : 'manual';
   updateSb();
@@ -1758,6 +1786,24 @@ niH.addEventListener('input', () => {
   refreshHeadingUi(n);
   refreshCompareUi(n);
   scheduleAutosave();
+});
+
+// Turn a photo's north by a few degrees (or round, if it was taken facing
+// backwards); the view above follows so it keeps facing the new north.
+function nudgeHeading(n, delta) {
+  if (!n) return;
+  pushUndo();
+  n.heading = normalizeHeading((n.heading ?? 0) + delta);
+  n.headingSource = 'manual';
+  n.viewYaw = northYaw(n);
+  refreshHeadingUi(n);
+  refreshMarker(n);
+  refreshCompareUi(n);
+  panoViewer?.rotate({ yaw: northYaw(n), pitch: 0 });
+  scheduleAutosave();
+}
+document.querySelectorAll('[data-hnudge]').forEach(b => {
+  b.onclick = () => nudgeHeading(gn(S.selId), Number(b.dataset.hnudge));
 });
 
 niS.addEventListener('change', () => {
@@ -1808,7 +1854,7 @@ document.getElementById('bh-reset').onclick = () => {
   if (!n) return;
   pushUndo();
   n.heading = n.origHeading;
-  n.viewYaw = n.origViewYaw ?? (n.origHeading != null ? degToRad(n.origHeading) : 0);
+  n.viewYaw = n.origHeading != null ? normalizeRad(-degToRad(n.origHeading)) : 0;
   n.headingSource = n.origHeading != null ? 'exif' : 'manual';
   refreshHeadingUi(n);
   refreshCompareUi(n);
@@ -2261,12 +2307,21 @@ document.getElementById('bcsv').onclick = async () => {
   await saveTextFile('tour.csv', csv);
 };
 
+// PSV turns a panorama by -pan, so pan = -heading puts the photo's centre at its heading.
+function sphereCorrectionOf(n) {
+  return { pan: +normalizeRad(-degToRad(n.heading ?? 0)).toFixed(4) };
+}
+
 function buildTourConfig() {
   const startId = S.startId || S.nodes[0].id;
   const nodesConf = S.nodes.map(n => {
     const linked = getLinkedNodes(n.id);
+    // Each panorama is turned so that yaw 0 faces north (sphereCorrection), so
+    // link arrows sit at their real compass bearing and, after a jump, the viewer
+    // keeps looking the way you walked - also between photos taken facing
+    // different directions.
     const links = linked.map(o => {
-      const yaw = computeYaw(n, o);
+      const yaw = normalizeRad(degToRad(bearingDeg(n, o)));
       return { nodeId: o.id, position: { yaw: +yaw.toFixed(3), pitch: -0.15 } };
     });
     return {
@@ -2276,6 +2331,7 @@ function buildTourConfig() {
       lat: n.lat,
       lng: n.lng,
       heading: n.heading,
+      ...(n.heading != null ? { sphereCorrection: sphereCorrectionOf(n) } : {}),
       links,
       ...(n.hotspots?.length ? { markers: hotspotMarkers(n) } : {}),
     };
@@ -2319,9 +2375,32 @@ function openExportPreview() {
   if (previewNodes.length < S.nodes.length) {
     toast(`${S.nodes.length - previewNodes.length} node(s) without a loaded photo are left out of the preview`);
   }
-  previewFrame.srcdoc = genViewer(previewStart, previewNodes);
+  previewFrame.srcdoc = genViewer(previewStart, previewNodes, { editable: true });
+  setPreviewAlignNode(previewStart);
   previewBack.classList.add('show');
 }
+
+let previewAlignId = null;
+function setPreviewAlignNode(id) {
+  const n = gn(id);
+  previewAlignId = n ? id : null;
+  document.getElementById('pv-align-name').textContent = n?.name || '';
+  document.getElementById('pv-align-val').textContent = n?.heading != null ? `${n.heading.toFixed(1)}°` : '';
+}
+window.addEventListener('message', e => {
+  if (e.source !== previewFrame.contentWindow || e.data?.type !== 'svt-node') return;
+  setPreviewAlignNode(e.data.id);
+});
+document.querySelectorAll('[data-pvnudge]').forEach(b => {
+  b.onclick = () => {
+    const n = gn(previewAlignId);
+    if (!n) return;
+    nudgeHeading(n, Number(b.dataset.pvnudge));
+    setPreviewAlignNode(n.id);
+    if (S.selId === n.id) updateSb();
+    previewFrame.contentWindow?.postMessage({ type: 'svt-heading', id: n.id, sphereCorrection: sphereCorrectionOf(n), markers: hotspotMarkers(n) }, '*');
+  };
+});
 
 document.getElementById('bexp').onclick = openExportPreview;
 document.getElementById('bpreview').onclick = openExportPreview;
@@ -2713,10 +2792,14 @@ function normalizeRad(v) {
   const twoPi = Math.PI * 2;
   return ((v + Math.PI) % twoPi + twoPi) % twoPi - Math.PI;
 }
+// heading = compass direction of the photo's centre (Google's pose.heading), so in
+// the photo itself north lies at yaw -heading. The editor view opens facing north.
+function northYaw(n) {
+  return normalizeRad(-degToRad(n.heading));
+}
 function getNodeEditorYaw(n) {
-  if (n?.viewYaw != null) return n.viewYaw;
-  if (n?.heading != null) return degToRad(n.heading);
-  return 0;
+  if (n?.heading != null) return northYaw(n);
+  return n?.viewYaw ?? 0;
 }
 
 function distanceMeters(a, b) {
@@ -2812,8 +2895,8 @@ async function addPhotoNode(file, fallback) {
     lng: meta.hasGps ? meta.lng : fallback.lng,
     heading: meta.heading,
     origHeading: meta.heading,
-    viewYaw: meta.heading != null ? degToRad(meta.heading) : 0,
-    origViewYaw: meta.heading != null ? degToRad(meta.heading) : 0,
+    viewYaw: meta.heading != null ? normalizeRad(-degToRad(meta.heading)) : 0,
+    origViewYaw: meta.heading != null ? normalizeRad(-degToRad(meta.heading)) : 0,
     headingSource: meta.heading != null ? 'exif' : 'manual',
     hasGps: meta.hasGps,
     photoUrl: URL.createObjectURL(file),
@@ -2997,7 +3080,13 @@ function handleNodeConnectClick(id) {
   cancelConnect();
 }
 
+let walkArrivalYaw = null;
+
 function jumpToNode(id, recordHistory = true) {
+  const from = gn(S.selId), to = gn(id);
+  walkArrivalYaw = recordHistory && from && to && from !== to && to.heading != null && distanceMeters(from, to) > 0.3
+    ? normalizeRad(degToRad(bearingDeg(from, to) - to.heading))
+    : null;
   if (recordHistory && S.selId && S.selId !== id) walkHistory.push(S.selId);
   S.selId = id;
   refreshAllMarkers();
@@ -3181,9 +3270,11 @@ async function ensurePanoViewer(n) {
   }
   if (panoNodeId !== n.id) {
     panoNodeId = n.id;
+    const yaw = walkArrivalYaw ?? getNodeEditorYaw(n);
+    walkArrivalYaw = null;
     await panoViewer.setPanorama(n.photoUrl, {
       transition: false,
-      position: { yaw: getNodeEditorYaw(n), pitch: 0 },
+      position: { yaw, pitch: 0 },
     });
   } else {
     panoViewer.rotate({ yaw: getNodeEditorYaw(n), pitch: 0 });
@@ -3316,8 +3407,9 @@ async function ensureCompareViewers(baseNode, targetNode) {
 
 function alignCompareByHeading(baseNode, targetNode) {
   if (!cmpBaseViewer || !cmpOverlayViewer) return;
-  const baseYaw = baseNode.heading != null ? degToRad(baseNode.heading) : 0;
-  const overlayYaw = targetNode.heading != null ? degToRad(targetNode.heading) : 0;
+  // Both views face north, i.e. the same real-world direction.
+  const baseYaw = baseNode.heading != null ? northYaw(baseNode) : 0;
+  const overlayYaw = targetNode.heading != null ? northYaw(targetNode) : 0;
   const mainYaw = cmpSwap ? overlayYaw : baseYaw;
   const overYaw = cmpSwap ? baseYaw : overlayYaw;
   cmpDelta = normalizeRad(overYaw - mainYaw);
@@ -3644,19 +3736,63 @@ function scheduleAutosave() {
   autosaveTimer = setTimeout(saveSessionNow, 1200);
 }
 
+// Photos are stored once each, under their own 'photo:…' key, and the session
+// record only refers to those keys. Rewriting every photo on each autosave was
+// slow for big tours, and in Firefox it broke restored sessions: replacing the
+// record deletes the stored photo data that the restored photos still point to,
+// so the preview could no longer load them ("The panorama cannot be loaded").
+const photoKeys = new WeakMap(); // photo File -> its IndexedDB key
+const unsavedPhotos = new Map(); // key -> File, not yet written
+let photoKeySeq = 0;
+
+function photoKeyOf(file) {
+  let key = photoKeys.get(file);
+  if (!key) {
+    key = `photo:${Date.now().toString(36)}-${(photoKeySeq++).toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    photoKeys.set(file, key);
+    unsavedPhotos.set(key, file);
+  }
+  return key;
+}
+
+// Every photo still reachable from the tour or its undo history.
+function referencedPhotoKeys() {
+  const keys = new Set();
+  const add = f => { const k = f && photoKeys.get(f); if (k) keys.add(k); };
+  S.nodes.forEach(n => add(n.photoFile));
+  [...undoStack, ...redoStack].forEach(snap => snap.nodes.forEach(n => add(n.photoFile)));
+  return keys;
+}
+
+function idbRequest(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
 async function saveSessionNow() {
   try {
+    const snap = snapshotState();
+    const stored = {
+      ...snap,
+      format: 2,
+      nodes: snap.nodes.map(n => ({ ...n, photoFile: null, photoKey: n.photoFile ? photoKeyOf(n.photoFile) : null })),
+    };
+    const writes = [...unsavedPhotos];
     const db = await openSaveDb();
     await new Promise((resolve, reject) => {
       const tx = db.transaction('kv', 'readwrite');
-      if (!S.nodes.length) {
-        tx.objectStore('kv').delete('session');
-      } else {
-        tx.objectStore('kv').put(snapshotState(), 'session');
-      }
+      const store = tx.objectStore('kv');
+      writes.forEach(([key, file]) => store.put(file, key));
+      if (!S.nodes.length) store.delete('session');
+      else store.put(stored, 'session');
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
     });
+    writes.forEach(([key]) => unsavedPhotos.delete(key));
+    await removeUnusedPhotos(db, referencedPhotoKeys());
     db.close();
     setSaveStatus('saved', 'Saved');
   } catch (err) {
@@ -3665,15 +3801,23 @@ async function saveSessionNow() {
   }
 }
 
+async function removeUnusedPhotos(db, keep) {
+  const tx = db.transaction('kv', 'readwrite');
+  const store = tx.objectStore('kv');
+  const keys = await idbRequest(store.getAllKeys());
+  keys.filter(k => typeof k === 'string' && k.startsWith('photo:') && !keep.has(k)).forEach(k => store.delete(k));
+  await new Promise(resolve => { tx.oncomplete = resolve; tx.onerror = resolve; tx.onabort = resolve; });
+}
+
 async function clearSavedSession() {
   try {
     const db = await openSaveDb();
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction('kv', 'readwrite');
-      tx.objectStore('kv').delete('session');
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
+    const tx = db.transaction('kv', 'readwrite');
+    const store = tx.objectStore('kv');
+    store.delete('session');
+    const keys = await idbRequest(store.getAllKeys());
+    keys.filter(k => typeof k === 'string' && k.startsWith('photo:')).forEach(k => store.delete(k));
+    await new Promise(resolve => { tx.oncomplete = resolve; tx.onerror = resolve; });
     db.close();
   } catch (err) { /* ignore */ }
 }
@@ -3681,14 +3825,23 @@ async function clearSavedSession() {
 async function loadSavedSession() {
   try {
     const db = await openSaveDb();
-    const snap = await new Promise((resolve, reject) => {
-      const tx = db.transaction('kv', 'readonly');
-      const req = tx.objectStore('kv').get('session');
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
-    });
+    const tx = db.transaction('kv', 'readonly');
+    const store = tx.objectStore('kv');
+    const snap = await idbRequest(store.get('session'));
+    if (snap) {
+      for (const n of snap.nodes) {
+        if (!n.photoKey) {
+          // Sessions saved before format 2 kept the photos inline in the record.
+          if (n.photoFile) n.legacyInlinePhoto = true;
+          continue;
+        }
+        n.photoFile = (await idbRequest(store.get(n.photoKey))) || null;
+        if (n.photoFile) photoKeys.set(n.photoFile, n.photoKey);
+        delete n.photoKey;
+      }
+    }
     db.close();
-    return snap;
+    return snap || null;
   } catch (err) {
     return null;
   }
@@ -3710,10 +3863,17 @@ async function checkSavedSession() {
     for (const n of snap.nodes) {
       if (!n.photoFile) continue;
       try {
-        await n.photoFile.slice(0, 1).arrayBuffer();
+        if (n.legacyInlinePhoto) {
+          // Old sessions kept photos inside the session record, which the next
+          // autosave replaces (and Firefox then deletes the data) - copy them first.
+          n.photoFile = new File([await n.photoFile.arrayBuffer()], n.photoFile.name || n.photoName || 'photo.jpg', { type: n.photoFile.type || 'image/jpeg' });
+        } else {
+          await n.photoFile.slice(0, 1).arrayBuffer();
+        }
       } catch {
         n.photoFile = null;
       }
+      delete n.legacyInlinePhoto;
     }
     applySnapshot(snap, { refit: true });
     restoreBanner.classList.remove('show');
@@ -4909,7 +5069,7 @@ function hotspotMarkers(n) {
       ? `<p><a href="${escapeHtml(h.url)}" target="_blank" rel="noopener">${escapeHtml(h.url)}</a></p>` : '';
     return {
       id: h.id,
-      position: { yaw: +h.yaw.toFixed(4), pitch: +h.pitch.toFixed(4) },
+      position: { yaw: +normalizeRad(h.yaw + degToRad(n.heading ?? 0)).toFixed(4), pitch: +h.pitch.toFixed(4) },
       html: '<div class="hs-pin">i</div>',
       anchor: 'center center',
       tooltip: escapeHtml(h.title || ''),
@@ -4920,18 +5080,7 @@ function hotspotMarkers(n) {
 
 document.getElementById('bn-blur').onclick = () => openBlurTool(S.selId);
 
-function computeYaw(from, to) {
-  const lat1 = from.lat * Math.PI / 180;
-  const lat2 = to.lat * Math.PI / 180;
-  const dLng = (to.lng - from.lng) * Math.PI / 180;
-  const y = Math.sin(dLng) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-  const bearing = Math.atan2(y, x);
-  const camHeading = from.heading != null ? degToRad(from.heading) : 0;
-  return normalizeRad(bearing - camHeading);
-}
-
-function genViewer(startId, nodes) {
+function genViewer(startId, nodes, { editable = false } = {}) {
   const sn = nodes.find(n => n.id === startId) || nodes[0];
   const closeScript = '<' + '/script>';
   const hasMap = nodes.filter(n => n.lat != null && n.lng != null).length > 1;
@@ -4967,8 +5116,9 @@ import { Viewer } from '@photo-sphere-viewer/core';
 import { VirtualTourPlugin } from '@photo-sphere-viewer/virtual-tour-plugin';
 import { MarkersPlugin } from '@photo-sphere-viewer/markers-plugin';
 const NODES=${JSON.stringify(nodes).replace(/</g, '\\u003c')};
+const EDIT=${editable ? 'true' : 'false'};
 const START=${JSON.stringify(startId)};
-const viewer=new Viewer({container:document.getElementById('viewer'),panorama:NODES.find(n=>n.id===START)?.panorama??NODES[0].panorama,navbar:['zoom','move','fullscreen'],defaultZoomLvl:0,plugins:[MarkersPlugin,[VirtualTourPlugin,{nodes:NODES,startNodeId:START,arrowStyle:{scale:[0.5,2]}}]]});
+const viewer=new Viewer({container:document.getElementById('viewer'),panorama:NODES.find(n=>n.id===START)?.panorama??NODES[0].panorama,navbar:['zoom','move','fullscreen'],defaultZoomLvl:0,defaultYaw:${sn.heading != null ? +degToRad(sn.heading).toFixed(4) : 0},plugins:[MarkersPlugin,[VirtualTourPlugin,{nodes:NODES,startNodeId:START,arrowStyle:{scale:[0.5,2]}}]]});
 const tour=viewer.getPlugin(VirtualTourPlugin);
 const mmEl=document.getElementById('mm');
 let mark=()=>{};
@@ -4983,7 +5133,14 @@ if(mmEl&&window.L){
   mark(START);
   document.getElementById('mm-t').onclick=()=>{const s=mmEl.classList.toggle('small');document.getElementById('mm-t').textContent=s?'🗺':'✕';setTimeout(()=>mm.invalidateSize(),250);};
 }
-tour.addEventListener('node-changed',({node})=>{document.getElementById('badge').textContent=node.name;mark(node.id);});
+tour.addEventListener('node-changed',({node})=>{document.getElementById('badge').textContent=node.name;mark(node.id);if(EDIT)parent.postMessage({type:'svt-node',id:node.id},'*');});
+if(EDIT){
+  window.psv={viewer,tour};
+  viewer.addEventListener('ready',()=>parent.postMessage({type:'svt-node',id:tour.getCurrentNode()?.id||START},'*'),{once:true});
+  window.addEventListener('message',e=>{const m=e.data;if(!m||m.type!=='svt-heading')return;const n=NODES.find(x=>x.id===m.id);if(!n)return;
+    n.sphereCorrection=m.sphereCorrection;n.markers=m.markers||[];
+    if(tour.getCurrentNode()?.id===m.id){viewer.setOption('sphereCorrection',m.sphereCorrection);viewer.getPlugin(MarkersPlugin)?.setMarkers(n.markers);}});
+}
 ${closeScript}
 </body>
 </html>`;
