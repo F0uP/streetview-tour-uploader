@@ -461,6 +461,97 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 .pv-align .pv-label b { color:var(--text); }
 .pv-align .pv-val { margin-left:4px; font-variant-numeric:tabular-nums; color:var(--text-faint); }
 
+/* ── Upload dialog ─────────────────────────────── */
+[hidden] { display:none !important; }
+#upl-back .modal { width:640px; }
+.up-account { display:flex; align-items:center; gap:8px; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--panel-2); margin-bottom:8px; font-size:12px; color:var(--text-dim); }
+.up-account .btn { margin-left:auto; }
+.up-cards { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; }
+.up-card { border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--panel-2); padding:10px 12px; display:flex; flex-direction:column; gap:2px; }
+.up-card b { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+.up-card span { font-size:10.5px; color:var(--text-dim); }
+.up-card.warn b { color:var(--gold); }
+.up-card.zero { opacity:.5; }
+.opt-tag { text-transform:none; letter-spacing:0; font-weight:600; color:var(--text-faint); background:var(--panel-3); border-radius:99px; padding:1px 7px; margin-left:4px; }
+#upl-place-msg.bad { color:var(--danger); }
+#upl-place-msg.good { color:var(--success); }
+.up-help { margin-top:8px; font-size:11.5px; }
+.up-help summary { cursor:pointer; font-weight:700; color:var(--text); }
+.up-help p { margin:8px 0; }
+.up-help ol { padding-left:18px; margin:6px 0; }
+.up-help a { color:var(--accent-2); }
+
+.up-steps { display:flex; align-items:center; gap:8px; margin:2px 0 14px; }
+.up-step { display:flex; align-items:center; gap:7px; font-size:11.5px; font-weight:700; color:var(--text-faint); white-space:nowrap; transition:color .3s; }
+.up-step i { font-style:normal; width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font-size:11px; background:var(--panel-3); color:var(--text-dim); transition:background .3s, box-shadow .3s, color .3s; }
+.up-step.active { color:var(--text); }
+.up-step.active i { background:var(--accent); color:#fff; box-shadow:0 0 0 4px var(--accent-soft); animation:up-pulse 1.6s ease-in-out infinite; }
+.up-step.done { color:var(--text-dim); }
+.up-step.done i { background:var(--success); color:#04140a; }
+.up-step-line { flex:1; height:2px; border-radius:2px; background:var(--panel-3); min-width:16px; }
+@keyframes up-pulse { 50% { box-shadow:0 0 0 7px rgba(139,92,246,0); } }
+
+.up-overall { border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; background:linear-gradient(180deg, var(--panel-2), var(--panel-solid)); }
+.up-overall-top { display:flex; justify-content:space-between; align-items:baseline; font-weight:800; font-size:14px; }
+#up-pct { font-variant-numeric:tabular-nums; font-size:20px; letter-spacing:-.02em; }
+.up-bar { position:relative; height:10px; border-radius:99px; background:var(--panel-3); overflow:hidden; margin:10px 0 8px; }
+#up-bar-fill { position:absolute; inset:0 auto 0 0; width:0; border-radius:99px; background:linear-gradient(90deg, #7c4dff, var(--accent), #c4b5fd); transition:width .35s ease; overflow:hidden; }
+#up-bar-fill::after { content:''; position:absolute; inset:0; background:linear-gradient(110deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%); animation:up-shine 1.6s linear infinite; }
+.up-bar.indet #up-bar-fill { width:35% !important; animation:up-indet 1.4s ease-in-out infinite; }
+.up-bar.success #up-bar-fill { background:linear-gradient(90deg, #22c38e, var(--success)); }
+.up-bar.success #up-bar-fill::after, .up-bar.stopped #up-bar-fill::after { display:none; }
+@keyframes up-shine { from { transform:translateX(-100%); } to { transform:translateX(100%); } }
+@keyframes up-indet { 0% { left:-35%; } 100% { left:100%; } }
+.up-sub { font-size:11.5px; color:var(--text-dim); font-variant-numeric:tabular-nums; min-height:16px; }
+
+.up-notice { margin-top:10px; padding:10px 12px; border-radius:var(--radius-sm); font-size:12px; line-height:1.5; border:1px solid rgba(246,185,59,.35); background:rgba(246,185,59,.08); color:var(--text); animation:up-in .3s ease; }
+.up-notice.info { border-color:rgba(139,92,246,.35); background:var(--accent-soft); }
+.up-notice.error { border-color:rgba(251,88,120,.4); background:rgba(251,88,120,.08); }
+
+.up-list { display:flex; flex-direction:column; gap:6px; margin-top:12px; max-height:38vh; overflow-y:auto; padding-right:2px; }
+.up-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--panel-2); animation:up-in .35s cubic-bezier(.34,1.56,.64,1) both; transition:border-color .3s, background .3s; }
+.up-row:nth-child(n) { animation-delay:calc(var(--i, 0) * 40ms); }
+@keyframes up-in { from { opacity:0; transform:translateY(6px); } }
+.up-thumb { width:64px; height:32px; border-radius:5px; object-fit:cover; background:var(--panel-3); flex-shrink:0; }
+.up-main { flex:1; min-width:0; }
+.up-name { font-size:12px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.up-rowbar { height:4px; border-radius:99px; background:var(--panel-3); overflow:hidden; margin:5px 0 4px; }
+.up-rowbar > div { height:100%; width:0; border-radius:99px; background:var(--accent); transition:width .3s ease, background .3s; }
+.up-msg { font-size:10.5px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.up-icon { width:22px; height:22px; flex-shrink:0; display:grid; place-items:center; }
+.up-icon svg { width:22px; height:22px; }
+.up-row[data-state="uploading"] { border-color:rgba(139,92,246,.5); }
+.up-row[data-state="uploading"] .up-icon::before, .up-row[data-state="processing"] .up-icon::before {
+  content:''; width:16px; height:16px; border-radius:50%; border:2px solid var(--panel-3); border-top-color:var(--accent); animation:up-spin .8s linear infinite;
+}
+.up-row[data-state="processing"] .up-icon::before { border-top-color:var(--gold); }
+.up-row[data-state="processing"] .up-rowbar > div { width:100% !important; background:var(--gold); animation:up-breathe 1.6s ease-in-out infinite; }
+.up-row[data-state="waiting"] { opacity:.6; }
+.up-row[data-state="done"] .up-rowbar > div { width:100% !important; background:var(--success); }
+.up-row[data-state="failed"] { border-color:rgba(251,88,120,.45); background:rgba(251,88,120,.06); }
+.up-row[data-state="failed"] .up-msg { color:var(--danger); white-space:normal; }
+.up-row[data-state="failed"] .up-rowbar > div { width:100% !important; background:var(--danger); }
+.up-row[data-state="skipped"] .up-rowbar > div { width:100% !important; background:var(--text-faint); }
+.up-check path { stroke-dasharray:24; stroke-dashoffset:24; animation:up-draw .45s .1s ease forwards; }
+@keyframes up-spin { to { transform:rotate(360deg); } }
+@keyframes up-breathe { 50% { opacity:.45; } }
+@keyframes up-draw { to { stroke-dashoffset:0; } }
+
+.up-done { display:flex; align-items:center; gap:14px; margin-top:12px; padding:14px 16px; border-radius:var(--radius); border:1px solid rgba(45,217,168,.35); background:rgba(45,217,168,.07); animation:up-in .4s ease; }
+.up-done.partial { border-color:rgba(246,185,59,.4); background:rgba(246,185,59,.07); }
+.up-done.partial .up-done-icon circle, .up-done.partial .up-done-icon path { stroke:var(--gold); }
+.up-done b { font-size:14px; }
+.up-done p { font-size:12px; color:var(--text-dim); margin-top:3px; line-height:1.5; }
+.up-done-icon { width:46px; height:46px; flex-shrink:0; }
+.up-done-icon circle { fill:none; stroke:var(--success); stroke-width:3; stroke-dasharray:151; stroke-dashoffset:151; animation:up-draw .6s ease forwards; }
+.up-done-icon path { fill:none; stroke:var(--success); stroke-width:4; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:40; stroke-dashoffset:40; animation:up-draw .4s .5s ease forwards; }
+.up-details { margin-top:12px; font-size:11px; color:var(--text-faint); }
+.up-details summary { cursor:pointer; }
+a.btn { text-decoration:none; }
+.gs.pending { background:var(--gold); animation:up-breathe 1.6s ease-in-out infinite; }
+.gstat .dot.pending { background:var(--gold); }
+@media (max-width:640px) { .up-cards { grid-template-columns:repeat(2, 1fr); } }
+
 /* ── Misc ──────────────────────────────────────── */
 .ico { width:14px; height:14px; }
 </style>
@@ -804,26 +895,74 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
     </div>
 
     <div id="upl-signed-in-area" style="display:none">
-      <div class="row">
+      <div class="up-account">
         <span class="signin-dot" id="upl-dot"></span>
-        <span id="upl-status" style="font-size:12px;color:var(--text-dim)">Checking sign-in status...</span>
-        <button class="btn" id="upl-signin" style="margin-left:auto">Sign in with Google</button>
+        <span id="upl-status">Checking sign-in status...</span>
+        <button class="btn" id="upl-signin">Sign in with Google</button>
       </div>
-      <div class="mini" style="margin-top:-6px"><span id="upl-change-creds" style="cursor:pointer;color:var(--accent-2);text-decoration:underline">Use a different Google API client</span></div>
+      <div class="mini" style="margin:-4px 0 12px"><span id="upl-change-creds" style="cursor:pointer;color:var(--accent-2);text-decoration:underline">Use a different Google API client</span></div>
 
-      <div class="pg">
-        <p class="pl">Google Place ID (optional, links the tour to a location)</p>
-        <input class="pi" id="upl-place" type="text" placeholder="ChIJxxxxxxxxxxxxxxxx">
+      <div id="up-setup">
+        <div class="up-cards">
+          <div class="up-card"><b id="upc-new">0</b><span>new photos</span></div>
+          <div class="up-card"><b id="upc-changed">0</b><span>changes for Google</span></div>
+          <div class="up-card"><b id="upc-done">0</b><span>already on Google</span></div>
+          <div class="up-card warn" id="upc-missing-card"><b id="upc-missing">0</b><span>without photo</span></div>
+        </div>
+        <div class="mini" id="upl-summary" style="margin:8px 0 12px">Nothing to upload yet.</div>
+
+        <div class="pg">
+          <p class="pl">Google Place ID <span class="opt-tag">optional</span></p>
+          <input class="pi" id="upl-place" type="text" placeholder="ChIJxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false">
+          <div class="mini" id="upl-place-msg"></div>
+          <details class="hint up-help">
+            <summary>What is a Place ID and where do I get it?</summary>
+            <div data-i18n="place-help">
+              <p>A Place ID ties your photos to a place on Google Maps (a shop, a museum, a square), so they also appear on that place's page. <b>It is optional</b> – without it the photos are still published at their position.</p>
+              <ol>
+                <li>Open Google's <a href="https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder" target="_blank" rel="noopener">Place ID Finder</a> (free, no key or account needed).</li>
+                <li>Type the name or address of the place into the search box on the map and pick it from the list.</li>
+                <li>Copy the <b>Place ID</b> shown in the info box – it usually starts with <code>ChIJ</code> – and paste it above.</li>
+              </ol>
+              <p>Not every address has a Place ID that Google accepts for Street View photos. If Google rejects it, the photos are uploaded without it and you are told.</p>
+            </div>
+          </details>
+        </div>
+
+        <label class="cb2" style="margin-top:6px"><input type="checkbox" id="upl-reupload"> Upload photos again that were already uploaded</label>
+        <label class="cb2" style="margin-top:6px" id="upl-delete-old-row" hidden><input type="checkbox" id="upl-delete-old" checked> <span id="upl-delete-old-label"></span></label>
+        <div class="rowbtn" style="margin-top:12px">
+          <button class="btn" id="upl-refresh-status">Check status on Google</button>
+          <button class="btn g" id="upl-start">Start Upload</button>
+        </div>
       </div>
 
-      <div class="mini" id="upl-summary">Nothing to upload yet.</div>
-
-      <label class="cb2" style="margin-top:10px"><input type="checkbox" id="upl-reupload"> Upload photos again that were already uploaded</label>
-      <div class="rowbtn" style="margin-top:10px">
-        <button class="btn" id="upl-refresh-status">Check status on Google</button>
-        <button class="btn g" id="upl-start">Start Upload</button>
+      <div id="up-run" hidden>
+        <div class="up-steps">
+          <div class="up-step" data-step="upload"><i>1</i><span>Upload</span></div>
+          <div class="up-step-line"></div>
+          <div class="up-step" data-step="process"><i>2</i><span>Google processing</span></div>
+          <div class="up-step-line"></div>
+          <div class="up-step" data-step="link"><i>3</i><span>Links &amp; position</span></div>
+        </div>
+        <div class="up-overall">
+          <div class="up-overall-top"><span id="up-title">Preparing…</span><span id="up-pct">0%</span></div>
+          <div class="up-bar" id="up-bar"><div id="up-bar-fill"></div></div>
+          <div class="up-sub" id="up-sub"></div>
+        </div>
+        <div class="up-notice" id="up-notice" hidden></div>
+        <div class="up-list" id="up-list"></div>
+        <div class="up-done" id="up-done" hidden>
+          <svg class="up-done-icon" viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg>
+          <div><b id="up-done-title"></b><p id="up-done-text"></p></div>
+        </div>
+        <div class="rowbtn" style="margin-top:12px">
+          <button class="btn" id="up-cancel">Cancel</button>
+          <a class="btn" id="up-contrib" href="https://www.google.com/maps/contrib/" target="_blank" rel="noopener" hidden>Open my photos on Google Maps</a>
+          <button class="btn g" id="up-finish" hidden>Done</button>
+        </div>
+        <details class="up-details"><summary>Technical details</summary><div id="upl-log"></div></details>
       </div>
-      <div id="upl-log"></div>
     </div>
   </div>
 </div>
@@ -972,7 +1111,7 @@ function t(s, vars) {
 }
 
 const i18nOrig = new WeakMap();
-const I18N_SKIP = 'script,style,.leaflet-pane,.nl,.nrow-name,#upl-log,.notes,.psv-container,[data-no-i18n]';
+const I18N_SKIP = 'script,style,.leaflet-pane,.nl,.nrow-name,#upl-log,.notes,.psv-container,[data-no-i18n],.cil,.walkchip,.check-row .nm,#cmp-target,#walkh-ref,.hs-row .t,.thumb-tip,.up-name';
 
 function translateTextNode(node) {
   const orig = i18nOrig.get(node) ?? node.nodeValue;
@@ -1418,6 +1557,77 @@ const DE = {
   'Height': 'Höhe',
   'Save': 'Speichern',
 
+  // Upload dialog (progress view)
+  'new photos': 'neue Fotos',
+  'changes for Google': 'Änderungen für Google',
+  'already on Google': 'schon bei Google',
+  'without photo': 'ohne Foto',
+  'optional': 'optional',
+  'What is a Place ID and where do I get it?': 'Was ist eine Place ID und woher bekomme ich sie?',
+  'That does not look like a Place ID (letters, digits, - and _ only, e.g. ChIJ…).': 'Das sieht nicht nach einer Place ID aus (nur Buchstaben, Ziffern, - und _, z. B. ChIJ…).',
+  'Format looks right - Google checks the ID itself during the upload.': 'Format passt – ob Google die ID akzeptiert, zeigt sich beim Hochladen.',
+  'Unusual Place ID format - Google will check it during the upload.': 'Ungewöhnliches Format – Google prüft die Place ID beim Hochladen.',
+  'Photos still being processed by Google get their links as soon as Google is ready.': 'Fotos, die Google noch verarbeitet, bekommen ihre Verbindungen, sobald Google fertig ist.',
+  'Upload': 'Hochladen',
+  'Google processing': 'Google verarbeitet',
+  'Links & position': 'Verbindungen & Position',
+  'Preparing…': 'Wird vorbereitet…',
+  'Cancel': 'Abbrechen',
+  'Open my photos on Google Maps': 'Meine Fotos auf Google Maps öffnen',
+  'Technical details': 'Technische Details',
+  'Waiting': 'Wartet',
+  'Uploading…': 'Wird hochgeladen…',
+  'Registering with Google…': 'Wird bei Google angemeldet…',
+  'Cancelled': 'Abgebrochen',
+  'Checking your photos on Google…': 'Deine Fotos bei Google werden abgeglichen…',
+  'Already on Google - linked to it': 'Schon bei Google – damit verknüpft',
+  'found on Google, not uploaded again': 'bei Google gefunden, nicht erneut hochgeladen',
+  'Already on Google': 'Schon bei Google',
+  'Uploading photo {a} of {b}': 'Foto {a} von {b} wird hochgeladen',
+  'about {n} s left': 'noch ca. {n} s',
+  'about {n} min left': 'noch ca. {n} min',
+  'The editor app is not reachable.': 'Die Editor-App ist nicht erreichbar.',
+  'Not signed in - click "Sign in with Google" first.': 'Nicht angemeldet – zuerst „Mit Google anmelden“ klicken.',
+  'Google rejected the Place ID.': 'Google hat die Place ID abgelehnt.',
+  'Google refused access ({s}): {msg} - sign in again, and check that the Street View Publish API is enabled.': 'Google verweigert den Zugriff ({s}): {msg} – erneut anmelden und prüfen, ob die Street View Publish API aktiviert ist.',
+  'Too many requests to Google - wait a few minutes and try again.': 'Zu viele Anfragen an Google – ein paar Minuten warten und erneut versuchen.',
+  'The photo is too large for Google (max 75 MB).': 'Das Foto ist zu groß für Google (max. 75 MB).',
+  'Google error': 'Google-Fehler',
+  'Place ID rejected': 'Place ID abgelehnt',
+  'Google did not accept the Place ID "{id}" ({msg}). The photos are uploaded without a place - you can find the right ID with the Place ID Finder (see the help in the upload dialog).': 'Google hat die Place ID „{id}“ nicht akzeptiert ({msg}). Die Fotos werden ohne Ort hochgeladen – die richtige ID findest du mit dem Place ID Finder (siehe Hilfe im Upload-Dialog).',
+  'Uploaded - Google is processing it': 'Hochgeladen – Google verarbeitet es',
+  'Google has it - setting links next': 'Bei Google angekommen – Verbindungen folgen',
+  'Google is processing the photos…': 'Google verarbeitet die Fotos…',
+  '{a} of {b} ready - this usually takes a few minutes': '{a} von {b} fertig – das dauert meist ein paar Minuten',
+  'Setting links, position and heading…': 'Verbindungen, Position und Blickrichtung werden gesetzt…',
+  'Links could not be set - tried again automatically later': 'Verbindungen konnten nicht gesetzt werden – wird später automatisch wiederholt',
+  'On Google, linked': 'Bei Google, verbunden',
+  'Still being processed by Google - links follow automatically': 'Google verarbeitet noch – Verbindungen folgen automatisch',
+  'On Google, up to date': 'Bei Google, aktuell',
+  '{a} uploaded, {f} failed': '{a} hochgeladen, {f} fehlgeschlagen',
+  '{a} photo(s) uploaded': '{a} Foto(s) hochgeladen',
+  'Tour on Google is up to date': 'Die Tour bei Google ist aktuell',
+  'Google is still processing {n} photo(s). Their links and positions are set automatically as soon as Google is ready - keep the editor open, or press Upload again later. It can take a few hours until they show on Google Maps.': 'Google verarbeitet noch {n} Foto(s). Verbindungen und Positionen werden automatisch gesetzt, sobald Google fertig ist – Editor offen lassen oder später erneut „Upload starten“ drücken. Bis die Fotos auf Google Maps erscheinen, kann es einige Stunden dauern.',
+  'The failed photos are listed above with the reason. Fix it and press Upload again - only the missing ones are sent.': 'Die fehlgeschlagenen Fotos stehen oben mit Grund. Beheben und erneut hochladen – es werden nur die fehlenden gesendet.',
+  'It can take a few hours until new photos show on Google Maps.': 'Bis neue Fotos auf Google Maps erscheinen, kann es einige Stunden dauern.',
+  'Done': 'Fertig',
+  'Finished with notes': 'Fertig, mit Hinweisen',
+  'Stopping after the current photo…': 'Stoppt nach dem aktuellen Foto…',
+  'Google is ready: links set for {n} photo(s)': 'Google ist fertig: Verbindungen für {n} Foto(s) gesetzt',
+  'Uploaded - Google is still processing it': 'Hochgeladen – Google verarbeitet es noch',
+  'On Google, not yet shown on Maps': 'Bei Google, noch nicht auf Maps sichtbar',
+  'Not found on Google (deleted?) - will be uploaded again': 'Bei Google nicht gefunden (gelöscht?) – wird erneut hochgeladen',
+  'pending': 'in Verarbeitung',
+  'These nodes have no photo: {names}': 'Diese Knoten haben kein Foto: {names}',
+  'Sign-in expired - please sign in again': 'Anmeldung abgelaufen – bitte erneut anmelden',
+  'Not signed in (or the sign-in expired) - click "Sign in with Google".': 'Nicht angemeldet (oder Anmeldung abgelaufen) – „Mit Google anmelden“ klicken. Bei Google-Projekten im Testmodus läuft die Anmeldung nach 7 Tagen ab.',
+  'old version deleted on Google': 'alte Version bei Google gelöscht',
+  'could not delete the old version on Google: {msg}': 'alte Version konnte bei Google nicht gelöscht werden: {msg}',
+  'Delete the old versions of replaced or blurred photos on Google ({n})': 'Alte Versionen ersetzter oder verpixelter Fotos bei Google löschen ({n})',
+  'Something went wrong: {msg}': 'Etwas ist schiefgelaufen: {msg}',
+  'Stopped': 'Abgebrochen',
+  'The photo file can no longer be read - drop it again': 'Die Fotodatei ist nicht mehr lesbar – bitte erneut ablegen',
+  'Not a JPEG file - Google Street View only accepts JPEG photos': 'Keine JPEG-Datei – Google Street View akzeptiert nur JPEG-Fotos',
   // Box select
   '{n} node(s) selected': '{n} Knoten ausgewählt',
   'Point {n}': 'Punkt {n}',
@@ -1460,6 +1670,7 @@ const DE_RX = [
   [/^(.+): heading set to (.+)°$/, '$1: Blickrichtung auf $2° gesetzt'],
   [/^heading (.+)° \(EXIF\)$/, 'Blickrichtung $1° (EXIF)'],
   [/^heading (.+)° \(manual\)$/, 'Blickrichtung $1° (manuell)'],
+  [/^heading (.+)° \(auto\)$/, 'Blickrichtung $1° (automatisch)'],
   [/^(\d+) node headings estimated$/, '$1 Blickrichtungen geschätzt'],
   [/^Duplicated (.+)$/, '$1 dupliziert'],
   [/^View yaw (.+)°\. Rotate horizontally only and face north\.$/, 'Blickwinkel $1°. Nur waagerecht drehen und nach Norden schauen.'],
@@ -1498,6 +1709,7 @@ const DE_RX = [
 const DE_HTML = {
   'tip-keys': '<kbd>Strg K</kbd> öffnet die Befehlspalette, <kbd>?</kbd> alle Tastenkürzel',
   'tip-vrtour': 'Das ganze Projekt mit Fotos als <code>.vrtour</code>-Datei speichern (Strg+S); wieder öffnen oder einfach auf die Karte ziehen',
+  'place-help': '<p>Eine Place ID verknüpft deine Fotos mit einem Ort auf Google Maps (Geschäft, Museum, Platz), sodass sie auch auf dessen Seite erscheinen. <b>Sie ist optional</b> – ohne sie werden die Fotos trotzdem an ihrer Position veröffentlicht.</p><ol><li>Googles <a href="https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder" target="_blank" rel="noopener">Place ID Finder</a> öffnen (kostenlos, kein Schlüssel oder Konto nötig).</li><li>Im Suchfeld auf der Karte den Namen oder die Adresse des Ortes eingeben und aus der Liste wählen.</li><li>Die angezeigte <b>Place ID</b> kopieren – sie beginnt meist mit <code>ChIJ</code> – und oben einfügen.</li></ol><p>Nicht jede Adresse hat eine Place ID, die Google für Street-View-Fotos akzeptiert. Lehnt Google sie ab, werden die Fotos ohne sie hochgeladen und du bekommst einen Hinweis.</p>',
   'wiz1': 'Mit dem Google-Konto anmelden, dem die Fotos gehören sollen, dem Projekt einen beliebigen Namen geben (z. B. <i>Street View Upload</i>) und auf <b>Erstellen</b> klicken. Danach prüfen, dass es oben in der Projektauswahl ausgewählt ist.',
   'wiz2': 'Auf der API-Seite auf <b>Aktivieren</b> klicken. Das ist kostenlos.',
   'wiz3': '<ul><li><b>Jetzt starten</b>: beliebiger App-Name, deine E-Mail als Support- und Kontaktadresse</li><li>Zielgruppe: <b>Extern</b></li><li>Danach unter <b>Zielgruppe → Testnutzer</b> deine eigene Google-Adresse hinzufügen</li></ul>',
@@ -1664,6 +1876,10 @@ document.getElementById('qm-copy').onclick = () => {
     lat: n.lat + 0.00006,
     lng: n.lng + 0.00008,
     name: `${n.name} copy`,
+    // The copy is a new photo spot: not on Google yet, and its info points are its own.
+    gsvPhotoId: null, gsvStatus: null, gsvShareLink: null, gsvSig: null,
+    gsvConfirmed: false, gsvUploadedAt: null, gsvObsolete: [],
+    hotspots: (n.hotspots || []).map(h => ({ ...h, id: `h${S.nxt++}` })),
   };
   S.nodes.push(copy);
   createMarker(copy);
@@ -1756,8 +1972,9 @@ niP.addEventListener('change', async e => {
   n.photoFile = file;
   n.captureTime = meta.captureTime;
   n.captureOffset = meta.captureOffset;
-  n.gsvPhotoId = null;
+  retireGooglePhoto(n);
   n.blurred = false;
+  panoNodeId = null; // otherwise the panorama view keeps showing the old photo
   if (meta.hasGps) {
     n.lat = meta.lat;
     n.lng = meta.lng;
@@ -1782,8 +1999,12 @@ niH.addEventListener('input', () => {
   if (!n) return;
   n.heading = parseHeadingInput(niH.value);
   n.headingSource = 'manual';
-  if (n.viewYaw == null) n.viewYaw = getNodeEditorYaw(n);
-  refreshHeadingUi(n);
+  if (n.heading != null) {
+    n.viewYaw = northYaw(n);
+    panoViewer?.rotate({ yaw: northYaw(n), pitch: 0 });
+  }
+  refreshMarker(n);
+  headingMeta.textContent = n.heading == null ? 'Heading not set' : `heading ${n.heading.toFixed(1)}° (manual)`;
   refreshCompareUi(n);
   scheduleAutosave();
 });
@@ -1844,6 +2065,7 @@ document.getElementById('bh-set').onclick = () => {
   n.viewYaw = pos.yaw;
   n.headingSource = 'manual';
   refreshHeadingUi(n);
+  refreshMarker(n);
   refreshCompareUi(n);
   toast(`${n.name}: heading set to ${n.heading.toFixed(1)}°`);
   scheduleAutosave();
@@ -1857,6 +2079,8 @@ document.getElementById('bh-reset').onclick = () => {
   n.viewYaw = n.origHeading != null ? normalizeRad(-degToRad(n.origHeading)) : 0;
   n.headingSource = n.origHeading != null ? 'exif' : 'manual';
   refreshHeadingUi(n);
+  refreshMarker(n);
+  if (n.heading != null) panoViewer?.rotate({ yaw: northYaw(n), pitch: 0 });
   refreshCompareUi(n);
   scheduleAutosave();
 };
@@ -1919,9 +2143,10 @@ document.getElementById('cmp-swap').onclick = () => {
 };
 
 document.getElementById('walk-back').onclick = () => {
-  if (!walkHistory.length) return;
-  const prevId = walkHistory.pop();
-  jumpToNode(prevId, false);
+  while (walkHistory.length) {
+    const prevId = walkHistory.pop();
+    if (gn(prevId)) { jumpToNode(prevId, false); return; }
+  }
 };
 
 document.getElementById('walk-start').onclick = () => {
@@ -1930,23 +2155,9 @@ document.getElementById('walk-start').onclick = () => {
   jumpToNode(S.startId, false);
 };
 
-document.getElementById('best').onclick = () => {
-  const anchor = gn(S.selId) || S.nodes.find(n => n.heading != null);
-  if (!anchor) {
-    alert('Select one anchor node and align north there first.');
-    return;
-  }
-  if (anchor.heading == null) {
-    alert('The selected node has no heading yet. Align north first.');
-    return;
-  }
-  pushUndo();
-  const updated = estimateHeadingsFromAnchor(anchor.id);
-  updateSb();
-  refreshAllMarkers();
-  toast(`${updated} node headings estimated`);
-  scheduleAutosave();
-};
+// The old estimate pointed the last photo of a route back to where it came from
+// and ignored how the camera was held; the walking-direction tool handles both.
+document.getElementById('best').onclick = () => openWalkHeadings();
 
 cmpOpacity.addEventListener('input', () => {
   cmpOverlayLayer.style.opacity = `${Number(cmpOpacity.value) / 100}`;
@@ -2007,6 +2218,9 @@ function projectData() {
       gsvStatus: n.gsvStatus ?? null,
       gsvShareLink: n.gsvShareLink ?? null,
       gsvSig: n.gsvSig ?? null,
+      gsvConfirmed: !!n.gsvConfirmed,
+      gsvUploadedAt: n.gsvUploadedAt ?? null,
+      gsvObsolete: n.gsvObsolete || [],
       hotspots: n.hotspots || [],
     })),
     conns: S.conns.map(c => ({ id: c.id, from: c.from, to: c.to })),
@@ -2086,6 +2300,13 @@ async function rebindPhotos(file) {
     const slice = n.photoFile && entries[photoPathOf(n)];
     if (!slice) return;
     const fresh = new File([slice], n.photoName || 'photo.jpg', { type: n.photoFile.type || 'image/jpeg' });
+    const key = photoKeys.get(n.photoFile);
+    if (key) {
+      photoKeys.set(fresh, key);
+      if (unsavedPhotos.has(key)) unsavedPhotos.set(key, fresh);
+    }
+    const thumb = thumbCache.get(n.photoFile);
+    if (typeof thumb === 'string') thumbCache.set(fresh, thumb);
     swap.set(n.photoFile, fresh);
     n.photoFile = fresh;
     if (n.photoUrl) URL.revokeObjectURL(n.photoUrl);
@@ -2153,6 +2374,9 @@ async function openProjectFile(file, handle = null) {
           gsvStatus: nd.gsvStatus ?? null,
           gsvShareLink: nd.gsvShareLink ?? null,
           gsvSig: nd.gsvSig ?? null,
+          gsvConfirmed: !!nd.gsvConfirmed,
+          gsvUploadedAt: nd.gsvUploadedAt ?? null,
+          gsvObsolete: Array.isArray(nd.gsvObsolete) ? nd.gsvObsolete : [],
           hotspots: Array.isArray(nd.hotspots) ? nd.hotspots : [],
         };
       }),
@@ -2281,7 +2505,7 @@ document.getElementById('bcsv').onclick = async () => {
   }
   const missingPhotos = S.nodes.filter(n => !n.photoName);
   if (missingPhotos.length) {
-    alert(`')}, ')}`);
+    alert(t('These nodes have no photo: {names}', { names: missingPhotos.map(n => n.name).join(', ') }));
     return;
   }
   const idToFile = Object.fromEntries(S.nodes.map(n => [n.id, n.photoName]));
@@ -2408,7 +2632,8 @@ document.getElementById('preview-close').onclick = () => previewBack.classList.r
 
 document.getElementById('preview-export').onclick = async () => {
   if (!pendingExport) return;
-  const { startId, nodesConf } = pendingExport;
+  // Rebuild: headings may have been turned in the preview since it was opened.
+  const { startId, nodesConf } = buildTourConfig();
   await saveTextFile('tour-viewer.html', genViewer(startId, nodesConf));
   await saveTextFile('tour-config.json', JSON.stringify({ startNodeId: startId, nodes: nodesConf }, null, 2));
   previewBack.classList.remove('show');
@@ -2459,7 +2684,6 @@ function staticCommands() {
     { icon: ICONS.keyboard, label: currentLang === 'de' ? 'Switch to English' : 'Auf Deutsch umschalten', run: () => setLang(currentLang === 'de' ? 'en' : 'de') },
     { icon: ICONS.grid, label: 'Export CSV manifest', run: () => document.getElementById('bcsv').click() },
     { icon: ICONS.folder, label: 'Set save target folder', run: () => document.getElementById('bdir').click() },
-    { icon: ICONS.compass, label: 'Estimate headings from anchor', run: () => document.getElementById('best').click() },
     { icon: ICONS.undo, label: 'Undo', hint: 'Ctrl Z', run: doUndo },
     { icon: ICONS.redo, label: 'Redo', hint: 'Ctrl Y', run: doRedo },
     { icon: ICONS.keyboard, label: 'Show keyboard shortcuts', hint: '?', run: () => cheatBack.classList.add('show') },
@@ -2549,7 +2773,7 @@ async function refreshSignInStatus() {
   try {
     const j = await fetchApiStatus();
     uplDot.classList.toggle('on', j.signedIn);
-    uplStatus.textContent = j.signedIn ? 'Signed in to Google' : 'Not signed in';
+    uplStatus.textContent = j.signedIn ? 'Signed in to Google' : j.expired ? 'Sign-in expired - please sign in again' : 'Not signed in';
     uplSignin.textContent = j.signedIn ? 'Sign in again' : 'Sign in with Google';
   } catch (err) {
     uplStatus.textContent = 'Could not reach local server. Start it with: python run_editor.py';
@@ -2570,30 +2794,8 @@ function showSignedInArea() {
   refreshSignInStatus();
 }
 
-function uploadCandidates() {
-  return S.nodes.filter(n => n.photoFile && n.lat != null && n.lng != null);
-}
-
-function refreshUploadSummary() {
-  const ready = uploadCandidates();
-  const done = ready.filter(n => n.gsvPhotoId);
-  const changed = done.filter(gsvChanged).length;
-  const missing = S.nodes.length - ready.length;
-  const reupload = document.getElementById('upl-reupload').checked;
-  const parts = [t('{n} photo(s) to upload', { n: reupload ? ready.length : ready.length - done.length })];
-  if (done.length) {
-    parts.push(reupload
-      ? t('{n} already uploaded (will be uploaded again)', { n: done.length })
-      : t('{n} already uploaded, {c} of them changed since (will be updated)', { n: done.length, c: changed }));
-  }
-  if (missing) parts.push(t('{n} without a photo loaded (drop the file again to include it)', { n: missing }));
-  uplSummary.textContent = `${parts.join(' · ')}.`;
-}
-document.getElementById('upl-reupload').addEventListener('change', refreshUploadSummary);
-
 document.getElementById('bupload').onclick = async () => {
-  refreshUploadSummary();
-  uplLog.textContent = '';
+  if (!uploadRunning) showUploadSetup();
   uplBack.classList.add('show');
   try {
     const j = await fetchApiStatus();
@@ -2669,16 +2871,283 @@ uplSignin.onclick = async () => {
   }
 };
 
+function uploadCandidates() {
+  return S.nodes.filter(n => n.photoFile && n.lat != null && n.lng != null);
+}
+
+// Not on Google yet, or Google lost it: these get uploaded.
+function needsUpload(n, reupload = false) {
+  return reupload || !n.gsvPhotoId || n.gsvStatus === 'missing';
+}
+
+function refreshUploadSummary() {
+  const ready = uploadCandidates();
+  const reupload = document.getElementById('upl-reupload').checked;
+  const fresh = ready.filter(n => needsUpload(n, reupload)).length;
+  const onGoogle = ready.filter(n => !needsUpload(n, reupload));
+  const changed = onGoogle.filter(n => gsvChanged(n) || !n.gsvConfirmed).length;
+  const missing = S.nodes.length - ready.length;
+  const set = (id, v) => {
+    const el = document.getElementById(id);
+    el.textContent = v;
+    el.parentElement.classList.toggle('zero', !v);
+  };
+  set('upc-new', fresh);
+  set('upc-changed', changed);
+  set('upc-done', onGoogle.length);
+  set('upc-missing', missing);
+  const parts = [];
+  if (missing) parts.push(t('{n} without a photo loaded (drop the file again to include it)', { n: missing }));
+  if (onGoogle.some(n => !n.gsvConfirmed)) parts.push(t('Photos still being processed by Google get their links as soon as Google is ready.'));
+  uplSummary.textContent = parts.join(' ');
+  const obsolete = S.nodes.reduce((sum, n) => sum + (n.gsvObsolete?.length || 0), 0);
+  document.getElementById('upl-delete-old-row').hidden = !obsolete;
+  document.getElementById('upl-delete-old-label').textContent = t('Delete the old versions of replaced or blurred photos on Google ({n})', { n: obsolete });
+  uplStart.disabled = !fresh && !changed;
+}
+document.getElementById('upl-reupload').addEventListener('change', refreshUploadSummary);
+
+// ── Place ID ──────────────────────────────────────
+// Accept a bare ID or a pasted Google URL containing one.
+function cleanPlaceId(v) {
+  v = (v || '').trim();
+  const m = /(?:place_id[:=]|query_place_id=|placeid=)([A-Za-z0-9_-]{10,})/i.exec(v);
+  return m ? m[1] : v;
+}
+
+function checkPlaceIdInput() {
+  const el = document.getElementById('upl-place');
+  const msg = document.getElementById('upl-place-msg');
+  const v = cleanPlaceId(el.value);
+  if (v !== el.value.trim()) el.value = v;
+  msg.className = 'mini';
+  if (!v) { msg.textContent = ''; return true; }
+  if (!/^[A-Za-z0-9_-]{16,}$/.test(v)) {
+    msg.className = 'mini bad';
+    msg.textContent = t('That does not look like a Place ID (letters, digits, - and _ only, e.g. ChIJ…).');
+    return false;
+  }
+  msg.className = 'mini good';
+  msg.textContent = v.startsWith('ChIJ') ? t('Format looks right - Google checks the ID itself during the upload.') : t('Unusual Place ID format - Google will check it during the upload.');
+  return true;
+}
+document.getElementById('upl-place').addEventListener('input', checkPlaceIdInput);
+
+// ── Progress view ─────────────────────────────────
+const upRun = document.getElementById('up-run');
+const upSetup = document.getElementById('up-setup');
+const upList = document.getElementById('up-list');
+const upBar = document.getElementById('up-bar');
+let uploadRunning = false;
+let uploadCancel = false;
+
+function showUploadSetup() {
+  upRun.hidden = true;
+  upSetup.hidden = false;
+  refreshUploadSummary();
+}
+
+function setUploadStep(step) {
+  const order = ['upload', 'process', 'link'];
+  document.querySelectorAll('.up-step').forEach(el => {
+    const i = order.indexOf(el.dataset.step), k = order.indexOf(step);
+    el.classList.toggle('active', i === k);
+    el.classList.toggle('done', step === 'finished' || i < k);
+  });
+}
+
+function setOverall({ title, pct = null, sub = '', mode = 'normal' }) {
+  if (title != null) document.getElementById('up-title').textContent = title;
+  document.getElementById('up-pct').textContent = pct == null ? '' : `${Math.round(pct)}%`;
+  document.getElementById('up-bar-fill').style.width = `${pct ?? 0}%`;
+  upBar.classList.toggle('indet', mode === 'indet');
+  upBar.classList.toggle('success', mode === 'success');
+  upBar.classList.toggle('stopped', mode === 'stopped');
+  document.getElementById('up-sub').textContent = sub;
+}
+
+function showNotice(text, kind = 'warn') {
+  const el = document.getElementById('up-notice');
+  el.hidden = !text;
+  el.className = `up-notice ${kind}`;
+  el.textContent = text || '';
+}
+
+const CHECK_ICON = '<svg class="up-check" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const FAIL_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2.5" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>';
+const SKIP_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/></svg>';
+
+function buildUploadRows(nodes) {
+  upList.innerHTML = '';
+  nodes.forEach((n, i) => {
+    const row = document.createElement('div');
+    row.className = 'up-row';
+    row.style.setProperty('--i', i);
+    row.dataset.node = n.id;
+    const thumb = requestThumb(n);
+    row.innerHTML = `<img class="up-thumb" data-thumb="${n.id}" alt=""${thumb ? ` src="${thumb}"` : ''}>
+      <div class="up-main"><div class="up-name" data-no-i18n>${escapeHtml(n.photoName || n.name)}</div><div class="up-rowbar"><div></div></div><div class="up-msg"></div></div>
+      <div class="up-icon"></div>`;
+    upList.appendChild(row);
+    setRow(n, 'waiting', t('Waiting'));
+  });
+}
+
+function setRow(n, state, msg, pct = null) {
+  const row = upList.querySelector(`.up-row[data-node="${n.id}"]`);
+  if (!row) return;
+  if (row.dataset.state !== state) {
+    row.dataset.state = state;
+    row.querySelector('.up-icon').innerHTML = state === 'done' ? CHECK_ICON : state === 'failed' ? FAIL_ICON : state === 'skipped' ? SKIP_ICON : '';
+    if (state === 'uploading') row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  if (msg != null) row.querySelector('.up-msg').textContent = msg;
+  if (pct != null) row.querySelector('.up-rowbar > div').style.width = `${pct}%`;
+}
+
+function formatBytes(b) {
+  return b > 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${(b / 1e6).toFixed(1)} MB`;
+}
+function formatEta(sec) {
+  if (!Number.isFinite(sec) || sec <= 0) return '';
+  if (sec < 60) return t('about {n} s left', { n: Math.max(5, Math.round(sec / 5) * 5) });
+  return t('about {n} min left', { n: Math.round(sec / 60) });
+}
+
+// Send one photo: browser -> this app (XHR, with progress), and while the app
+// passes it on to Google, poll how far that got.
+function uploadOne(n, placeId, onBytes) {
+  return new Promise(resolve => {
+    const job = `j${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+    const params = new URLSearchParams({ filename: n.photoName, lat: n.lat, lng: n.lng, job });
+    if (n.heading != null) params.set('heading', n.heading);
+    if (placeId) params.set('place_id', placeId);
+    const total = n.photoFile.size;
+    let local = 0, remote = 0, phase = 'local', finished = false;
+    // A progress poll still in flight when the upload ends must not report anymore.
+    const report = () => { if (!finished) onBytes(Math.min(total, local * 0.15 + remote * 0.85), phase); };
+    const poll = setInterval(async () => {
+      try {
+        const p = await (await fetch(`/api/upload-progress?job=${job}`, { cache: 'no-store' })).json();
+        if (p.total) { remote = p.sent; phase = p.phase; report(); }
+      } catch {}
+    }, 300);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `/api/upload-photo?${params}`);
+    xhr.upload.onprogress = e => { if (e.lengthComputable) { local = e.loaded; report(); } };
+    xhr.onload = () => {
+      finished = true;
+      clearInterval(poll);
+      let j = {};
+      try { j = JSON.parse(xhr.responseText); } catch {}
+      if (xhr.status === 401) j = { ok: false, error: 'not_signed_in', kind: 'auth' };
+      resolve(j);
+    };
+    xhr.onerror = () => { finished = true; clearInterval(poll); resolve({ ok: false, error: t('The editor app is not reachable.'), kind: 'network' }); };
+    xhr.send(n.photoFile);
+  });
+}
+
+// Plain-language reasons for what Google answers most often.
+function explainUploadError(j) {
+  if (j.kind === 'auth') return t('Not signed in (or the sign-in expired) - click "Sign in with Google".');
+  if (j.kind === 'place') return t('Google rejected the Place ID.');
+  const msg = j.error || '';
+  if (j.status === 401 || j.status === 403) return t('Google refused access ({s}): {msg} - sign in again, and check that the Street View Publish API is enabled.', { s: j.status, msg });
+  if (j.status === 429) return t('Too many requests to Google - wait a few minutes and try again.');
+  if (/too large|size/i.test(msg)) return t('The photo is too large for Google (max 75 MB).');
+  return j.status ? `${t('Google error')} ${j.status}: ${msg}` : msg;
+}
+
+// Find photos that are already on Google at the same spot, so an interrupted or
+// confused earlier upload is picked up again instead of uploaded twice.
+async function adoptExistingGooglePhotos(nodes) {
+  let photos;
+  try {
+    const j = await (await fetch('/api/list-photos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+    if (!j.ok) return [];
+    photos = j.photos.filter(p => p.id && p.lat != null);
+  } catch { return []; }
+  const used = new Set(S.nodes.filter(n => n.gsvConfirmed && n.gsvPhotoId).map(n => n.gsvPhotoId));
+  const adopted = [];
+  nodes.forEach(n => {
+    let best = null, bestD = 1; // within 1 m
+    photos.forEach(p => {
+      if (used.has(p.id)) return;
+      const d = distanceMeters(n, { lat: p.lat, lng: p.lng });
+      if (d < bestD) { best = p; bestD = d; }
+    });
+    if (!best) return;
+    used.add(best.id);
+    Object.assign(n, { gsvPhotoId: best.id, gsvConfirmed: true, gsvStatus: best.status, gsvShareLink: best.shareLink || null, gsvSig: null });
+    adopted.push(n);
+  });
+  return adopted;
+}
+
+// Push position / heading / links of photos Google already knows.
+async function pushGoogleChanges(nodes = S.nodes) {
+  const items = nodes.filter(n => n.gsvPhotoId && n.gsvConfirmed && gsvChanged(n));
+  if (!items.length) return { ok: 0, failed: 0, items };
+  const r = await fetch('/api/update-photos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      items: items.map(n => ({
+        id: n.gsvPhotoId, lat: n.lat, lng: n.lng, heading: n.heading,
+        connections: getLinkedNodes(n.id).filter(o => o.gsvConfirmed && o.gsvPhotoId).map(o => o.gsvPhotoId),
+      })),
+    }),
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || 'failed');
+  let ok = 0, failed = 0;
+  (j.results || []).forEach(res => {
+    const n = items.find(x => x.gsvPhotoId === res.id);
+    if (!n) return;
+    if (res.ok) { n.gsvSig = gsvSignature(n); ok++; } else failed++;
+    uplLine(`${t('update')} ${n.photoName}: ${res.ok ? 'OK' : `${t('FAILED')} (${res.error})`}`);
+  });
+  scheduleAutosave();
+  return { ok, failed, items };
+}
+
 let uplSkipCheck = false;
 
-uplStart.onclick = async () => {
-  const nodes = uploadCandidates();
-  if (!nodes.length) {
-    uplLine(t('No nodes with a loaded photo and GPS position to upload.'));
-    return;
+// Delete the replaced (e.g. unblurred) versions of a photo from Google.
+async function deleteObsoleteGooglePhotos(n) {
+  try {
+    const r = await fetch('/api/delete-photos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: n.gsvObsolete }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'failed');
+    const done = new Set(j.results.filter(x => x.ok).map(x => x.id));
+    n.gsvObsolete = n.gsvObsolete.filter(id => !done.has(id));
+    if (done.size) uplLine(`${n.photoName}: ${t('old version deleted on Google')}`);
+    j.results.filter(x => !x.ok).forEach(x => uplLine(`${n.photoName}: ${t('could not delete the old version on Google: {msg}', { msg: x.error })}`));
+  } catch (err) {
+    uplLine(`${n.photoName}: ${t('could not delete the old version on Google: {msg}', { msg: err.message })}`);
   }
-  // Check the tour first: a photo Google rejects (not 2:1, too big) only fails
-  // after the whole upload otherwise.
+}
+
+uplStart.onclick = async () => {
+  if (uploadRunning) return;
+  try {
+    await runUpload();
+  } catch (err) {
+    console.error(err);
+    showNotice(t('Something went wrong: {msg}', { msg: err.message || err }), 'error');
+    setOverall({ title: t('Stopped'), pct: null, mode: 'stopped' });
+    document.getElementById('up-cancel').hidden = true;
+    document.getElementById('up-finish').hidden = false;
+  } finally {
+    uploadRunning = false;
+  }
+};
+
+async function runUpload() {
+  const nodes = uploadCandidates();
+  if (!nodes.length) { alert(t('No nodes with a loaded photo and GPS position to upload.')); return; }
+  if (!checkPlaceIdInput()) return;
   if (!uplSkipCheck) {
     const issues = await checkTour();
     const ids = new Set(nodes.map(n => n.id));
@@ -2686,94 +3155,208 @@ uplStart.onclick = async () => {
       openTourCheck({ onContinue: () => { uplSkipCheck = true; uplStart.click(); } });
       return;
     }
-    const warns = issues.filter(i => i.level !== 'error').length;
-    if (warns) uplLine(t('{n} warning(s) - see Tools → Check tour', { n: warns }));
   }
   uplSkipCheck = false;
 
   const reupload = document.getElementById('upl-reupload').checked;
-  const todo = nodes.filter(n => reupload || !n.gsvPhotoId);
-  uplStart.disabled = true;
-  const placeId = uplPlace.value.trim() || null;
-  const justUploaded = new Set();
-  if (todo.length) uplLine(t('Uploading {n} photo(s)...', { n: todo.length }));
-  if (todo.length < nodes.length) uplLine(t('Skipping {n} photo(s) uploaded earlier.', { n: nodes.length - todo.length }));
+  let placeId = cleanPlaceId(uplPlace.value) || null;
+  const deleteOld = document.getElementById('upl-delete-old').checked;
+  uploadRunning = true;
+  uploadCancel = false;
+  upSetup.hidden = true;
+  upRun.hidden = false;
+  document.getElementById('up-done').hidden = true;
+  document.getElementById('up-finish').hidden = true;
+  document.getElementById('up-contrib').hidden = true;
+  document.getElementById('up-cancel').hidden = false;
+  document.getElementById('up-cancel').disabled = false;
+  showNotice('');
+  uplLog.textContent = '';
+  buildUploadRows(nodes);
 
-  for (const n of todo) {
-    try {
-      const buf = await n.photoFile.arrayBuffer();
-      const params = new URLSearchParams({ filename: n.photoName, lat: n.lat, lng: n.lng });
-      if (n.heading != null) params.set('heading', n.heading);
-      if (placeId) params.set('place_id', placeId);
-      const r = await fetch(`/api/upload-photo?${params}`, { method: 'POST', body: buf });
-      const j = await r.json();
-      if (r.status === 401) {
-        uplLine(t('{name}: not signed in - click "Sign in with Google" first.', { name: n.photoName }));
-        break;
+  // 1) Pick up photos that are already on Google, then upload the rest.
+  setUploadStep('upload');
+  setOverall({ title: t('Checking your photos on Google…'), mode: 'indet' });
+  let todo = nodes.filter(n => needsUpload(n, reupload));
+  // Only photos the editor had uploaded before but lost track of are matched
+  // to photos on Google; a new photo at a known spot must really be uploaded.
+  const lost = todo.filter(n => n.gsvStatus === 'missing');
+  if (lost.length && !reupload) {
+    const adopted = await adoptExistingGooglePhotos(lost);
+    adopted.forEach(n => {
+      setRow(n, 'done', t('Already on Google - linked to it'));
+      uplLine(`${n.photoName}: ${t('found on Google, not uploaded again')}`);
+    });
+    todo = todo.filter(n => !adopted.includes(n));
+  }
+  nodes.filter(n => !todo.includes(n) && !upList.querySelector(`.up-row[data-node="${n.id}"][data-state="done"]`))
+    .forEach(n => setRow(n, 'skipped', t('Already on Google')));
+
+  const totalBytes = todo.reduce((sum, n) => sum + n.photoFile.size, 0);
+  let doneBytes = 0;
+  const started = performance.now();
+  const samples = [];
+  let uploaded = 0, failed = 0, authFailed = false;
+
+  for (let i = 0; i < todo.length; i++) {
+    const n = todo[i];
+    if (uploadCancel) { setRow(n, 'skipped', t('Cancelled')); continue; }
+    setRow(n, 'uploading', t('Uploading…'), 0);
+    setOverall({ title: t('Uploading photo {a} of {b}', { a: i + 1, b: todo.length }), pct: totalBytes ? (doneBytes / totalBytes) * 100 : 0 });
+    const onBytes = (bytes, phase) => {
+      const now = performance.now();
+      const sent = doneBytes + bytes;
+      samples.push([now, sent]);
+      while (samples.length > 2 && now - samples[0][0] > 6000) samples.shift();
+      const [t0, b0] = samples[0];
+      const speed = now - t0 > 500 ? (sent - b0) / ((now - t0) / 1000) : 0;
+      const pct = totalBytes ? (sent / totalBytes) * 100 : 100;
+      setRow(n, 'uploading', phase === 'creating' ? t('Registering with Google…') : `${formatBytes(bytes)} / ${formatBytes(n.photoFile.size)}`, (bytes / n.photoFile.size) * 100);
+      setOverall({
+        title: t('Uploading photo {a} of {b}', { a: i + 1, b: todo.length }),
+        pct,
+        sub: [`${formatBytes(sent)} / ${formatBytes(totalBytes)}`, speed > 0 ? `${(speed / 1e6).toFixed(1)} MB/s` : '', speed > 0 ? formatEta((totalBytes - sent) / speed) : ''].filter(Boolean).join(' · '),
+      });
+    };
+    let j = await uploadOne(n, placeId, onBytes);
+    if (!j.ok && j.kind === 'place') {
+      // Google refused the Place ID: try this photo once without it.
+      uplLine(`${n.photoName}: ${t('Place ID rejected')} (${j.error})`);
+      const retry = await uploadOne(n, null, onBytes);
+      if (retry.ok) {
+        placeId = null;
+        showNotice(t('Google did not accept the Place ID "{id}" ({msg}). The photos are uploaded without a place - you can find the right ID with the Place ID Finder (see the help in the upload dialog).', { id: uplPlace.value.trim(), msg: j.error }));
       }
-      if (!j.ok) {
-        uplLine(`${n.photoName}: ${t('FAILED')} (${j.error || 'unknown error'})`);
-        continue;
-      }
-      // Remember the Google photo ID so a later run can skip this photo.
-      n.gsvPhotoId = j.photoId;
-      n.gsvStatus = 'processing';
-      n.gsvSig = null;
-      justUploaded.add(n);
+      j = retry;
+    }
+    doneBytes += n.photoFile.size;
+    if (j.ok) {
+      Object.assign(n, { gsvPhotoId: j.photoId, gsvUploadedAt: Date.now(), gsvConfirmed: false, gsvStatus: 'pending', gsvSig: null, gsvShareLink: null });
+      uploaded++;
+      setRow(n, 'processing', t('Uploaded - Google is processing it'), 100);
+      uplLine(`${n.photoName}: OK (${j.photoId})`);
+      if (deleteOld && n.gsvObsolete?.length) await deleteObsoleteGooglePhotos(n);
       scheduleAutosave();
-      uplLine(`${n.photoName}: OK`);
-    } catch (err) {
-      uplLine(`${n.photoName}: ${t('FAILED')} (${err.message})`);
+    } else {
+      failed++;
+      const reason = explainUploadError(j);
+      setRow(n, 'failed', reason, 100);
+      uplLine(`${n.photoName}: ${t('FAILED')} (${j.error})`);
+      if (j.kind === 'auth') { authFailed = true; uploadCancel = true; }
     }
   }
+  document.getElementById('up-cancel').disabled = true;
+  if (authFailed) showNotice(t('Not signed in - click "Sign in with Google" first.'), 'error');
+  refreshAllMarkers();
 
-  // Push links for new photos, and position / heading / links for photos that
-  // changed in the editor since they were uploaded.
-  const items = nodes.filter(n => n.gsvPhotoId && (justUploaded.has(n) || gsvChanged(n)));
-  if (items.length) {
-    uplLine(t('Updating position, heading and links of {n} photo(s)...', { n: items.length }));
-    try {
-      const r = await fetch('/api/update-photos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: items.map(n => ({
-            id: n.gsvPhotoId, lat: n.lat, lng: n.lng, heading: n.heading,
-            connections: getLinkedNodes(n.id).map(o => o.gsvPhotoId).filter(Boolean),
-          })),
-        }),
-      });
-      const j = await r.json();
-      if (!j.ok) throw new Error(j.error || 'failed');
-      (j.results || []).forEach(res => {
-        const n = items.find(x => x.gsvPhotoId === res.id);
-        if (!n) return;
-        if (res.ok) n.gsvSig = gsvSignature(n);
-        uplLine(`${t('update')} ${n.photoName}: ${res.ok ? 'OK' : `${t('FAILED')} (${res.error})`}`);
-      });
-      scheduleAutosave();
-    } catch (err) {
-      uplLine(t('Updating on Google failed: {msg}', { msg: err.message }));
-    }
-  } else if (!todo.length) {
-    uplLine(t('Nothing changed since the last upload.'));
+  // 2) Wait for Google to accept the new photos, 3) then set links and positions.
+  await finishGoogleSync(nodes, { uploaded, failed, waitMs: uploaded ? 150000 : 20000 });
+}
+
+async function finishGoogleSync(nodes, { uploaded = 0, failed = 0, waitMs = 20000 } = {}) {
+  setUploadStep('process');
+  const deadline = Date.now() + waitMs;
+  const pendingNodes = () => nodes.filter(n => n.gsvPhotoId && !n.gsvConfirmed);
+  while (true) {
+    await refreshGoogleStatus({ quiet: true });
+    nodes.filter(n => n.gsvPhotoId && n.gsvConfirmed).forEach(n => {
+      const row = upList.querySelector(`.up-row[data-node="${n.id}"]`);
+      if (row?.dataset.state === 'processing') setRow(n, 'processing', t('Google has it - setting links next'), 100);
+    });
+    const pending = pendingNodes().length;
+    if (!pending || Date.now() > deadline || uploadCancel) break;
+    const known = nodes.filter(n => n.gsvPhotoId).length - pending;
+    setOverall({
+      title: t('Google is processing the photos…'),
+      pct: null,
+      mode: 'indet',
+      sub: t('{a} of {b} ready - this usually takes a few minutes', { a: known, b: known + pending }),
+    });
+    await new Promise(r => setTimeout(r, 8000));
   }
 
-  uplLine(`\n${t('Done: {a}/{b} uploaded.', { a: justUploaded.size, b: todo.length })}`);
-  const counts = await refreshGoogleStatus({ quiet: true });
-  if (counts) uplLine(`${t('Status on Google')}: ${Object.entries(counts).map(([k, v]) => `${v} ${t(k)}`).join(', ')}`);
-  uplLine(t('Check: https://www.google.com/maps/contrib/'));
-  refreshUploadSummary();
+  setUploadStep('link');
+  setOverall({ title: t('Setting links, position and heading…'), mode: 'indet' });
+  let linkResult = { ok: 0, failed: 0, items: [] };
+  try {
+    linkResult = await pushGoogleChanges(nodes);
+  } catch (err) {
+    uplLine(t('Updating on Google failed: {msg}', { msg: err.message }));
+  }
+  linkResult.items.forEach(n => {
+    const row = upList.querySelector(`.up-row[data-node="${n.id}"]`);
+    if (!row || row.dataset.state === 'failed') return;
+    if (gsvChanged(n)) setRow(n, 'failed', t('Links could not be set - tried again automatically later'), 100);
+    else setRow(n, 'done', t('On Google, linked'), 100);
+  });
+  const pending = pendingNodes();
+  pending.forEach(n => setRow(n, 'processing', t('Still being processed by Google - links follow automatically'), 100));
+  nodes.filter(n => n.gsvConfirmed && !gsvChanged(n)).forEach(n => {
+    const row = upList.querySelector(`.up-row[data-node="${n.id}"]`);
+    if (row && ['processing', 'skipped'].includes(row.dataset.state)) setRow(n, 'done', t('On Google, up to date'), 100);
+  });
   refreshAllMarkers();
   updateSb();
-  uplStart.disabled = false;
+  refreshUploadSummary();
+
+  setUploadStep('finished');
+  const doneEl = document.getElementById('up-done');
+  doneEl.hidden = false;
+  const allGood = !failed && !pending.length && !linkResult.failed;
+  doneEl.classList.toggle('partial', !allGood);
+  doneEl.style.animation = 'none';
+  void doneEl.offsetWidth;
+  doneEl.style.animation = '';
+  doneEl.querySelector('svg').outerHTML = doneEl.querySelector('svg').outerHTML; // restart the check animation
+  document.getElementById('up-done-title').textContent = failed
+    ? t('{a} uploaded, {f} failed', { a: uploaded, f: failed })
+    : uploaded ? t('{a} photo(s) uploaded', { a: uploaded }) : t('Tour on Google is up to date');
+  document.getElementById('up-done-text').textContent = pending.length
+    ? t('Google is still processing {n} photo(s). Their links and positions are set automatically as soon as Google is ready - keep the editor open, or press Upload again later. It can take a few hours until they show on Google Maps.', { n: pending.length })
+    : failed ? t('The failed photos are listed above with the reason. Fix it and press Upload again - only the missing ones are sent.')
+      : t('It can take a few hours until new photos show on Google Maps.');
+  setOverall({ title: allGood ? t('Done') : t('Finished with notes'), pct: 100, mode: allGood ? 'success' : 'stopped' });
+  document.getElementById('up-cancel').hidden = true;
+  document.getElementById('up-finish').hidden = false;
+  document.getElementById('up-contrib').hidden = !uploaded && !nodes.some(n => n.gsvPhotoId);
+  if (pending.length) startGoogleBackgroundSync();
+}
+
+document.getElementById('up-cancel').onclick = () => {
+  uploadCancel = true;
+  document.getElementById('up-cancel').disabled = true;
+  showNotice(t('Stopping after the current photo…'), 'info');
+};
+document.getElementById('up-finish').onclick = () => {
+  if (uploadRunning) return;
+  showUploadSetup();
 };
 
 document.getElementById('upl-refresh-status').onclick = async () => {
   const counts = await refreshGoogleStatus();
   if (counts) uplLine(`${t('Status on Google')}: ${Object.entries(counts).map(([k, v]) => `${v} ${t(k)}`).join(', ')}`);
+  try { await pushGoogleChanges(); } catch {}
   refreshUploadSummary();
 };
+
+// While photos are still being processed by Google, keep checking in the
+// background and set their links as soon as Google accepts them.
+let gsvSyncTimer = null;
+function startGoogleBackgroundSync() {
+  if (gsvSyncTimer) return;
+  gsvSyncTimer = setInterval(async () => {
+    if (uploadRunning) return;
+    const waiting = S.nodes.filter(n => n.gsvPhotoId && (!n.gsvConfirmed || gsvChanged(n)) && n.gsvStatus !== 'missing');
+    if (!waiting.length) { clearInterval(gsvSyncTimer); gsvSyncTimer = null; return; }
+    const counts = await refreshGoogleStatus({ quiet: true });
+    if (!counts) return;
+    try {
+      const res = await pushGoogleChanges();
+      if (res.ok) toast(t('Google is ready: links set for {n} photo(s)', { n: res.ok }));
+    } catch {}
+    refreshUploadSummary();
+  }, 60000);
+}
 
 function normalizeHeading(v) {
   if (v == null || Number.isNaN(v)) return null;
@@ -2794,6 +3377,13 @@ function normalizeRad(v) {
 }
 // heading = compass direction of the photo's centre (Google's pose.heading), so in
 // the photo itself north lies at yaw -heading. The editor view opens facing north.
+// Photo Sphere Viewer reads GPano:PoseHeadingDegrees from a photo's XMP and turns
+// the panorama by it on its own. Headings are handled explicitly here (node.heading),
+// so that extra turn would count twice and leave such photos rotated - keep XMP
+// pitch/roll levelling, but never its heading. As a function it applies to every
+// panorama the viewer loads, not just the first one.
+const IGNORE_XMP_HEADING = () => ({ poseHeading: 0 });
+
 function northYaw(n) {
   return normalizeRad(-degToRad(n.heading));
 }
@@ -2823,28 +3413,6 @@ function bearingDeg(from, to) {
   const y = Math.sin(dLng) * Math.cos(lat2);
   const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
   return normalizeHeading(radToDeg(Math.atan2(y, x)));
-}
-
-function meanBearingDeg(values) {
-  if (!values.length) return null;
-  let sx = 0;
-  let sy = 0;
-  values.forEach(v => {
-    const r = degToRad(v);
-    sx += Math.cos(r);
-    sy += Math.sin(r);
-  });
-  if (Math.abs(sx) < 1e-6 && Math.abs(sy) < 1e-6) return null;
-  return normalizeHeading(radToDeg(Math.atan2(sy, sx)));
-}
-
-function chooseCloserHeading(candidate, reference) {
-  if (candidate == null) return reference ?? null;
-  if (reference == null) return candidate;
-  const alt = normalizeHeading(candidate + 180);
-  const d1 = Math.abs(normalizeRad(degToRad(candidate - reference)));
-  const d2 = Math.abs(normalizeRad(degToRad(alt - reference)));
-  return d1 <= d2 ? candidate : alt;
 }
 
 function lockViewerPitch(viewer) {
@@ -3156,57 +3724,6 @@ function getLinkedNodes(id) {
     .filter(Boolean);
 }
 
-function estimateHeadingForNode(node, parentId = null) {
-  const linked = getLinkedNodes(node.id);
-  if (!linked.length) return node.heading;
-  if (linked.length === 1) return bearingDeg(node, linked[0]);
-
-  if (parentId) {
-    const forward = linked.filter(o => o.id !== parentId);
-    if (forward.length === 1) return bearingDeg(node, forward[0]);
-    const meanForward = meanBearingDeg(forward.map(o => bearingDeg(node, o)));
-    return chooseCloserHeading(meanForward, node.heading);
-  }
-
-  if (linked.length === 2) {
-    const tangent = bearingDeg(linked[0], linked[1]);
-    return chooseCloserHeading(tangent, node.heading);
-  }
-
-  return chooseCloserHeading(meanBearingDeg(linked.map(o => bearingDeg(node, o))), node.heading);
-}
-
-function estimateHeadingsFromAnchor(anchorId) {
-  const anchor = gn(anchorId);
-  if (!anchor) return 0;
-  const queue = [{ id: anchorId, parentId: null }];
-  const visited = new Set([anchorId]);
-  let updated = 0;
-
-  while (queue.length) {
-    const { id, parentId } = queue.shift();
-    const node = gn(id);
-    if (!node) continue;
-
-    if (id !== anchorId) {
-      const estimated = estimateHeadingForNode(node, parentId);
-      if (estimated != null) {
-        node.heading = normalizeHeading(estimated);
-        node.headingSource = 'auto';
-        updated += 1;
-      }
-    }
-
-    getLinkedNodes(id).forEach(next => {
-      if (visited.has(next.id)) return;
-      visited.add(next.id);
-      queue.push({ id: next.id, parentId: id });
-    });
-  }
-
-  return updated;
-}
-
 function updateSb() {
   const n = gn(S.selId);
   document.getElementById('no-sel').style.display = n ? 'none' : '';
@@ -3238,7 +3755,7 @@ function refreshHeadingUi(n) {
   if (n.heading == null) {
     headingMeta.textContent = 'Heading not set';
   } else {
-    headingMeta.textContent = `heading ${n.heading.toFixed(1)}° (${n.headingSource === 'exif' ? 'EXIF' : 'manual'})`;
+    headingMeta.textContent = `heading ${n.heading.toFixed(1)}° (${n.headingSource === 'exif' ? 'EXIF' : n.headingSource === 'auto' ? 'auto' : 'manual'})`;
   }
 }
 
@@ -3252,6 +3769,7 @@ async function ensurePanoViewer(n) {
   if (!panoViewer) {
     panoViewer = new Viewer({
       container: document.getElementById('pano-view'),
+      panoData: IGNORE_XMP_HEADING,
       plugins: [MarkersPlugin],
       panorama: n.photoUrl,
       navbar: ['zoom', 'move'],
@@ -3279,7 +3797,7 @@ async function ensurePanoViewer(n) {
   } else {
     panoViewer.rotate({ yaw: getNodeEditorYaw(n), pitch: 0 });
   }
-  refreshPanoMarkers(n);
+  if (S.selId === n.id) refreshPanoMarkers(n);
 }
 
 function renderConnList() {
@@ -3368,6 +3886,7 @@ async function ensureCompareViewers(baseNode, targetNode) {
   if (!cmpBaseViewer) {
     cmpBaseViewer = new Viewer({
       container: document.getElementById('cmp-base'),
+      panoData: IGNORE_XMP_HEADING,
       panorama: mainNode.photoUrl,
       navbar: ['zoom', 'move'],
       defaultPitch: 0,
@@ -3387,6 +3906,7 @@ async function ensureCompareViewers(baseNode, targetNode) {
   if (!cmpOverlayViewer) {
     cmpOverlayViewer = new Viewer({
       container: document.getElementById('cmp-overlay'),
+      panoData: IGNORE_XMP_HEADING,
       panorama: overNode.photoUrl,
       navbar: [],
       defaultPitch: 0,
@@ -3449,6 +3969,7 @@ function snapshotState() {
       captureTime: n.captureTime, captureOffset: n.captureOffset ?? null,
       blurred: !!n.blurred, gsvPhotoId: n.gsvPhotoId ?? null,
       gsvStatus: n.gsvStatus ?? null, gsvShareLink: n.gsvShareLink ?? null, gsvSig: n.gsvSig ?? null,
+      gsvConfirmed: !!n.gsvConfirmed, gsvUploadedAt: n.gsvUploadedAt ?? null, gsvObsolete: [...(n.gsvObsolete || [])],
       hotspots: (n.hotspots || []).map(h => ({ ...h })),
     })),
     conns: S.conns.map(c => ({ id: c.id, from: c.from, to: c.to })),
@@ -3463,7 +3984,19 @@ function pushUndo() {
   updateUndoRedoButtons();
 }
 
-function applySnapshot(snap, { refit = false } = {}) {
+function applySnapshot(snap, { refit = false, keepGoogle = false } = {}) {
+  // Undo/redo restores edits, not what happened on Google: an upload after the
+  // snapshot was taken must survive, or the photo would be uploaded twice.
+  if (keepGoogle) {
+    const live = new Map(S.nodes.map(n => [n.id, n]));
+    snap = { ...snap, nodes: snap.nodes.map(n => {
+      const cur = live.get(n.id);
+      if (!cur || cur.photoFile !== n.photoFile) return n;
+      const keep = {};
+      GSV_FIELDS.forEach(k => { keep[k] = cur[k]; });
+      return { ...n, ...keep };
+    }) };
+  }
   S.nodes.forEach(n => { if (n.marker) map.removeLayer(n.marker); });
   S.conns.forEach(c => {
     if (c.poly) map.removeLayer(c.poly);
@@ -3481,6 +4014,11 @@ function applySnapshot(snap, { refit = false } = {}) {
   S.selId = snap.selId ?? null;
   S.startId = snap.startId ?? null;
   S.nxt = snap.nxt ?? S.nxt;
+  // Never hand out an ID that is already in use (older projects had no counter).
+  const used = [...S.nodes.map(n => n.id), ...S.conns.map(c => c.id), ...S.nodes.flatMap(n => (n.hotspots || []).map(h => h.id))]
+    .map(id => Number(String(id).slice(1)) || 0);
+  const maxUsed = Math.max(0, ...used);
+  if (S.nxt <= maxUsed) S.nxt = maxUsed + 1;
   S.connFrom = null;
   S.multiSel = new Set();
   panoNodeId = null;
@@ -3493,13 +4031,14 @@ function applySnapshot(snap, { refit = false } = {}) {
   updateMultiBar();
   updateStats();
   if (refit && S.nodes.length) fitAll();
+  if (S.nodes.some(n => n.gsvPhotoId && !n.gsvConfirmed && n.gsvStatus !== 'missing')) startGoogleBackgroundSync();
 }
 
 function doUndo() {
   if (!undoStack.length) return;
   redoStack.push(snapshotState());
   const snap = undoStack.pop();
-  applySnapshot(snap);
+  applySnapshot(snap, { keepGoogle: true });
   updateUndoRedoButtons();
   scheduleAutosave();
 }
@@ -3508,7 +4047,7 @@ function doRedo() {
   if (!redoStack.length) return;
   undoStack.push(snapshotState());
   const snap = redoStack.pop();
-  applySnapshot(snap);
+  applySnapshot(snap, { keepGoogle: true });
   updateUndoRedoButtons();
   scheduleAutosave();
 }
@@ -3761,6 +4300,7 @@ function referencedPhotoKeys() {
   const add = f => { const k = f && photoKeys.get(f); if (k) keys.add(k); };
   S.nodes.forEach(n => add(n.photoFile));
   [...undoStack, ...redoStack].forEach(snap => snap.nodes.forEach(n => add(n.photoFile)));
+  restorePendingKeys.forEach(k => keys.add(k));
   return keys;
 }
 
@@ -3771,7 +4311,19 @@ function idbRequest(req) {
   });
 }
 
-async function saveSessionNow() {
+// Saves run one after another: a big first save can take longer than the
+// autosave delay, and two overlapping ones would write the same photos twice.
+let sessionSaveChain = Promise.resolve();
+function saveSessionNow() {
+  sessionSaveChain = sessionSaveChain.then(saveSessionOnce, saveSessionOnce);
+  return sessionSaveChain;
+}
+
+// Photos of a saved session the user has not restored or discarded yet: an
+// autosave in the meantime must not delete them.
+const restorePendingKeys = new Set();
+
+async function saveSessionOnce() {
   try {
     const snap = snapshotState();
     const stored = {
@@ -3837,6 +4389,7 @@ async function loadSavedSession() {
         }
         n.photoFile = (await idbRequest(store.get(n.photoKey))) || null;
         if (n.photoFile) photoKeys.set(n.photoFile, n.photoKey);
+        restorePendingKeys.add(n.photoKey);
         delete n.photoKey;
       }
     }
@@ -3875,7 +4428,9 @@ async function checkSavedSession() {
       }
       delete n.legacyInlinePhoto;
     }
+    if (S.nodes.length) pushUndo(); // work done before restoring stays reachable with Ctrl+Z
     applySnapshot(snap, { refit: true });
+    restorePendingKeys.clear();
     restoreBanner.classList.remove('show');
     const lost = snap.nodes.filter(n => n.photoName && !n.photoFile).length;
     toast(lost
@@ -3884,6 +4439,7 @@ async function checkSavedSession() {
     scheduleAutosave();
   };
   document.getElementById('restore-no').onclick = () => {
+    restorePendingKeys.clear();
     clearSavedSession();
     restoreBanner.classList.remove('show');
   };
@@ -4192,6 +4748,7 @@ async function openBlurTool(id) {
   if (!n?.photoFile) { alert('Select a node with a photo first.'); return; }
   toast('Loading photo…');
   try {
+    blur.bmp?.close?.(); // free the previous photo (a decoded 8K panorama is ~130 MB)
     blur.bmp = await createImageBitmap(n.photoFile);
   } catch (err) {
     alert(`Could not load the photo: ${err.message || err}`);
@@ -4324,7 +4881,10 @@ async function spliceJpegMetadata(originalBlob, newBlob) {
     const len = (orig[p + 2] << 8) | orig[p + 3];
     const seg = orig.subarray(p, p + 2 + len);
     const head = String.fromCharCode(...orig.subarray(p + 4, p + 4 + XMP.length));
-    if ((marker === 0xE1 && head === XMP) || marker === 0xE2) keep.push(seg);
+    // APP2 also carries MPF (embedded preview images, addressed by byte offsets
+    // that would point into the wrong place in the new file) - keep ICC only.
+    const isIcc = marker === 0xE2 && String.fromCharCode(...orig.subarray(p + 4, p + 15)) === 'ICC_PROFILE';
+    if ((marker === 0xE1 && head === XMP) || isIcc) keep.push(seg);
     p += 2 + len;
   }
   // Skip the encoder's own JFIF APP0 so the kept segments follow SOI directly.
@@ -4352,7 +4912,7 @@ document.getElementById('blur-apply').onclick = async () => {
     n.photoFile = new File([jpeg], n.photoName || 'photo.jpg', { type: 'image/jpeg' });
     if (n.photoUrl) URL.revokeObjectURL(n.photoUrl);
     n.photoUrl = URL.createObjectURL(n.photoFile);
-    n.gsvPhotoId = null;
+    retireGooglePhoto(n);
     n.blurred = true;
     panoNodeId = null;
     updateSb();
@@ -4661,23 +5221,34 @@ function bindMarkerTip(n) {
 }
 
 // ── Google status (published / processing / rejected) ─
+const GSV_FIELDS = ['gsvPhotoId', 'gsvStatus', 'gsvShareLink', 'gsvSig', 'gsvConfirmed', 'gsvUploadedAt', 'gsvObsolete'];
+
+// The photo of a node was replaced (new file, blurred): it has to be uploaded
+// again, and the version already on Google becomes obsolete - remember it so the
+// next upload can delete it (otherwise e.g. the unblurred photo stays public).
+function retireGooglePhoto(n) {
+  const obsolete = [...(n.gsvObsolete || [])];
+  if (n.gsvPhotoId) obsolete.push(n.gsvPhotoId);
+  Object.assign(n, { gsvPhotoId: null, gsvStatus: null, gsvShareLink: null, gsvSig: null, gsvConfirmed: false, gsvUploadedAt: null, gsvObsolete: obsolete });
+}
+
 const GSV_LABELS = {
+  pending: 'Uploaded - Google is still processing it',
   published: 'Published on Google Maps',
-  processing: 'Uploaded, still being processed by Google',
+  processing: 'On Google, not yet shown on Maps',
   rejected: 'Rejected by Google',
-  missing: 'No longer on Google (deleted?)',
-  error: 'Google status unknown',
+  missing: 'Not found on Google (deleted?) - will be uploaded again',
 };
 
-// What Google should know about a node: when this changes after an upload,
-// the next upload run pushes the new position / heading / links.
+// What Google should know about a node: when this changes after an upload, it
+// is pushed to Google. Links only count once the target photo exists on Google.
 function gsvSignature(n) {
-  const links = getLinkedNodes(n.id).map(o => o.gsvPhotoId).filter(Boolean).sort();
+  const links = getLinkedNodes(n.id).filter(o => o.gsvConfirmed && o.gsvPhotoId).map(o => o.gsvPhotoId).sort();
   return JSON.stringify([n.lat.toFixed(7), n.lng.toFixed(7), n.heading == null ? null : n.heading.toFixed(2), links]);
 }
 
 function gsvChanged(n) {
-  return !!n.gsvPhotoId && n.gsvSig !== gsvSignature(n);
+  return !!n.gsvPhotoId && !!n.gsvConfirmed && n.gsvSig !== gsvSignature(n);
 }
 
 function gsvLabel(n) {
@@ -4691,6 +5262,10 @@ function gsvStatusHtml(n) {
   const link = n.gsvShareLink ? ` <a href="${escapeHtml(n.gsvShareLink)}" target="_blank" rel="noopener">${t('open')}</a>` : '';
   return `<span class="gstat"><span class="dot ${n.gsvStatus || ''}"></span>${escapeHtml(gsvLabel(n))}${link}</span>`;
 }
+
+// A freshly uploaded photo is invisible to Google's API for a while; only call
+// it missing if Google never confirmed it and that window is long over.
+const GSV_PROCESSING_GRACE = 3 * 24 * 3600 * 1000;
 
 async function refreshGoogleStatus({ quiet = false } = {}) {
   const nodes = S.nodes.filter(n => n.gsvPhotoId);
@@ -4707,15 +5282,22 @@ async function refreshGoogleStatus({ quiet = false } = {}) {
     nodes.forEach(n => {
       const s = j.photos[n.gsvPhotoId];
       if (!s) return;
-      n.gsvStatus = s.status;
-      n.gsvShareLink = s.shareLink || null;
-      counts[s.status] = (counts[s.status] || 0) + 1;
-      // Deleted on Google's side: forget the ID so the next upload sends it again.
-      if (s.status === 'missing') { n.gsvPhotoId = null; n.gsvSig = null; }
+      if (s.status === 'notfound') {
+        const young = Date.now() - (n.gsvUploadedAt || 0) < GSV_PROCESSING_GRACE;
+        n.gsvStatus = !n.gsvConfirmed && young ? 'pending' : 'missing';
+      } else {
+        n.gsvStatus = s.status;
+        n.gsvConfirmed = true;
+        n.gsvShareLink = s.shareLink || null;
+        // Keep the form of the ID Google actually answers to.
+        if (s.resolvedId && s.resolvedId !== n.gsvPhotoId) n.gsvPhotoId = s.resolvedId;
+      }
+      counts[n.gsvStatus] = (counts[n.gsvStatus] || 0) + 1;
     });
     refreshAllMarkers();
     updateSb();
     scheduleAutosave();
+    if (S.nodes.some(n => n.gsvPhotoId && (!n.gsvConfirmed || gsvChanged(n)) && n.gsvStatus !== 'missing')) startGoogleBackgroundSync();
     const summary = Object.entries(counts).map(([k, v]) => `${v} ${t(k)}`).join(' · ');
     if (!quiet) toast(t('Google status: {summary}', { summary }));
     return counts;
@@ -4792,7 +5374,7 @@ const jpegInfoCache = new WeakMap();
 async function jpegInfo(file) {
   if (jpegInfoCache.has(file)) return jpegInfoCache.get(file);
   const buf = new Uint8Array(await file.slice(0, Math.min(file.size, 2 * 1024 * 1024)).arrayBuffer());
-  const info = { width: null, height: null, gpano: false };
+  const info = { width: null, height: null, gpano: false, jpeg: buf[0] === 0xFF && buf[1] === 0xD8 };
   let p = 2;
   while (p + 9 < buf.length && buf[p] === 0xFF) {
     const m = buf[p + 1];
@@ -4820,8 +5402,15 @@ async function checkTour() {
     if (!n.photoFile) {
       add(n, 'warn', t('No photo loaded - this node is not uploaded'));
     } else {
-      const info = await jpegInfo(n.photoFile);
-      if (!info.width) add(n, 'warn', t('Could not read the image size'));
+      let info;
+      try {
+        info = await jpegInfo(n.photoFile);
+      } catch {
+        add(n, 'error', t('The photo file can no longer be read - drop it again'));
+        continue;
+      }
+      if (!info.jpeg) add(n, 'error', t('Not a JPEG file - Google Street View only accepts JPEG photos'));
+      else if (!info.width) add(n, 'warn', t('Could not read the image size'));
       else if (Math.abs(info.width / info.height - 2) > 0.02) add(n, 'error', t('Not a 360° panorama: {w}×{h}, Google needs a 2:1 image', { w: info.width, h: info.height }));
       else if (info.width < 4096) add(n, 'warn', t('Only {w}×{h} - Google recommends at least 4096×2048', { w: info.width, h: info.height }));
       if (!info.gpano) add(n, 'warn', t('No 360° (GPano) metadata - Google may not show it as a panorama'));
@@ -5118,7 +5707,7 @@ import { MarkersPlugin } from '@photo-sphere-viewer/markers-plugin';
 const NODES=${JSON.stringify(nodes).replace(/</g, '\\u003c')};
 const EDIT=${editable ? 'true' : 'false'};
 const START=${JSON.stringify(startId)};
-const viewer=new Viewer({container:document.getElementById('viewer'),panorama:NODES.find(n=>n.id===START)?.panorama??NODES[0].panorama,navbar:['zoom','move','fullscreen'],defaultZoomLvl:0,defaultYaw:${sn.heading != null ? +degToRad(sn.heading).toFixed(4) : 0},plugins:[MarkersPlugin,[VirtualTourPlugin,{nodes:NODES,startNodeId:START,arrowStyle:{scale:[0.5,2]}}]]});
+const viewer=new Viewer({container:document.getElementById('viewer'),panoData:()=>({poseHeading:0}),panorama:NODES.find(n=>n.id===START)?.panorama??NODES[0].panorama,navbar:['zoom','move','fullscreen'],defaultZoomLvl:0,defaultYaw:${sn.heading != null ? +degToRad(sn.heading).toFixed(4) : 0},plugins:[MarkersPlugin,[VirtualTourPlugin,{nodes:NODES,startNodeId:START,arrowStyle:{scale:[0.5,2]}}]]});
 const tour=viewer.getPlugin(VirtualTourPlugin);
 const mmEl=document.getElementById('mm');
 let mark=()=>{};

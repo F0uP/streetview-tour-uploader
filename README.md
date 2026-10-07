@@ -135,8 +135,10 @@ Click **Upload to Google** in the toolbar (`run_editor.py` must be running):
 
 - First time only: paste your Client ID / Client Secret into the setup form — see [one-time Google setup](#one-time-google-setup)
 - Click **Sign in with Google** — a normal Google login/consent screen opens in your browser
-- Optionally paste a Google Place ID to link the tour to a location
-- Click **Start Upload** — each photo is uploaded, then connections between linked nodes are published; progress is shown live in the log
+- Optionally paste a Google Place ID to link the tour to a place on Google Maps (find it with Google's free [Place ID Finder](https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder); pasting a Maps URL that contains one works too). If Google rejects the ID, the photos are uploaded without it and the dialog says so
+- Click **Start Upload** — the dialog shows the three stages (upload, Google processing, links & position) with an overall progress bar (speed, time left) and a card per photo; failures are explained in plain words, the raw log is under *Technical details*
+- Before uploading, the editor looks for photos already on your Google account at the same position and links to them instead of uploading them twice
+- Google needs a few minutes to process new photos before they accept links; the dialog waits for that, and anything still pending is finished automatically in the background while the editor is open (or the next time you press **Start Upload**)
 - The upload runs a **tour check** first and stops on problems Google would reject (e.g. an image that is not 2:1); warnings are listed in the log and under **Tools → Check tour…**
 - The project remembers which photos are already on Google (save it to keep that across sessions). Running the upload again only uploads new photos; photos you moved, turned or linked differently since are **updated on Google without re-uploading** them. Tick **Upload photos again** to force a full re-upload
 - **Check status on Google** shows per photo whether it is published, still processing or rejected (coloured dot on the marker, link to the photo on Google Maps in the node panel)

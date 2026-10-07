@@ -22,6 +22,8 @@ Usage:
 """
 
 import argparse
+import base64
+import io
 import json
 import os
 import shutil
@@ -97,11 +99,32 @@ def _load_credentials():
     creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
     if not creds.valid:
         if creds.expired and creds.refresh_token:
-            creds.refresh(GoogleRequest())
+            try:
+                creds.refresh(GoogleRequest())
+            except Exception as e:
+                # The sign-in was revoked or ran out. For Cloud projects in "Testing"
+                # mode Google lets refresh tokens expire after 7 days. Forget it so the
+                # editor shows "not signed in" instead of a cryptic invalid_grant error.
+                print(f"Google sign-in expired: {e}")
+                TOKEN_FILE.unlink(missing_ok=True)
+                raise RuntimeError("not_signed_in") from e
             TOKEN_FILE.write_text(creds.to_json())
         else:
             raise RuntimeError("not_signed_in")
     return creds
+
+
+def _signed_in():
+    """True if there is a token that still works (refreshing it if needed)."""
+    if not TOKEN_FILE.exists():
+        return False
+    try:
+        _load_credentials()
+        return True
+    except RuntimeError:
+        return False
+    except Exception:
+        return True  # offline etc. - don't claim the sign-in is gone
 
 
 def _sign_in():
@@ -188,26 +211,69 @@ def _clear_credentials():
     CREDENTIALS_FILE.unlink(missing_ok=True)
 
 
-def _upload_photo(creds, data, filename, lat, lng, heading=None, place_id=None):
+class GoogleError(RuntimeError):
+    """An error answer from Google, with its readable message and a hint for the user."""
+
+    def __init__(self, step, status, message, kind='other'):
+        super().__init__(f'{step}: {message}')
+        self.step, self.status, self.message, self.kind = step, status, message, kind
+
+
+def _google_message(r):
+    try:
+        err = r.json().get('error', {})
+        return err.get('message') or r.text[:300]
+    except ValueError:
+        return r.text[:300] or r.reason
+
+
+# Upload progress per job id, polled by the editor (/api/upload-progress) while a
+# photo goes from this app to Google, which is the slow part of an upload.
+UPLOAD_PROGRESS = {}
+
+
+class _ProgressReader(io.BytesIO):
+    def __init__(self, data, job):
+        super().__init__(data)
+        self.total = len(data)
+        self.job = job
+
+    def __len__(self):
+        return self.total
+
+    def read(self, size=-1):
+        chunk = super().read(64 * 1024 if size is None or size < 0 else min(size, 64 * 1024))
+        if self.job:
+            UPLOAD_PROGRESS[self.job] = {'phase': 'uploading', 'sent': self.tell(), 'total': self.total}
+        return chunk
+
+
+def _upload_photo(creds, data, filename, lat, lng, heading=None, place_id=None, job=None):
     requests, *_ = _google_libs()
     session = requests.Session()
     session.headers.update({'Authorization': f'Bearer {creds.token}'})
+    if job:
+        UPLOAD_PROGRESS[job] = {'phase': 'starting', 'sent': 0, 'total': len(data)}
 
     r = session.post(f'{BASE_URL}/photo:startUpload', json={})
-    r.raise_for_status()
+    if not r.ok:
+        raise GoogleError('start', r.status_code, _google_message(r))
     upload_url = r.json()['uploadUrl']
 
     r = session.post(
         upload_url,
-        data=data,
+        data=_ProgressReader(data, job),
         headers={
             'Content-Type': 'image/jpeg',
             'X-Goog-Upload-Protocol': 'raw',
             'X-Goog-Upload-Content-Length': str(len(data)),
         },
     )
-    r.raise_for_status()
+    if not r.ok:
+        raise GoogleError('upload', r.status_code, _google_message(r))
 
+    if job:
+        UPLOAD_PROGRESS[job] = {'phase': 'creating', 'sent': len(data), 'total': len(data)}
     pose = {'latLngPair': {'latitude': lat, 'longitude': lng}}
     if heading is not None:
         pose['heading'] = heading
@@ -216,7 +282,12 @@ def _upload_photo(creds, data, filename, lat, lng, heading=None, place_id=None):
         body['places'] = [{'placeId': place_id}]
 
     r = session.post(f'{BASE_URL}/photo', json=body)
-    r.raise_for_status()
+    if not r.ok:
+        message = _google_message(r)
+        # A wrong Place ID is by far the most common reason Google refuses an
+        # otherwise fine photo with "400 Bad Request".
+        kind = 'place' if place_id and r.status_code == 400 else 'other'
+        raise GoogleError('create', r.status_code, message, kind)
     return r.json().get('photoId', {}).get('id')
 
 
@@ -244,37 +315,127 @@ def _connect_photos(creds, name_to_id, connects):
     return results
 
 
-def _photo_status(creds, ids):
-    """Ask Google how far each uploaded photo got: {id: {status, shareLink}}.
+def _id_candidates(pid):
+    """Forms a photo ID can be asked for.
 
-    status is 'published', 'processing' (accepted, not on Maps yet),
-    'rejected', 'missing' (deleted on Google's side) or 'error'.
+    photo.create answers with an ID like 'CAoSHENJQUJJaEMx...Wko.': web-safe base64
+    (with '.' as padding) around the photo's real ID ('CIABIhC1...'). Depending on the
+    endpoint Google only knows one of these forms, so try all of them.
+    """
+    out = [pid]
+    stripped = pid.rstrip('.=')
+    if stripped != pid:
+        out.append(stripped)
+    try:
+        raw = base64.urlsafe_b64decode(stripped + '=' * (-len(stripped) % 4))
+        i = 0
+        while i < len(raw):
+            tag = raw[i]; i += 1
+            field, wire = tag >> 3, tag & 7
+            if wire == 0:
+                while raw[i] & 0x80:
+                    i += 1
+                i += 1
+            elif wire == 2:
+                length = raw[i]; i += 1
+                value = raw[i:i + length]; i += length
+                if field == 2 and value.isascii() and value.decode().isprintable():
+                    out.append(value.decode())
+            else:
+                break
+    except Exception:
+        pass
+    return list(dict.fromkeys(out))
+
+
+def _photo_status(creds, ids):
+    """Ask Google how far each uploaded photo got.
+
+    Returns {id: {status, shareLink, resolvedId}} where status is 'published',
+    'processing' (known to Google, not on Maps yet), 'rejected', or 'notfound'
+    (not visible yet - normal for a while right after uploading - or deleted).
+    resolvedId is the form of the ID Google actually knows.
     """
     requests, *_ = _google_libs()
     session = requests.Session()
     session.headers.update({'Authorization': f'Bearer {creds.token}'})
-    out = {}
-    for start in range(0, len(ids), 20):  # batchGet takes at most 20 IDs
-        chunk = ids[start:start + 20]
+    cands = {pid: _id_candidates(pid) for pid in ids}
+    flat = list(dict.fromkeys(c for cs in cands.values() for c in cs))
+    found = {}
+    for start in range(0, len(flat), 20):  # batchGet takes at most 20 IDs
+        chunk = flat[start:start + 20]
         params = [('photoIds', i) for i in chunk] + [('view', 'BASIC')]
         r = session.get(f'{BASE_URL}/photos:batchGet', params=params)
-        r.raise_for_status()
-        for pid, res in zip(chunk, r.json().get('results', [])):
-            code = (res.get('status') or {}).get('code', 0)
-            photo = res.get('photo') or {}
-            if code == 5:
-                status = 'missing'
-            elif code:
-                status = 'error'
-            elif photo.get('mapsPublishStatus') == 'PUBLISHED':
-                status = 'published'
-            elif photo.get('mapsPublishStatus') == 'REJECTED_UNKNOWN':
-                status = 'rejected'
-            else:
-                status = 'processing'
-            out[pid] = {'status': status, 'shareLink': photo.get('shareLink'),
-                        'message': (res.get('status') or {}).get('message')}
+        if not r.ok:
+            raise GoogleError('status', r.status_code, _google_message(r))
+        for cid, res in zip(chunk, r.json().get('results', [])):
+            if (res.get('status') or {}).get('code', 0) == 0 and res.get('photo'):
+                found[cid] = res['photo']
+    out = {}
+    for pid, cs in cands.items():
+        hit = next((c for c in cs if c in found), None)
+        if not hit:
+            out[pid] = {'status': 'notfound', 'shareLink': None, 'resolvedId': None}
+            continue
+        photo = found[hit]
+        publish = photo.get('mapsPublishStatus')
+        status = 'published' if publish == 'PUBLISHED' else 'rejected' if publish == 'REJECTED_UNKNOWN' else 'processing'
+        real_id = (photo.get('photoId') or {}).get('id') or hit
+        out[pid] = {'status': status, 'shareLink': photo.get('shareLink'), 'resolvedId': real_id}
     return out
+
+
+def _list_photos(creds):
+    """All of the signed-in user's Street View photos (ID, position, status)."""
+    requests, *_ = _google_libs()
+    session = requests.Session()
+    session.headers.update({'Authorization': f'Bearer {creds.token}'})
+    photos, token = [], None
+    for _ in range(50):  # 50 pages x 100 photos is plenty
+        params = {'view': 'BASIC', 'pageSize': 100}
+        if token:
+            params['pageToken'] = token
+        r = session.get(f'{BASE_URL}/photos', params=params)
+        if not r.ok:
+            raise GoogleError('list', r.status_code, _google_message(r))
+        data = r.json()
+        for p in data.get('photos', []):
+            ll = (p.get('pose') or {}).get('latLngPair') or {}
+            photos.append({
+                'id': (p.get('photoId') or {}).get('id'),
+                'lat': ll.get('latitude'), 'lng': ll.get('longitude'),
+                'status': 'published' if p.get('mapsPublishStatus') == 'PUBLISHED' else 'processing',
+                'shareLink': p.get('shareLink'),
+                'uploadTime': p.get('uploadTime'),
+            })
+        token = data.get('nextPageToken')
+        if not token:
+            break
+    return photos
+
+
+def _delete_photos(creds, ids):
+    """Delete photos from Google (old versions of photos that were replaced)."""
+    requests, *_ = _google_libs()
+    session = requests.Session()
+    session.headers.update({'Authorization': f'Bearer {creds.token}'})
+    results = []
+    for pid in ids:
+        result = {'id': pid, 'ok': True, 'error': None}  # every form 404 = already gone, fine
+        for cid in _id_candidates(pid):
+            r = session.delete(f'{BASE_URL}/photo/{cid}')
+            if r.ok:
+                result = {'id': pid, 'ok': True, 'error': None}
+                break
+            if r.status_code in (400, 404):
+                # Wrong form of the ID (or already deleted) - try the next form.
+                if r.status_code == 400:
+                    result = {'id': pid, 'ok': False, 'error': _google_message(r)}
+                continue
+            result = {'id': pid, 'ok': False, 'error': _google_message(r)}
+            break
+        results.append(result)
+    return results
 
 
 def _update_photos(creds, items):
@@ -300,7 +461,10 @@ def _update_photos(creds, items):
             sv_service.photo().update(id=it['id'], updateMask=','.join(mask), body=body).execute()
             results.append({'id': it['id'], 'ok': True})
         except Exception as e:
-            results.append({'id': it['id'], 'ok': False, 'error': str(e)})
+            # googleapiclient's HttpError carries Google's own message in .reason
+            status = getattr(getattr(e, 'resp', None), 'status', None)
+            results.append({'id': it['id'], 'ok': False, 'status': status,
+                            'error': getattr(e, 'reason', None) or str(e)})
         time.sleep(0.3)
     return results
 
@@ -346,8 +510,11 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(403, {'ok': False, 'error': 'forbidden'})
         parsed = urlparse(self.path)
         if parsed.path == '/api/status':
+            had_token = TOKEN_FILE.exists()
+            signed_in = _signed_in()
             return self._json(200, {
-                'signedIn': TOKEN_FILE.exists(),
+                'signedIn': signed_in,
+                'expired': had_token and not signed_in,
                 'hasCredentials': CREDENTIALS_FILE.exists(),
             })
         if parsed.path == '/api/app-info':
@@ -366,9 +533,12 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(200, {'ok': False, 'error': str(e)})
         if parsed.path == '/api/update/status':
             return self._json(200, {'version': APP_VERSION, **app_update.status})
+        if parsed.path == '/api/upload-progress':
+            job = parse_qs(parsed.query).get('job', [''])[0]
+            return self._json(200, UPLOAD_PROGRESS.get(job, {}))
         if parsed.path == '/api/pending-project':
             path = PENDING['path']
-            if not path:
+            if not path or not Path(path).is_file():
                 return self._json(200, {})
             return self._json(200, {'name': Path(path).name, 'size': Path(path).stat().st_size})
         if parsed.path == '/api/pending-project/data':
@@ -417,11 +587,18 @@ class Handler(SimpleHTTPRequestHandler):
                 lng = float(qs['lng'][0])
                 heading = float(qs['heading'][0]) if qs.get('heading', [''])[0] else None
                 place_id = qs.get('place_id', [''])[0] or None
+                job = qs.get('job', [''])[0] or None
                 try:
                     creds = _load_credentials()
                 except RuntimeError:
                     return self._json(401, {'ok': False, 'error': 'not_signed_in'})
-                photo_id = _upload_photo(creds, raw_body, filename, lat, lng, heading, place_id)
+                try:
+                    photo_id = _upload_photo(creds, raw_body, filename, lat, lng, heading, place_id, job)
+                except GoogleError as e:
+                    return self._json(200, {'ok': False, 'error': e.message, 'status': e.status,
+                                            'step': e.step, 'kind': e.kind})
+                finally:
+                    UPLOAD_PROGRESS.pop(job, None)
                 return self._json(200, {'ok': True, 'photoId': photo_id})
 
             if parsed.path == '/api/connect':
@@ -433,12 +610,16 @@ class Handler(SimpleHTTPRequestHandler):
                 results = _connect_photos(creds, payload.get('name_to_id', {}), payload.get('connects', {}))
                 return self._json(200, {'ok': True, 'results': results})
 
-            if parsed.path in ('/api/photo-status', '/api/update-photos'):
-                payload = json.loads(raw_body.decode('utf-8'))
+            if parsed.path in ('/api/photo-status', '/api/update-photos', '/api/list-photos', '/api/delete-photos'):
+                payload = json.loads(raw_body.decode('utf-8') or '{}')
                 try:
                     creds = _load_credentials()
                 except RuntimeError:
                     return self._json(401, {'ok': False, 'error': 'not_signed_in'})
+                if parsed.path == '/api/list-photos':
+                    return self._json(200, {'ok': True, 'photos': _list_photos(creds)})
+                if parsed.path == '/api/delete-photos':
+                    return self._json(200, {'ok': True, 'results': _delete_photos(creds, payload.get('ids', []))})
                 if parsed.path == '/api/photo-status':
                     return self._json(200, {'ok': True, 'photos': _photo_status(creds, payload.get('ids', []))})
                 return self._json(200, {'ok': True, 'results': _update_photos(creds, payload.get('items', []))})
