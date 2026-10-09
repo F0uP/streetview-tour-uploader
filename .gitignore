@@ -6,6 +6,8 @@ token.json
 *.JPG
 *.jpg
 *.jpeg
+# ...except the screenshots used by the README
+!docs/images/*.jpg
 *_blurred/
 work/
 upload_result.json

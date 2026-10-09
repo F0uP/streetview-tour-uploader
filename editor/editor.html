@@ -1287,6 +1287,7 @@ const DE = {
   'No photo': 'Kein Foto',
   'Replace Photo': 'Foto ersetzen',
   'Choose a photo to check north alignment here.': 'Foto wählen, um hier die Nordausrichtung zu prüfen.',
+  'Drag to look around. Turn until you face north, then press "Set This Direction as North".': 'Ziehen zum Umsehen. Nach Norden drehen und dann „Diese Richtung als Norden setzen“ drücken.',
   'Heading / North': 'Blickrichtung / Norden',
   'Turn the photo round': 'Foto umdrehen',
   'Direction of': 'Ausrichtung von',
@@ -3766,6 +3767,7 @@ async function ensurePanoViewer(n) {
     return;
   }
   panoWrap.style.display = '';
+  panoHelp.textContent = 'Drag to look around. Turn until you face north, then press "Set This Direction as North".';
   if (!panoViewer) {
     panoViewer = new Viewer({
       container: document.getElementById('pano-view'),

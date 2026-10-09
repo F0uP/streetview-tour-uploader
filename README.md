@@ -1,291 +1,423 @@
-# 360 Tour Uploader for Google Street View
+<div align="center">
 
-Upload equirectangular 360 photos from cameras such as RICOH THETA, Insta360, and GoPro MAX to Google Street View, with a browser-based editor for map layout, connections, heading alignment, and local walkthrough preview.
+# Streetview Tour Editor
+
+**Turn a walk with your 360° camera into a connected Google Street View tour.**<br>
+Place, link and align your panoramas on a map, blur faces, preview the walkthrough,
+and publish everything to Google Maps with one click.
+
+[![Latest release](https://img.shields.io/github/v/release/F0uP/streetview-tour-uploader?label=release&color=8b5cf6)](https://github.com/F0uP/streetview-tour-uploader/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/F0uP/streetview-tour-uploader/total?color=2dd9a8)](https://github.com/F0uP/streetview-tour-uploader/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/F0uP/streetview-tour-uploader/build-release.yml?label=build)](https://github.com/F0uP/streetview-tour-uploader/actions/workflows/build-release.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![Windows | macOS | Linux](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-lightgrey)
+
+[**Download for Windows**](https://github.com/F0uP/streetview-tour-uploader/releases/latest) ·
+[Quick start](#quick-start) ·
+[Google setup](#one-time-google-setup) ·
+[User guide](#user-guide) ·
+[FAQ](#faq--troubleshooting)
+
+<img src="docs/images/editor.jpg" alt="The tour editor: seven connected 360° photos on a satellite map, with the selected photo's panorama and heading controls in the side panel" width="900">
+
+</div>
+
+---
+
+## Why
+
+Google Street View lets anyone publish 360° photos, and connected photos become a
+walkable tour on Google Maps. Google's own tools for this are gone, and the
+[Street View Publish API](https://developers.google.com/streetview/publish) is
+not something you want to drive by hand. This editor does the whole job: from a
+folder of panoramas from a RICOH THETA, Insta360, GoPro MAX or any other 360°
+camera to a published, linked tour.
+
+Everything runs on your own computer. Your photos only leave it when you upload
+them to Google.
 
 ## Features
 
-- Browser-based tour editor built on OpenStreetMap and Leaflet
-- Drag and drop 360 JPG files with automatic GPS placement from EXIF/XMP
-- Manual heading alignment with pano preview and EXIF reset
-- In-editor walkthrough between linked nodes
-- Overlay compare view for visually checking orientation between two nodes
-- Save / open the whole project, photos included, as a single `.vrtour` file (a plain zip); **Ctrl+S** saves straight back into it
-- **Auto-connect** nodes in the order the photos were taken, or to their nearest neighbours
-- Place photos without GPS from a **GPX track** recorded on your phone
-- **Blur faces and licence plates** in the editor before uploading, with automatic face detection as a starting point
-- **Headings from walking direction**: align one photo by hand, the rest follow the route
-- **Tour check** before uploading: wrong image format, missing 360° metadata, missing north, unconnected nodes, overly long links, duplicate positions
-- Street map or **satellite view**, thumbnails in the node list and on marker hover, **Shift+drag** to select several nodes
-- **Info points** (title, text, link) inside panoramas, and a **minimap** in the exported tour
-- English and **German** user interface (Tools → Deutsch / English)
-- Export to `tour-config.json`, `tour-viewer.html` and `tour.csv`, or as a ready-to-host **website zip** with all photos
-- One-click upload to Google Street View with a step-by-step setup assistant; re-runs skip photos already uploaded and only push changed positions, headings and links; the **Google status** (published / processing / rejected) shows on each marker
-- Windows app with installer, tray icon, `.vrtour` file association and in-app updates
-- Google Street View Publish API uploader and heading patch utilities
+| | |
+|---|---|
+| 🗺️ **Plan on a map** | Drop your 360° JPEGs on a street or satellite map; photos with GPS land where they were taken. Link them by right-clicking, or let **auto-connect** chain them in the order you walked. |
+| 🧭 **Get north right** | Align a photo by looking north and clicking once, fine-tune by ±1°/±10°/180°, or set every photo from the **walking direction**. The preview shows the result exactly as visitors will see it. |
+| 📍 **No GPS? No problem** | Place photos from a **GPX track** recorded on your phone, or type exact coordinates. |
+| 🙈 **Privacy built in** | **Blur faces and licence plates** before uploading, with automatic face detection as a starting point. The Street View Publish API does not blur anything itself. |
+| ✅ **Catch problems early** | A **tour check** finds what Google would reject (not 2:1, not a JPEG, over 75 MB) and what looks wrong (no north, unconnected photos, long links, duplicates). |
+| ☁️ **One-click publishing** | Upload with a live progress view, readable errors and automatic linking once Google has processed the photos. Later changes are **pushed without re-uploading**; the Google status shows on every marker. |
+| 🌐 **Share it anywhere** | Export a **ready-to-host website** of the tour (with info points and a minimap), or `tour-viewer.html` / `tour-config.json` / `tour.csv`. |
+| 💾 **Never lose work** | Autosave, a restore prompt after a crash, and `.vrtour` project files with all photos inside. **Ctrl+S** saves back into the open project. |
+| 🖥️ **A real desktop app** | Windows installer, tray icon, `.vrtour` file association and in-app updates. English and German user interface. |
 
-## Repository Layout
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/upload.jpg" alt="Upload dialog with three steps, a progress bar and one card per photo, all done"></td>
+    <td width="50%"><img src="docs/images/preview.jpg" alt="Tour preview: a street panorama with navigation arrows, an info point and a minimap of the route"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Upload: progress, per-photo status, automatic linking</sub></td>
+    <td align="center"><sub>Preview: walk the tour, fix a photo's direction on the spot</sub></td>
+  </tr>
+</table>
 
-```text
-streetview-tour-uploader/
-├── editor/
-│   └── editor.html
-├── example/
-│   ├── tour.csv.example
-│   └── tour-meta.json.example
-├── uploader/
-│   ├── find_place_id.py
-│   ├── gen_tour_csv.py
-│   ├── restore_exif.py
-│   ├── restore_xmp.py
-│   ├── retry_failed.py
-│   └── upload_tour.py
-├── installer/
-│   ├── StreetviewTourEditor.iss
-│   └── app.ico
-├── packaging/winget/            (winget manifest generator + how-to)
-├── app_tray.py                  (tray icon of the Windows app)
-├── app_update.py                (in-app updates from GitHub Releases)
-├── LICENSE
-├── README.md
-├── requirements.txt
-├── build_exe.py
-└── run_editor.py
-```
+## Quick start
 
-## Requirements
+### Windows: installer (recommended)
 
-- Python 3.9+ (not needed for the [standalone .exe](#optional-standalone-windows-app-installer))
-- A Google account
-- Street View Publish API enabled in Google Cloud Console
-- An OAuth desktop client (Client ID + Client Secret) — entered once through the app's own UI, see below
+1. Download **`StreetviewTourEditor-<version>-Setup.exe`** from the
+   [latest release](https://github.com/F0uP/streetview-tour-uploader/releases/latest) and run it.
+   No admin rights needed.
+2. Start **Streetview Tour Editor** from the Start menu. It runs in the
+   notification area (next to the clock) and opens the editor in your browser.
+3. Drop your 360° photos onto the map.
 
-## Installation
+> [!NOTE]
+> Releases aren't code-signed yet, so Windows SmartScreen may say *"Windows protected your PC"*.
+> Click **More info → Run anyway**. Each release has a `SHA256SUMS.txt` to verify the download.
+
+Prefer not to install anything? The release also has a
+**`…-portable.zip`**: unzip it anywhere and run `StreetviewTourEditor.exe`.
+
+### Any OS: run from source
+
+Requires **Python 3.9+** and a current browser (Chrome or Edge recommended).
 
 ```bash
-git clone https://github.com/takadakoji-jp/streetview-tour-uploader.git
+git clone https://github.com/F0uP/streetview-tour-uploader.git
 cd streetview-tour-uploader
 pip install -r requirements.txt
-```
-
-## One-time Google setup
-
-Google requires every application, including this one, to be registered as
-an OAuth client before it can publish photos to Street View on your behalf.
-There is no way to upload without this — it applies to any tool using the
-Street View Publish API, not just this project. It's free and only needs to
-be done once:
-
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create a new project (or pick an existing one).
-2. Open **APIs & Services → Library**, search for **Street View Publish API**, and click **Enable**.
-3. Open **APIs & Services → OAuth consent screen**. Choose **External**, fill in an app name and your email, and add your own Google account under **Test users** (this keeps the app private to you, no Google review needed).
-4. Open **APIs & Services → Credentials → Create Credentials → OAuth client ID**. Choose application type **Desktop app** and create it.
-5. Leave this page open — the **Client ID** and **Client Secret** shown here are what you paste into the app next.
-
-**Entering it into the app:** open the editor, click **Upload to Google**,
-and a step-by-step setup assistant appears the first time. Each step links
-straight to the right Cloud Console page; at the end, paste in the Client ID
-and Client Secret (or choose the downloaded JSON file) and click **Save & Continue**. The app writes
-`uploader/client_secrets.json` for you; no file download, renaming, or
-folder-hunting needed. (Already have the JSON file from Cloud Console
-instead? Pasting its full contents into the Client ID field also works — the
-form detects it and fills both fields automatically. You can also skip the
-UI entirely and save that JSON as `uploader/client_secrets.json` by hand;
-both paths end up in the same place.)
-
-That's it — the saved credentials never expire on their own. Signing in
-afterwards (via the editor's **Sign in with Google** button or
-`upload_tour.py`) just opens a normal Google login/consent screen in your
-browser. Use **Use a different Google API client** in the upload dialog to
-clear it and set up a different one later.
-
-## Workflow
-
-### 1. Prepare photos
-
-Blur faces and license plates before upload. The Street View Publish API does not blur them automatically. You can do it in the editor: select a node → **Blur faces & plates…**, drag boxes over what should be hidden, **Apply to photo**.
-
-Photos without GPS can be placed from a GPX track: record one with any GPS logger app while shooting, then **Tools → Place photos from GPX track…**.
-
-### 2. Design the tour
-
-```bash
 python run_editor.py
 ```
 
-This starts a local server and opens the editor in your browser. Opening
-`editor/editor.html` directly as a file (double-click) also works for basic
-use, but the map tiles will be blocked by OpenStreetMap's referer policy and
-"Save to folder" will be unavailable, so the script above is recommended.
+The editor opens at <http://127.0.0.1:8420/editor.html>. Keep the terminal open
+while you work; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it.
 
-- Drop your 360 JPG files onto the map, or double-click empty map area to add a point
-- Drag markers if GPS is missing or needs correction, or type exact coordinates in the node panel
-- Right-click a node, then right-click a second node to link them
-- Or let **Tools → Auto-connect nodes…** link them in the order you walked (capture time) or to their nearest neighbours
-- **Tools → Headings from walking direction…** sets north for every photo from the route; align one photo by hand first and pick it as reference
-- Shift+drag on the map selects several nodes; the layer button (top right of the map) switches to satellite view
-- **Info points** in the node panel add clickable "i" markers with text and a link to the panorama; they appear in the preview and the exported tour, which also gets a small map
-- Select a node to edit heading, compare with neighbors, and test the walkthrough
-- **Ctrl+S** saves the project (photos included) as a `.vrtour` file and afterwards straight back into it; **Ctrl+O** opens one
+## One-time Google setup
 
-Running Windows without Python installed? See [Optional: standalone .exe](#optional-standalone-windows-app-installer) below — same editor, no `pip install` needed.
+Every app that publishes to Street View must be registered with Google as an
+**OAuth client**: Google offers no other way. It's free, takes about five
+minutes, and you only do it once. The editor walks you through it: click
+**Upload to Google** and follow the five steps, each with a link to the right
+page.
 
-### 3. Upload to Google Street View
+<details>
+<summary><b>The steps in detail</b></summary>
 
-Click **Upload to Google** in the toolbar (`run_editor.py` must be running):
+1. [Create a Google Cloud project](https://console.cloud.google.com/projectcreate)
+   (any name) and make sure it is selected at the top.
+2. [Enable the Street View Publish API](https://console.cloud.google.com/apis/library/streetviewpublish.googleapis.com).
+3. [Set up the OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent):
+   any app name, your e-mail, audience **External**, then add your own Google
+   address under **Audience → Test users**.
+4. [Create an OAuth client](https://console.cloud.google.com/apis/credentials/oauthclient)
+   of type **Desktop app**.
+5. Paste the **Client ID** and **Client Secret** into the editor, or choose the
+   downloaded `client_secret_….json`, and click **Save & Continue**. Then
+   **Sign in with Google**.
 
-- First time only: paste your Client ID / Client Secret into the setup form — see [one-time Google setup](#one-time-google-setup)
-- Click **Sign in with Google** — a normal Google login/consent screen opens in your browser
-- Optionally paste a Google Place ID to link the tour to a place on Google Maps (find it with Google's free [Place ID Finder](https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder); pasting a Maps URL that contains one works too). If Google rejects the ID, the photos are uploaded without it and the dialog says so
-- Click **Start Upload** — the dialog shows the three stages (upload, Google processing, links & position) with an overall progress bar (speed, time left) and a card per photo; failures are explained in plain words, the raw log is under *Technical details*
-- Before uploading, the editor looks for photos already on your Google account at the same position and links to them instead of uploading them twice
-- Google needs a few minutes to process new photos before they accept links; the dialog waits for that, and anything still pending is finished automatically in the background while the editor is open (or the next time you press **Start Upload**)
-- The upload runs a **tour check** first and stops on problems Google would reject (e.g. an image that is not 2:1); warnings are listed in the log and under **Tools → Check tour…**
-- The project remembers which photos are already on Google (save it to keep that across sessions). Running the upload again only uploads new photos; photos you moved, turned or linked differently since are **updated on Google without re-uploading** them. Tick **Upload photos again** to force a full re-upload
-- **Check status on Google** shows per photo whether it is published, still processing or rejected (coloured dot on the marker, link to the photo on Google Maps in the node panel)
+</details>
 
-This uses the photos already loaded in the editor session, so no manual CSV
-or file paths are needed. Click **Export** first (or anytime) if you also
-want local copies of `tour-config.json` / `tour-viewer.html` for the
-walkthrough preview.
+> [!IMPORTANT]
+> While the consent screen is in **Testing** mode, Google ends the sign-in after
+> **7 days**. The editor then shows *"Sign-in expired"*. Just sign in again. To
+> avoid that, set the consent screen's publishing status to **In production**
+> (Google may show an *"unverified app"* warning on sign-in, which you can
+> continue past for your own account).
 
-#### Alternative: command line
+The Client ID/Secret and the sign-in token stay on your computer:
+`%APPDATA%\StreetviewTourEditor\` for the Windows app, `uploader/` when running
+from source. They are never part of a build or a project file.
 
-For scripting, batch uploads, or retrying later, the same upload can be
-driven from the terminal instead of the button:
+## User guide
+
+```mermaid
+flowchart LR
+  A[📷 Drop photos] --> B[🔗 Link & place]
+  B --> C[🧭 Align north]
+  C --> D[🙈 Blur]
+  D --> E[✅ Check & preview]
+  E --> F[☁️ Upload]
+  F --> G[⏳ Google processes]
+  G --> H[🔗 Links set automatically]
+```
+
+### 1. Bring in your photos
+
+- **Drop 360° JPEGs** onto the map (or several at once). Photos with GPS in their
+  EXIF/XMP data land at their position; others where you drop them.
+- **No GPS?** Record a track with any GPS logger app while shooting, then use
+  **Tools → Place photos from GPX track…**. Set the camera clock's time zone
+  if the photos don't land on the track.
+- **Double-click** the map for an empty point; **Replace Photo** in the side
+  panel swaps a node's photo.
+
+### 2. Link the photos
+
+- **Right-click** a node, then **right-click** the next one. Click the **×** on a
+  line to remove the link.
+- **Tools → Auto-connect nodes…** links them in the order the photos were taken
+  (capture time) or to their nearest neighbours, up to a distance you choose.
+- **Shift+drag** on the map or **Ctrl+click** selects several nodes; the bar at
+  the bottom connects or deletes them in one go.
+
+### 3. Align north
+
+Each photo needs to know which way its centre faces, or arrows point the wrong
+way and you look backwards after a jump.
+
+- Select a node, turn the small panorama until you face **north** (the
+  satellite map helps), and click **Set This Direction as North**.
+- Fine-tune with **−10° / −1° / 180° / +1° / +10°**. **180°** fixes a photo taken
+  facing backwards.
+- **Tools → Headings from walking direction…** sets all photos at once: align one
+  by hand, pick it as reference, and the others follow your route.
+
+> [!TIP]
+> In the **Preview**, walk through the tour. If a photo looks turned after a jump,
+> use the buttons under the viewer: they turn the photo you are standing in, live.
+
+### 4. Protect privacy
+
+Select a node and click **Blur faces & plates…**:
+
+- **Detect faces** suggests boxes (dashed); click a box to remove it.
+- Drag boxes over anything else, such as licence plates or house numbers.
+- **Apply to photo** pixelates them for good. The original EXIF block, which can
+  hold an unblurred thumbnail, is dropped; the 360° metadata is kept.
+
+If the photo was already uploaded, the next upload replaces it and deletes the
+unblurred version on Google.
+
+### 5. Check and preview
+
+- **Tools → Check tour…** lists errors (block the upload) and warnings, each with
+  a **Show** button.
+- **Preview** shows the tour exactly as it will look, including info points and the
+  minimap.
+- **Info points:** in the side panel, **Add info point at current view** puts a
+  clickable "i" with a title, text and link into the panorama.
+
+### 6. Upload to Google Street View
+
+Click **Upload to Google**, then **Start Upload**:
+
+1. **Upload:** each photo is sent with its position and heading, with live progress, speed and time left.
+2. **Google processing:** new photos take a few minutes before Google accepts links. The dialog waits.
+3. **Links & position:** connections are set on Google.
+
+Good to know:
+
+- **Only what changed is sent.** Running the upload again uploads new photos only;
+  moved, turned or re-linked photos are **updated on Google without re-uploading**.
+- Photos Google hasn't finished yet get their links **automatically in the
+  background** while the editor is open.
+- **Check status on Google** shows per photo whether it is *published*, *processing*
+  or *rejected* (coloured dot on the marker, link to Google Maps in the side panel).
+- A **Place ID** (optional) links the tour to a place's page on Google Maps. Find it
+  with Google's free [Place ID Finder](https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder);
+  pasting a Maps URL that contains one works too. If Google rejects the ID, the
+  photos are uploaded without it and you are told.
+
+> [!WARNING]
+> Uploaded photos are **public**, under your Google account. It can take from a
+> few minutes to several hours until they show on Google Maps.
+
+### 7. Save, share and export
+
+| | |
+|---|---|
+| **Save project** (<kbd>Ctrl</kbd>+<kbd>S</kbd>) | A `.vrtour` file: one zip with the tour and all photos. Chrome/Edge save straight back into it; Firefox downloads a copy. Double-click it to open it in the Windows app. |
+| **Export as website** | `Tools → Export tour as website (.zip)`: `index.html` + photos, ready for any web space. |
+| **Export** | `tour-viewer.html` + `tour-config.json`, to place next to your photos. |
+| **CSV** | `tour.csv` for the [command-line uploader](#command-line-tools). |
+
+The editor also **autosaves** in the browser. After a crash or closed tab it
+offers to restore the last session.
+
+### Keyboard shortcuts
+
+| Action | Shortcut |
+|---|---|
+| Command palette (all actions) | <kbd>Ctrl</kbd>+<kbd>K</kbd> |
+| Save / Save as / Open project | <kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>O</kbd> |
+| Undo / Redo | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> |
+| Add point | Double-click the map |
+| Connect two nodes | Right-click, right-click |
+| Select several | <kbd>Ctrl</kbd>+click, or <kbd>Shift</kbd>+drag on the map |
+| Delete selection | <kbd>Delete</kbd> |
+| Cancel / deselect | <kbd>Esc</kbd> |
+| All shortcuts | <kbd>?</kbd> |
+
+## FAQ & troubleshooting
+
+<details>
+<summary><b>"Sign-in expired" / uploads fail with "not signed in"</b></summary>
+
+Google ends the sign-in after 7 days while your OAuth consent screen is in
+*Testing* mode. Click **Sign in with Google** again, or switch the consent
+screen to *In production* (see [Google setup](#one-time-google-setup)).
+</details>
+
+<details>
+<summary><b>Google rejected the Place ID</b></summary>
+
+The photos are uploaded without a place in that case. Look the place up in the
+[Place ID Finder](https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder)
+and copy the ID it shows (usually starting with `ChIJ`). Not every address has a
+Place ID Google accepts for Street View photos.
+</details>
+
+<details>
+<summary><b>The status says "processing" for a long time</b></summary>
+
+That's Google, not the editor: new photos can take hours to be published. Links
+and position updates are sent automatically as soon as Google accepts them. Keep
+the editor open, or press **Start Upload** again later. Nothing is uploaded twice.
+</details>
+
+<details>
+<summary><b>A photo faces the wrong way, or I look backwards after a jump</b></summary>
+
+Its north is off, often because the camera's compass was. Open **Preview**, walk
+to that photo and use **180°** or **±10°** under the viewer, or fix it in the side
+panel. Then upload again: only the heading is sent.
+</details>
+
+<details>
+<summary><b>Google says it's not a 360° photo</b></summary>
+
+The photo must be a 2:1 equirectangular JPEG. Image editors such as GIMP often
+strip the 360° (GPano XMP) metadata on save; `uploader/restore_xmp.py` copies it
+back from the originals. The tour check warns about both.
+</details>
+
+<details>
+<summary><b>The map stays grey / "Access blocked"</b></summary>
+
+Don't open `editor/editor.html` by double-click: OpenStreetMap blocks map tiles
+for `file://` pages. Start the app (or `python run_editor.py`) and use
+<http://127.0.0.1:8420/editor.html>.
+</details>
+
+<details>
+<summary><b>"Could not start on port 8420"</b></summary>
+
+Another program, often a second copy of the editor, uses the port. Quit the other
+copy from its tray icon and start again.
+</details>
+
+<details>
+<summary><b>Where are my files?</b></summary>
+
+| What | Where |
+|---|---|
+| Google client & sign-in (Windows app) | `%APPDATA%\StreetviewTourEditor\` (also `editor.log`) |
+| Google client & sign-in (from source) | `uploader/client_secrets.json`, `uploader/token.json` |
+| Autosaved session | Your browser's storage for `127.0.0.1:8420` |
+| Projects | Wherever you save your `.vrtour` files |
+</details>
+
+## Command-line tools
+
+For scripting and batch jobs, the [`uploader/`](uploader) folder has
+stand-alone scripts. They share the sign-in with the editor.
+
+| Script | What it does |
+|---|---|
+| `upload_tour.py` | Upload a folder of photos. Without a manifest it links them in file order; with `--manifest tour.csv` it uses your links. `--place-id`, `--dry-run`, `--connect-only`. |
+| `gen_tour_csv.py` | Build `tour.csv` from an exported `tour-config.json` plus the photos' EXIF GPS. |
+| `retry_failed.py` | Re-upload only the photos that failed, then redo the links. |
+| `restore_xmp.py` / `restore_exif.py` | Copy 360° metadata / GPS back into photos an image editor stripped. |
+| `find_place_id.py` | Look up a Place ID by name (needs a Google Maps API key). |
 
 ```bash
-python uploader/gen_tour_csv.py \
-  --config path/to/tour-config.json \
-  --folder path/to/photos \
-  --out path/to/photos/tour.csv
-
-python uploader/upload_tour.py \
-  --folder path/to/photos \
-  --manifest path/to/photos/tour.csv
+python uploader/gen_tour_csv.py --config tour-config.json --folder photos --out photos/tour.csv
+python uploader/upload_tour.py  --folder photos --manifest photos/tour.csv --dry-run
 ```
 
-To associate the upload with a Google Maps place, add a `tour-meta.json` file in the photo folder:
+See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID for a whole folder).
 
-```json
-{
-  "place_id": "ChIJxxxxxxxxxxxxxxxx",
-  "note": "Venue name"
-}
+## Privacy & security
+
+- The editor is a small local web server bound to `127.0.0.1`. It only answers
+  requests from its own page (host and origin are checked), so other websites
+  can't use it.
+- Photos and projects stay on your computer until you upload them; uploads go
+  directly to Google's Street View Publish API.
+- In-app updates download only from this repository's GitHub releases and are
+  checked against the release's `SHA256SUMS.txt` before installing.
+- Libraries (map, panorama viewer, face detection) load from public CDNs, and map
+  tiles from OpenStreetMap and Esri, so an internet connection is needed.
+
+## Development
+
+<details>
+<summary><b>Project layout</b></summary>
+
+```text
+editor/editor.html        the whole editor (single page, no build step)
+run_editor.py             local server, Google API endpoints, desktop-app entry point
+app_tray.py               tray icon of the Windows app
+app_update.py             in-app updates from GitHub Releases
+uploader/                 command-line tools
+installer/                Inno Setup script and app icon
+packaging/winget/         winget manifest generator
+build_exe.py              builds the app, portable zip, installer and checksums
+.github/workflows/        CI: build and release on every v* tag
 ```
+</details>
 
-Use `--dry-run` to validate first, or `--connect-only` to retry connections after Google finishes processing. Both the button and the CLI share the same sign-in (`uploader/token.json`), so you can mix and match.
-
-## Optional: standalone Windows app (installer)
-
-For a version you can run without Python installed - your own PC, or to hand
-to someone else - download **`StreetviewTourEditor-<version>-Setup.exe`** from
-**[Releases](../../releases)** and run it. The installer:
-
-- installs for the current user by default (no admin rights needed; it offers
-  "install for all users" too),
-- adds a Start menu entry and optionally a desktop icon,
-- shows up under *Settings → Apps* with a normal uninstaller,
-- updates in place: running a newer Setup.exe replaces the old version.
-
-Prefer no installation at all? `StreetviewTourEditor-<version>-portable.zip`
-from the same release contains the app folder - unzip it anywhere and run
-`StreetviewTourEditor.exe`.
-
-The app runs from an icon in the notification area (next to the clock) and
-opens the editor in your browser, exactly like `python run_editor.py`.
-Right-click the icon to reopen the editor, open the data folder, or quit.
-Starting it a second time just opens another editor tab, and double-clicking
-a `.vrtour` file opens that project.
-
-**Updates:** the editor checks GitHub for a newer release when it starts. If
-there is one, a notice appears in the top right: **Update now** downloads the
-new Setup.exe, checks it against the release's `SHA256SUMS.txt`, installs it
-in the background and reloads the page. (The portable version and `python
-run_editor.py` only get a link to the release page.) **Tools → Check for
-updates** checks right away.
-
-**Where the Google API key goes:** nowhere at build time - the app is generic
-and contains no secrets. Whoever uses it enters their own Client ID / Client
-Secret through the **Upload to Google → one-time setup form** described
-[above](#one-time-google-setup). The app stores it, and the sign-in token, in
-`%APPDATA%\StreetviewTourEditor\`, per Windows user, so updates, reinstalls
-and uninstalls never touch it. (Builds before the installer kept these files
-in `dist/uploader/`; they are copied over automatically on first start.)
-
-Windows SmartScreen may warn about the Setup.exe while releases aren't
-code-signed (see [Code signing](#code-signing)). Choose "More info → Run
-anyway", or just keep using `python run_editor.py`.
-
-### Building it yourself
+<details>
+<summary><b>Building the Windows app</b></summary>
 
 ```bash
 pip install -r requirements.txt pyinstaller
-winget install JRSoftware.InnoSetup   # only needed for the Setup.exe
-python build_exe.py
+winget install JRSoftware.InnoSetup     # only for the Setup.exe
+python build_exe.py                      # version from `git describe`
+python build_exe.py --version 2.2.0      # explicit version
 ```
 
-This creates, in `dist/`:
+Output in `dist/`: the app folder, `…-portable.zip`, `…-Setup.exe` and
+`SHA256SUMS.txt`. `--no-installer` skips Inno Setup; `--console` builds with a
+console window for debugging.
+</details>
 
-```text
-dist/
-├── StreetviewTourEditor/                        (the app: .exe + _internal/)
-├── StreetviewTourEditor-<version>-portable.zip
-├── StreetviewTourEditor-<version>-Setup.exe     (only if Inno Setup is installed)
-└── SHA256SUMS.txt                               (checked by the in-app updater)
+<details>
+<summary><b>Releasing</b></summary>
+
+Push a tag and GitHub Actions builds and publishes the release. Installed copies
+offer the update on their next start:
+
+```bash
+git tag v2.2.0 && git push origin v2.2.0
 ```
 
-The version comes from `git describe`; pass `--version 1.2.0` to override it,
-`--no-installer` to skip the Setup.exe, or `--console` for a build with a
-console window (handy for debugging; the normal build logs to
-`%APPDATA%\StreetviewTourEditor\editor.log`). The installer itself is defined in
-`installer/StreetviewTourEditor.iss`. If a rebuild fails with a file-in-use /
-permission error, the previous `.exe` is still running - close it and rerun.
+**Run workflow** in the Actions tab builds without releasing. Optional repository secrets:
 
-### Building via GitHub Actions
+- **Code signing** (removes the SmartScreen warning) via
+  [Azure Trusted Signing](https://learn.microsoft.com/azure/trusted-signing/):
+  `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`,
+  `TRUSTED_SIGNING_ENDPOINT`, `TRUSTED_SIGNING_ACCOUNT`, `TRUSTED_SIGNING_PROFILE`.
+  Locally, set `SIGN_CMD` to any signing command with `{file}` as placeholder.
+- **winget**: `WINGET_TOKEN`; the first submission is manual, see
+  [packaging/winget/README.md](packaging/winget/README.md).
+</details>
 
-`.github/workflows/build-release.yml` builds everything on a Windows runner:
+Contributions are welcome: open an [issue](https://github.com/F0uP/streetview-tour-uploader/issues)
+or a pull request. Please test changes in Chrome and Firefox.
 
-- **Cut a release:** `git tag v1.2.0 && git push origin v1.2.0` - the workflow
-  builds and publishes a Release with the Setup.exe, the portable zip and
-  `SHA256SUMS.txt` attached, plus auto-generated release notes. Installed
-  copies offer the update on their next start.
-- **Test the build without releasing:** open the **Actions** tab → *Build and
-  Release* → **Run workflow**. The same files are attached to the run as a
-  downloadable artifact, without creating a Release.
+## Credits
 
-No secrets are needed for this. Two optional extras are switched on by adding
-repository secrets:
-
-### Code signing
-
-Unsigned installers trigger Windows SmartScreen's "unknown publisher" warning.
-To sign, set `SIGN_CMD` to a command that signs one file, with `{file}` where
-the path goes - `build_exe.py` signs the app, and Inno Setup signs the
-Setup.exe and uninstaller with the same command:
-
-```bat
-set SIGN_CMD=signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a "{file}"
-python build_exe.py
-```
-
-In GitHub Actions the workflow does this with
-[Azure Trusted Signing](https://learn.microsoft.com/azure/trusted-signing/)
-(a low-cost way to get a publicly trusted signature) once these secrets
-exist: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`,
-`TRUSTED_SIGNING_ENDPOINT`, `TRUSTED_SIGNING_ACCOUNT`, `TRUSTED_SIGNING_PROFILE`.
-
-### winget
-
-To make `winget install F0uP.StreetviewTourEditor` work, submit the first
-version by hand once, then add a `WINGET_TOKEN` secret so each release is
-submitted automatically - see [packaging/winget/README.md](packaging/winget/README.md).
-
-## Notes
-
-- Uploaded photos are public under your Google account
-- Google Maps updates can take minutes to days depending on processing state
-- Do not commit `client_secrets.json` or `token.json`
+Originally created by [Koji Takada](https://github.com/takadakoji-jp/streetview-tour-uploader),
+extended by [F0uP](https://github.com/F0uP). Built with
+[Leaflet](https://leafletjs.com/),
+[Photo Sphere Viewer](https://photo-sphere-viewer.js.org/),
+[exifr](https://github.com/MikeKovarik/exifr) and
+[MediaPipe](https://ai.google.dev/edge/mediapipe); maps ©
+[OpenStreetMap](https://www.openstreetmap.org/copyright) contributors and
+imagery © Esri. Not affiliated with Google.
 
 ## License
 
-MIT
+[MIT](LICENSE)
