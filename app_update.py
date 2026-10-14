@@ -8,13 +8,20 @@ published next to it, and runs it silently. The running app then exits so the
 installer can replace its files; the installer starts the new version again
 afterwards (see the [Run] section of installer/StreetviewTourEditor.iss).
 
-Portable and source (python run_editor.py) installs can't replace themselves,
-so for them the editor only links to the release page.
+Portable and source (python run_editor.py) installs, and the macOS and Linux
+packages, can't replace themselves this way, so for them the editor only links
+to the release page.
+
+Release assets per Windows architecture: the x64 installer keeps the name
+"StreetviewTourEditor-<version>-Setup.exe" (it is what every older version's
+updater looks for, and it also serves Windows on ARM through emulation); the
+32-bit one is "...-Setup-x86.exe", which those older patterns don't match.
 """
 
 import hashlib
 import json
 import re
+import struct
 import subprocess
 import sys
 import tempfile
@@ -26,7 +33,9 @@ from urllib.request import Request, urlopen
 GITHUB_REPO = "F0uP/streetview-tour-uploader"
 API_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
-SETUP_RE = re.compile(r"^StreetviewTourEditor-(.+)-Setup\.exe$")
+# This app's own installer: the 32-bit build updates with the 32-bit one.
+SETUP_RE = (re.compile(r"^StreetviewTourEditor-(.+)-Setup-x86\.exe$") if struct.calcsize("P") == 4
+            else re.compile(r"^StreetviewTourEditor-(.+)-Setup\.exe$"))
 SUMS_NAME = "SHA256SUMS.txt"
 CHECK_TTL = 3600  # GitHub allows 60 unauthenticated API calls per hour
 

@@ -1,0 +1,3 @@
+# Building the Windows and macOS apps (build_exe.py); the Linux package needs none of it.
+-r requirements.txt
+pyinstaller>=6.22.3

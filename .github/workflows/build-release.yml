@@ -1,18 +1,29 @@
 name: Build and Release
 
-# Push a tag like "v1.2.0" to build the app, its installer and a portable zip
-# and publish them as a GitHub Release (the in-app updater picks it up from
-# there). Use "Run workflow" in the Actions tab to build without releasing
-# (handy for testing this pipeline itself).
+# Push a tag like "v1.2.0" to build the app for every platform and publish it
+# as a GitHub Release (the installed Windows app updates itself from there).
+# "Run workflow" in the Actions tab builds and tests everything without
+# releasing - handy for testing this pipeline itself.
 #
-# Optional repository secrets:
-#   Code signing (Azure Trusted Signing), all five needed:
+#   Windows  x64 + x86       Setup.exe and portable zip (x64 also runs on Windows on ARM)
+#   macOS    arm64 + x64     .dmg (Apple Silicon and Intel)
+#   Linux    amd64 + arm64   one .deb for both (Debian 12, Ubuntu 24.04 or newer)
+#
+# Every package is started once on a fresh machine before anything is released
+# (run_editor.py --smoke-test: opens the app window, checks the editor works,
+# quits): the Linux package on Ubuntu 24.04 (amd64 and arm64), Ubuntu 26.04 and
+# Debian 12, the Windows x64 build also on Windows on ARM.
+#
+# Optional repository secrets (without them the builds are unsigned):
+#   Windows code signing (Azure Trusted Signing), all six:
 #     AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET,
 #     TRUSTED_SIGNING_ENDPOINT (e.g. https://weu.codesigning.azure.net),
 #     TRUSTED_SIGNING_ACCOUNT, TRUSTED_SIGNING_PROFILE
+#   macOS signing: MACOS_CERTIFICATE (base64 of a "Developer ID Application"
+#     .p12), MACOS_CERTIFICATE_PASSWORD; plus notarization: APPLE_ID,
+#     APPLE_TEAM_ID, APPLE_APP_PASSWORD (an app-specific password)
 #   winget: WINGET_TOKEN (classic PAT with public_repo scope) - opens the
 #     update PR against microsoft/winget-pkgs after each release.
-# Without them the build runs unsigned and skips winget.
 on:
   push:
     tags:
@@ -20,39 +31,50 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  PYTHON_VERSION: '3.13'
+  # The app's window on a machine without a desktop session and GPU.
+  WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+  LIBGL_ALWAYS_SOFTWARE: '1'
 
 jobs:
-  build:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - id: ver
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-dev.${{ github.run_number }}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+    name: Windows ${{ matrix.arch }}
     runs-on: windows-latest
     env:
       SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' && secrets.TRUSTED_SIGNING_ACCOUNT != '' }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # git describe needs the tags
+      - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
+          architecture: ${{ matrix.arch }}
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install pyinstaller
+          python -m pip install --upgrade pip
+          pip install -r requirements-build.txt
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
-
-      - name: Work out version
-        id: ver
-        shell: pwsh
-        run: |
-          if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart("v") }
-          else { $v = "0.0.0-dev.${{ github.run_number }}" }
-          "version=$v" >> $env:GITHUB_OUTPUT
 
       - name: Set up code signing
         if: env.SIGNING == 'true'
@@ -75,37 +97,190 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-        run: python build_exe.py --version ${{ steps.ver.outputs.version }}
+        run: python build_exe.py --version ${{ needs.version.outputs.version }}
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+      - name: Smoke test
+        shell: pwsh
+        run: ./.github/scripts/smoke-test-windows.ps1 -Exe dist\StreetviewTourEditor\StreetviewTourEditor.exe
+
+      - uses: actions/upload-artifact@v7
         with:
-          name: StreetviewTourEditor-windows
+          name: windows-${{ matrix.arch }}
           path: |
-            dist/*-Setup.exe
+            dist/*-Setup*.exe
             dist/*-portable.zip
-            dist/SHA256SUMS.txt
-          retention-days: 30
+          if-no-files-found: error
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+  windows-on-arm:
+    # No native ARM64 build (pythonnet, which the window needs, has none):
+    # check that the x64 build runs through Windows' x64 emulation.
+    needs: windows
+    name: Windows on ARM (x64 build)
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v7
         with:
-          # SHA256SUMS.txt must be attached: the in-app updater refuses an
-          # installer it can't verify against it.
-          files: |
-            dist/*-Setup.exe
-            dist/*-portable.zip
-            dist/SHA256SUMS.txt
-          generate_release_notes: true
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-x64
+          path: dist
+      - name: Unpack the portable build
+        shell: pwsh
+        run: Expand-Archive -Path (Get-ChildItem dist\*-windows-x64-portable.zip).FullName -DestinationPath app
+      - name: Smoke test
+        shell: pwsh
+        run: ./.github/scripts/smoke-test-windows.ps1 -Exe app\StreetviewTourEditor\StreetviewTourEditor.exe
+
+  macos:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x64
+            runner: macos-15-intel
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    env:
+      MAC_SIGNING: ${{ secrets.MACOS_CERTIFICATE != '' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-build.txt
+
+      - name: Set up code signing
+        if: env.MAC_SIGNING == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(uuidgen)"
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity="$(security find-identity -v -p codesigning "$keychain" | grep -o '"Developer ID Application[^"]*"' | head -1 | tr -d '"')"
+          echo "MACOS_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+
+      - name: Build app and disk image
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: python build_exe.py --version ${{ needs.version.outputs.version }}
+
+      - name: Smoke test
+        run: |
+          set +e
+          "dist/Streetview Tour Editor.app/Contents/MacOS/Streetview Tour Editor" --smoke-test
+          code=$?
+          tail -n 30 "$HOME/Library/Application Support/StreetviewTourEditor/editor.log"
+          exit $code
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-${{ matrix.arch }}
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  linux:
+    needs: version
+    name: Linux package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      # The oldest Python the package supports decides which backports get bundled.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Build .deb
+        run: python packaging/linux/build_deb.py --version ${{ needs.version.outputs.version }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: dist/*.deb
+          if-no-files-found: error
+
+  linux-test:
+    needs: linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu 24.04 amd64
+            runner: ubuntu-24.04
+          - name: Ubuntu 24.04 arm64
+            runner: ubuntu-24.04-arm
+          - name: Ubuntu 26.04 amd64
+            runner: ubuntu-24.04
+            container: ubuntu:26.04
+          - name: Debian 12 amd64
+            runner: ubuntu-24.04
+            container: debian:12
+    name: Test on ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux
+          path: dist
+      - name: Install the package with apt
+        run: |
+          SUDO=$(command -v sudo || true)
+          $SUDO apt-get update -q
+          $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -q ca-certificates xvfb xauth ./dist/*.deb
+      - name: Smoke test
+        run: |
+          set +e
+          xvfb-run -a streetview-tour-editor --smoke-test
+          code=$?
+          tail -n 30 "$HOME/.config/streetview-tour-editor/editor.log"
+          exit $code
+
+  release:
+    needs: [version, windows, windows-on-arm, macos, linux, linux-test]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      # The in-app updater refuses an installer it can't verify against this list.
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum * | tee SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true
 
   winget:
     # Keeps the winget package current. The very first version has to be
     # submitted by hand once (see packaging/winget/README.md).
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: release
     runs-on: windows-latest
     env:
       HAS_TOKEN: ${{ secrets.WINGET_TOKEN != '' }}
@@ -115,5 +290,5 @@ jobs:
         uses: vedantmgoyal9/winget-releaser@v2
         with:
           identifier: F0uP.StreetviewTourEditor
-          installers-regex: '-Setup\.exe$'
+          installers-regex: '-Setup(-x86)?\.exe$'
           token: ${{ secrets.WINGET_TOKEN }}

@@ -25,11 +25,17 @@ def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     version = sys.argv[1].lstrip("v")
-    setup = f"StreetviewTourEditor-{version}-Setup.exe"
     base = f"{REPO}/releases/download/v{version}"
     with urlopen(f"{base}/SHA256SUMS.txt", timeout=30) as r:
         sums = dict(reversed(line.split()) for line in r.read().decode().splitlines() if line.strip())
-    sha = sums[setup].upper()
+    # x64 (Windows on ARM installs it too and runs it emulated) and, since 2.3.0, 32-bit.
+    installers = ""
+    for arch, setup in (("x64", f"StreetviewTourEditor-{version}-Setup.exe"),
+                        ("x86", f"StreetviewTourEditor-{version}-Setup-x86.exe")):
+        if setup in sums:
+            installers += (f"- Architecture: {arch}\n"
+                           f"  InstallerUrl: {base}/{setup}\n"
+                           f"  InstallerSha256: {sums[setup].upper()}\n")
 
     out = Path(__file__).parent / "manifests" / "f" / "F0uP" / "StreetviewTourEditor" / version
     out.mkdir(parents=True, exist_ok=True)
@@ -46,9 +52,7 @@ def main():
         "UpgradeBehavior: install\n"
         "FileExtensions:\n- vrtour\n"
         "Installers:\n"
-        "- Architecture: x64\n"
-        f"  InstallerUrl: {base}/{setup}\n"
-        f"  InstallerSha256: {sha}\n"
+        f"{installers}"
         f"ManifestType: installer\nManifestVersion: {MANIFEST_VERSION}\n", encoding="utf-8")
 
     (out / f"{IDENTIFIER}.locale.en-US.yaml").write_text(

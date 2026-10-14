@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Walkthrough Tour Editor</title>
+<link rel="icon" href="favicon.png">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/index.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.11.5/index.css">
@@ -171,7 +172,7 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 .slider { width:100%; margin-top:8px; accent-color:var(--accent); }
 
 .brandmark { display:flex; align-items:center; gap:10px; margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--border); }
-.brandmark .mk { width:30px; height:30px; border-radius:9px; background:linear-gradient(135deg,var(--accent),var(--gold)); box-shadow:0 4px 16px -4px var(--accent-glow); flex-shrink:0; }
+.brandmark .mk { width:30px; height:30px; border-radius:8px; background:url(logo.svg) center/contain no-repeat; box-shadow:0 4px 16px -4px var(--accent-glow); flex-shrink:0; }
 .brandmark .tx { font-size:12.5px; font-weight:800; letter-spacing:-.01em; }
 .brandmark .tx span { display:block; font-size:10px; font-weight:600; color:var(--text-faint); letter-spacing:.02em; }
 
@@ -552,6 +553,22 @@ a.btn { text-decoration:none; }
 .gstat .dot.pending { background:var(--gold); }
 @media (max-width:640px) { .up-cards { grid-template-columns:repeat(2, 1fr); } }
 
+/* ── App connection / Google compare ─────────── */
+.key-banner {
+  position:fixed; left:50%; top:76px; transform:translateX(-50%); z-index:3500; max-width:640px; padding:12px 16px;
+  border-radius:var(--radius-sm); background:rgba(251,88,120,.14); border:1px solid rgba(251,88,120,.5);
+  color:var(--text); font-size:12.5px; line-height:1.5; box-shadow:var(--shadow-lg); backdrop-filter:var(--blur);
+}
+.key-banner { padding-right:40px; }
+.key-banner-x {
+  position:absolute; top:6px; right:8px; width:26px; height:26px; border:0; border-radius:50%; background:transparent;
+  color:var(--text-dim); font-size:18px; line-height:1; cursor:pointer;
+}
+.key-banner-x:hover { background:rgba(255,255,255,.08); color:var(--text); }
+.check-row.ok .lv { background:var(--success); }
+.check-row.ok .msg { color:var(--text-faint); }
+.check-ok.bad { color:var(--danger); }
+
 /* ── Misc ──────────────────────────────────────── */
 .ico { width:14px; height:14px; }
 </style>
@@ -598,7 +615,7 @@ a.btn { text-decoration:none; }
         <hr>
         <button data-run="walkheadings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>Headings from walking direction…</button>
         <button data-run="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Check tour…</button>
-        <button data-run="gstatus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>Check status on Google</button>
+        <button data-run="gstatus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>Compare with Google…</button>
         <hr>
         <button data-run="lang"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l6 6"/><path d="M4 14l6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="M22 22l-5-10-5 10"/><path d="M14 18h6"/></svg><span id="lang-label" data-no-i18n>Deutsch</span></button>
         <button data-run="updates"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Check for updates</button>
@@ -932,7 +949,7 @@ a.btn { text-decoration:none; }
         <label class="cb2" style="margin-top:6px"><input type="checkbox" id="upl-reupload"> Upload photos again that were already uploaded</label>
         <label class="cb2" style="margin-top:6px" id="upl-delete-old-row" hidden><input type="checkbox" id="upl-delete-old" checked> <span id="upl-delete-old-label"></span></label>
         <div class="rowbtn" style="margin-top:12px">
-          <button class="btn" id="upl-refresh-status">Check status on Google</button>
+          <button class="btn" id="upl-refresh-status">Compare with Google…</button>
           <button class="btn g" id="upl-start">Start Upload</button>
         </div>
       </div>
@@ -1020,6 +1037,20 @@ a.btn { text-decoration:none; }
   </div>
 </div>
 
+<div class="modal-back" id="gcmp-back">
+  <div class="modal wide">
+    <h2>Compare with Google <span class="close" data-close="gcmp-back">Close</span></h2>
+    <div class="mini" style="margin:0">Checks what Google has stored for each photo (links, position, heading) and looks for photos on your account at the same spots.</div>
+    <div class="mini" id="gcmp-summary" style="margin:8px 0 0;color:var(--text)"></div>
+    <div class="check-list" id="gcmp-list"></div>
+    <label class="cb2" id="gcmp-dupes-row" hidden><input type="checkbox" id="gcmp-dupes"> <span id="gcmp-dupes-label"></span></label>
+    <div class="rowbtn" style="margin-top:10px">
+      <button class="btn" id="gcmp-rerun">Check again</button>
+      <button class="btn g" id="gcmp-repair">Repair</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-back" id="hs-back">
   <div class="modal">
     <h2><span id="hs-title-h">Info point</span> <span class="close" data-close="hs-back">Close</span></h2>
@@ -1089,6 +1120,162 @@ a.btn { text-decoration:none; }
 import exifr from 'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.esm.js';
 import { Viewer } from '@photo-sphere-viewer/core';
 import { MarkersPlugin } from '@photo-sphere-viewer/markers-plugin';
+
+// ── Connection to the local app ───────────────────
+// The app opens this page with its secret key in the URL fragment (#k=…). The
+// page keeps it in its own storage and sends it with every API call; without it
+// the app refuses to do anything, so no other program or user on this computer
+// can use the Google sign-in through it.
+const EDITOR_KEY = (() => {
+  const m = /[#&]k=([\w-]{20,})/.exec(location.hash);
+  if (m) {
+    storageSet('editorKey', m[1]);
+    history.replaceState(null, '', location.pathname + location.search); // don't leave it in the address bar
+    return m[1];
+  }
+  return storageGet('editorKey') || '';
+})();
+
+// A notice at the top of the page; × hides it.
+function appNotice(text, onClose) {
+  const el = document.createElement('div');
+  el.className = 'key-banner';
+  el.textContent = text;
+  const x = document.createElement('button');
+  x.className = 'key-banner-x';
+  x.title = t('Close');
+  x.textContent = '×';
+  x.onclick = () => { el.remove(); onClose?.(); };
+  el.appendChild(x);
+  document.body.appendChild(el);
+  return el;
+}
+
+let keyProblemShown = false;
+function showKeyProblem(appHasWindow) {
+  if (keyProblemShown) return;
+  keyProblemShown = true;
+  appNotice(appHasWindow
+    ? t('The Streetview Tour Editor now runs in its own window, so this browser tab is no longer connected and can be closed. Work that was only autosaved in this browser: restore it here, save it as a project (Ctrl+S) and open that file in the app.')
+    : t('This page is not connected to the Streetview Tour Editor app. Open the editor from the Start menu (or the app\'s tray icon) to upload and save.'));
+}
+
+const nativeFetch = window.fetch.bind(window);
+window.fetch = (input, init = {}) => {
+  const url = typeof input === 'string' ? input : input.url;
+  if (url.startsWith('/api/')) {
+    init = { ...init, headers: { ...(init.headers || {}), 'X-Editor-Key': EDITOR_KEY } };
+  }
+  return nativeFetch(input, init).then(r => {
+    if (r.status === 401 && r.headers.get('X-Editor-Auth') === 'bad-key') {
+      r.clone().json().then(j => showKeyProblem(!!j.window), () => showKeyProblem(false));
+    }
+    return r;
+  });
+};
+
+// ── Native file dialogs in the app window ─────────
+// WebView2's own pickers are titled for websites ("Choose a file this site can
+// read"). In the app window the app shows Windows' regular dialogs instead and
+// reads and writes the chosen file itself; these handles stand in for the File
+// System Access API ones the rest of the editor uses.
+class AppFileHandle {
+  constructor(token, name) {
+    this.kind = 'file';
+    this.token = token;
+    this.name = name;
+    this.written = null; // what was last saved here - no need to read it back
+  }
+  async getFile() {
+    if (this.written) return new File([this.written], this.name, { type: this.written.type });
+    const r = await fetch(`/api/files/read?token=${encodeURIComponent(this.token)}`);
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+    return new File([await r.blob()], this.name);
+  }
+  async createWritable() {
+    return appWritable(`/api/files/write?token=${encodeURIComponent(this.token)}`, blob => { this.written = blob; });
+  }
+  async queryPermission() { return 'granted'; }
+  async requestPermission() { return 'granted'; }
+}
+
+class AppFolderHandle {
+  constructor(token, name, grant) {
+    this.kind = 'directory';
+    this.token = token;
+    this.name = name;
+    this.grant = grant;
+  }
+  async getFileHandle(name) {
+    const url = `/api/files/write?token=${encodeURIComponent(this.token)}&name=${encodeURIComponent(name)}`;
+    return { kind: 'file', name, createWritable: async () => appWritable(url) };
+  }
+  async queryPermission() { return 'granted'; }
+  async requestPermission() { return 'granted'; }
+}
+
+function appWritable(url, onSaved) {
+  const parts = [];
+  return {
+    async write(data) { parts.push(data); },
+    async close() {
+      const blob = new Blob(parts);
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      onSaved?.(blob);
+    },
+  };
+}
+
+async function appPick(kind, opts = {}) {
+  const types = (opts.types || []).map(type => ({
+    description: type.description || '',
+    extensions: Object.values(type.accept || {}).flat(),
+  }));
+  const r = await fetch('/api/files/pick', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind, suggestedName: opts.suggestedName || '', types }),
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || 'The file dialog failed.');
+  if (j.cancelled) throw new DOMException('The user aborted a request.', 'AbortError');
+  return j;
+}
+
+function useAppFileDialogs() {
+  window.showOpenFilePicker = async opts => { const j = await appPick('open', opts); return [new AppFileHandle(j.token, j.name)]; };
+  window.showSaveFilePicker = async opts => { const j = await appPick('save', opts); return new AppFileHandle(j.token, j.name); };
+  window.showDirectoryPicker = async opts => { const j = await appPick('folder', opts); return new AppFolderHandle(j.token, j.name, j.grant); };
+}
+
+// Tell the app which editor pages are open, so it can quit when the last one
+// is closed (a reload says hello again before the app gives up).
+const PAGE_ID = crypto.randomUUID ? crypto.randomUUID() : `p${Date.now()}${Math.random()}`;
+let appUpdating = false; // the app is down on purpose while an update installs
+let appGoneEl = null, appGoneDismissed = false;
+function setAppGone(gone) {
+  if (gone && !appGoneEl && !appGoneDismissed && !appUpdating) {
+    appGoneEl = appNotice(t('The Streetview Tour Editor app is not running any more. Start it again from the Start menu - everything in this tab is kept.'),
+      () => { appGoneEl = null; appGoneDismissed = true; });
+  } else if (!gone) {
+    appGoneEl?.remove();
+    appGoneEl = null;
+    appGoneDismissed = false;
+  }
+}
+function sayHello() {
+  fetch('/api/hello', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: PAGE_ID }) })
+    .then(() => setAppGone(false), () => setAppGone(true));
+}
+sayHello();
+setInterval(sayHello, 30000);
+window.addEventListener('pageshow', e => { if (e.persisted) sayHello(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sayHello(); });
+document.addEventListener('resume', sayHello); // Chrome unfroze the tab
+window.addEventListener('pagehide', () => {
+  navigator.sendBeacon('/api/bye', new Blob([JSON.stringify({ page: PAGE_ID, key: EDITOR_KEY })], { type: 'application/json' }));
+});
 
 // ── Language (English / Deutsch) ──────────────────
 // The page is written in English. In German, t() looks strings up in DE, and
@@ -1208,6 +1395,8 @@ const DE = {
   'Project save failed': 'Speichern fehlgeschlagen',
   'Export failed': 'Export fehlgeschlagen',
   'Save target: Downloads': 'Speicherort: Downloads',
+  'ask each time': 'jedes Mal fragen',
+  'Saving {name} failed: {msg}': '{name} konnte nicht gespeichert werden: {msg}',
   'Downloads': 'Downloads',
   'Tools': 'Werkzeuge',
   'Preview': 'Vorschau',
@@ -1614,6 +1803,8 @@ const DE = {
   'Done': 'Fertig',
   'Finished with notes': 'Fertig, mit Hinweisen',
   'Stopping after the current photo…': 'Stoppt nach dem aktuellen Foto…',
+  "Don't wait": 'Nicht warten',
+  'Not waiting for Google - links and positions are set in the background as soon as Google is ready.': 'Es wird nicht auf Google gewartet – Verbindungen und Positionen werden im Hintergrund gesetzt, sobald Google fertig ist.',
   'Google is ready: links set for {n} photo(s)': 'Google ist fertig: Verbindungen für {n} Foto(s) gesetzt',
   'Uploaded - Google is still processing it': 'Hochgeladen – Google verarbeitet es noch',
   'On Google, not yet shown on Maps': 'Bei Google, noch nicht auf Maps sichtbar',
@@ -1629,6 +1820,33 @@ const DE = {
   'Stopped': 'Abgebrochen',
   'The photo file can no longer be read - drop it again': 'Die Fotodatei ist nicht mehr lesbar – bitte erneut ablegen',
   'Not a JPEG file - Google Street View only accepts JPEG photos': 'Keine JPEG-Datei – Google Street View akzeptiert nur JPEG-Fotos',
+  'The Streetview Tour Editor app is not running any more. Start it again from the Start menu - everything in this tab is kept.': 'Die Streetview-Tour-Editor-App läuft nicht mehr. Starte sie über das Startmenü neu – alles in diesem Tab bleibt erhalten.',
+  'The Streetview Tour Editor now runs in its own window, so this browser tab is no longer connected and can be closed. Work that was only autosaved in this browser: restore it here, save it as a project (Ctrl+S) and open that file in the app.': 'Der Streetview Tour Editor läuft jetzt in einem eigenen Fenster, deshalb ist dieser Browser-Tab nicht mehr verbunden und kann geschlossen werden. Arbeit, die nur in diesem Browser automatisch gesichert wurde: hier wiederherstellen, als Projekt speichern (Strg+S) und die Datei in der App öffnen.',
+  'An upload to Google is still running. Quit anyway? Photos that are not uploaded yet stay in your tour and can be uploaded later.': 'Ein Upload zu Google läuft noch. Trotzdem beenden? Noch nicht hochgeladene Fotos bleiben in deiner Tour und können später hochgeladen werden.',
+  'Your work is saved first. The window closes while the new version installs, then the editor opens again by itself.': 'Deine Arbeit wird zuerst gesichert. Das Fenster schließt sich, während die neue Version installiert wird, danach öffnet sich der Editor von selbst wieder.',
+  'This page is not connected to the Streetview Tour Editor app. Open the editor from the Start menu (or the app\'s tray icon) to upload and save.': 'Diese Seite ist nicht mit der Streetview-Tour-Editor-App verbunden. Öffne den Editor über das Startmenü (oder das Symbol im Infobereich), um hochzuladen und zu speichern.',
+  'Compare with Google…': 'Mit Google abgleichen…',
+  'Compare with Google': 'Mit Google abgleichen',
+  'Checks what Google has stored for each photo (links, position, heading) and looks for photos on your account at the same spots.': 'Prüft, was Google pro Foto gespeichert hat (Verbindungen, Position, Blickrichtung), und sucht Fotos in deinem Konto an denselben Stellen.',
+  'Repair': 'Reparieren',
+  'Asking Google…': 'Google wird gefragt…',
+  '{n} link(s) missing on Google': '{n} Verbindung(en) fehlen bei Google',
+  "{n} link(s) on Google that the editor doesn't have": '{n} Verbindung(en) bei Google, die der Editor nicht kennt',
+  'position differs by {d}': 'Position weicht um {d} ab',
+  'heading on Google {g}° instead of {e}°': 'Blickrichtung bei Google {g}° statt {e}°',
+  'no heading on Google': 'keine Blickrichtung bei Google',
+  '{n} linked photo(s) not on Google yet': '{n} verbundene(s) Foto(s) noch nicht bei Google',
+  'found on Google, but the editor had lost track of it - will be linked': 'bei Google gefunden, aber dem Editor nicht mehr zugeordnet – wird verknüpft',
+  'not uploaded yet': 'noch nicht hochgeladen',
+  '{n} more photo(s) on Google at this spot (duplicates)': '{n} weitere(s) Foto(s) bei Google an dieser Stelle (Duplikate)',
+  '{ok} of {all} photo(s) match Google exactly.': '{ok} von {all} Foto(s) stimmen genau mit Google überein.',
+  '{n} can be repaired.': '{n} lassen sich reparieren.',
+  'matches Google (links, position, heading)': 'stimmt mit Google überein (Verbindungen, Position, Blickrichtung)',
+  'Also delete the {n} duplicate photo(s) from Google': 'Auch die {n} Duplikat(e) bei Google löschen',
+  'Delete {n} duplicate photo(s) from Google? This cannot be undone.': '{n} Duplikat(e) bei Google löschen? Das lässt sich nicht rückgängig machen.',
+  'Repaired: {a} photo(s) updated on Google, {b} linked again, {c} duplicate(s) deleted': 'Repariert: {a} Foto(s) bei Google aktualisiert, {b} wieder verknüpft, {c} Duplikat(e) gelöscht',
+  '{n} photo(s) could not be updated yet - Google may still be processing them; this is retried automatically.': '{n} Foto(s) konnten noch nicht aktualisiert werden – vermutlich verarbeitet Google sie noch; es wird automatisch erneut versucht.',
+  '{n} of the photos to upload seem to be on Google already, at exactly the same spot (probably an earlier upload). Link them to those instead of uploading them again?': '{n} der Fotos scheinen schon bei Google zu sein, an genau derselben Stelle (vermutlich ein früherer Upload). Mit diesen verknüpfen, statt sie erneut hochzuladen?',
   // Box select
   '{n} node(s) selected': '{n} Knoten ausgewählt',
   'Point {n}': 'Punkt {n}',
@@ -1730,6 +1948,7 @@ const S = {
 };
 
 let saveDirHandle = null;
+let appHasWindow = false; // the editor runs in the app's own window, not in a browser tab
 const uid = () => `n${S.nxt++}`;
 const cuid = () => `c${S.nxt++}`;
 const gn = id => S.nodes.find(n => n.id === id);
@@ -2250,6 +2469,11 @@ const PROJECT_PICKER_TYPES = [{ description: 'Tour project', accept: { 'applicat
 
 function updateTitle() {
   document.title = `${projectDirty ? '• ' : ''}${projectName || t('Untitled')} – ${t('Tour Editor')}`;
+  if (appHasWindow) {
+    fetch('/api/window-title', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: document.title }),
+    }).catch(() => {});
+  }
 }
 function markDirty() { if (!projectDirty) { projectDirty = true; updateTitle(); } }
 function markClean() { projectDirty = false; updateTitle(); }
@@ -2681,7 +2905,7 @@ function staticCommands() {
     { icon: ICONS.redo, label: 'Check for updates', run: () => checkForUpdates({ force: true, quiet: false }) },
     { icon: ICONS.compass, label: 'Headings from walking direction…', run: openWalkHeadings },
     { icon: ICONS.grid, label: 'Check tour…', run: () => openTourCheck() },
-    { icon: ICONS.upload, label: 'Check status on Google', run: () => refreshGoogleStatus() },
+    { icon: ICONS.upload, label: 'Compare with Google…', run: () => openGoogleCompare() },
     { icon: ICONS.keyboard, label: currentLang === 'de' ? 'Switch to English' : 'Auf Deutsch umschalten', run: () => setLang(currentLang === 'de' ? 'en' : 'de') },
     { icon: ICONS.grid, label: 'Export CSV manifest', run: () => document.getElementById('bcsv').click() },
     { icon: ICONS.folder, label: 'Set save target folder', run: () => document.getElementById('bdir').click() },
@@ -3035,6 +3259,7 @@ function uploadOne(n, placeId, onBytes) {
     }, 300);
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `/api/upload-photo?${params}`);
+    xhr.setRequestHeader('X-Editor-Key', EDITOR_KEY);
     xhr.upload.onprogress = e => { if (e.lengthComputable) { local = e.loaded; report(); } };
     xhr.onload = () => {
       finished = true;
@@ -3141,9 +3366,18 @@ uplStart.onclick = async () => {
     document.getElementById('up-cancel').hidden = true;
     document.getElementById('up-finish').hidden = false;
   } finally {
+    if (uploadRunning) setAppBusy(false);
     uploadRunning = false;
   }
 };
+
+// The app window asks before closing while this is set (the question comes from here, translated).
+function setAppBusy(busy) {
+  fetch('/api/busy', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question: busy ? t('An upload to Google is still running. Quit anyway? Photos that are not uploaded yet stay in your tour and can be uploaded later.') : null }),
+  }).catch(() => {});
+}
 
 async function runUpload() {
   const nodes = uploadCandidates();
@@ -3163,6 +3397,7 @@ async function runUpload() {
   let placeId = cleanPlaceId(uplPlace.value) || null;
   const deleteOld = document.getElementById('upl-delete-old').checked;
   uploadRunning = true;
+  setAppBusy(true);
   uploadCancel = false;
   upSetup.hidden = true;
   upRun.hidden = false;
@@ -3171,6 +3406,8 @@ async function runUpload() {
   document.getElementById('up-contrib').hidden = true;
   document.getElementById('up-cancel').hidden = false;
   document.getElementById('up-cancel').disabled = false;
+  document.getElementById('up-cancel').textContent = t('Cancel');
+  uploadPhase = 'upload';
   showNotice('');
   uplLog.textContent = '';
   buildUploadRows(nodes);
@@ -3189,6 +3426,27 @@ async function runUpload() {
       uplLine(`${n.photoName}: ${t('found on Google, not uploaded again')}`);
     });
     todo = todo.filter(n => !adopted.includes(n));
+  }
+  const fresh = todo.filter(n => !n.gsvPhotoId && n.gsvStatus !== 'missing');
+  if (fresh.length && !reupload) {
+    let photos = [];
+    try {
+      const j = await (await fetch('/api/list-photos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+      if (j.ok) photos = j.photos;
+    } catch {}
+    const used = new Set(S.nodes.filter(n => n.gsvConfirmed && n.gsvPhotoId).map(n => n.gsvPhotoId));
+    const matches = findNearbyGooglePhotos(fresh, photos, used);
+    if (matches.size && confirm(t('{n} of the photos to upload seem to be on Google already, at exactly the same spot (probably an earlier upload). Link them to those instead of uploading them again?', { n: matches.size }))) {
+      matches.forEach((near, n) => {
+        const p = near.sort((a, b) => String(b.uploadTime || '').localeCompare(String(a.uploadTime || ''))).find(x => !used.has(x.id));
+        if (!p) return;
+        used.add(p.id);
+        Object.assign(n, { gsvPhotoId: p.id, gsvConfirmed: true, gsvStatus: p.status, gsvShareLink: p.shareLink || null, gsvSig: null });
+        setRow(n, 'done', t('Already on Google - linked to it'));
+        uplLine(`${n.photoName}: ${t('found on Google, not uploaded again')}`);
+      });
+      todo = todo.filter(n => !n.gsvConfirmed);
+    }
   }
   nodes.filter(n => !todo.includes(n) && !upList.querySelector(`.up-row[data-node="${n.id}"][data-state="done"]`))
     .forEach(n => setRow(n, 'skipped', t('Already on Google')));
@@ -3246,7 +3504,11 @@ async function runUpload() {
       if (j.kind === 'auth') { authFailed = true; uploadCancel = true; }
     }
   }
-  document.getElementById('up-cancel').disabled = true;
+  // While waiting for Google, the button skips the wait instead (links follow in the background).
+  // (If the upload itself was cancelled or sign-in failed, there is nothing to wait for.)
+  uploadPhase = 'wait';
+  document.getElementById('up-cancel').disabled = uploadCancel;
+  document.getElementById('up-cancel').textContent = t("Don't wait");
   if (authFailed) showNotice(t('Not signed in - click "Sign in with Google" first.'), 'error');
   refreshAllMarkers();
 
@@ -3323,22 +3585,20 @@ async function finishGoogleSync(nodes, { uploaded = 0, failed = 0, waitMs = 2000
   if (pending.length) startGoogleBackgroundSync();
 }
 
+let uploadPhase = 'upload';
 document.getElementById('up-cancel').onclick = () => {
   uploadCancel = true;
   document.getElementById('up-cancel').disabled = true;
-  showNotice(t('Stopping after the current photo…'), 'info');
+  showNotice(uploadPhase === 'wait'
+    ? t('Not waiting for Google - links and positions are set in the background as soon as Google is ready.')
+    : t('Stopping after the current photo…'), 'info');
 };
 document.getElementById('up-finish').onclick = () => {
   if (uploadRunning) return;
   showUploadSetup();
 };
 
-document.getElementById('upl-refresh-status').onclick = async () => {
-  const counts = await refreshGoogleStatus();
-  if (counts) uplLine(`${t('Status on Google')}: ${Object.entries(counts).map(([k, v]) => `${v} ${t(k)}`).join(', ')}`);
-  try { await pushGoogleChanges(); } catch {}
-  refreshUploadSummary();
-};
+document.getElementById('upl-refresh-status').onclick = () => openGoogleCompare();
 
 // While photos are still being processed by Google, keep checking in the
 // background and set their links as soon as Google accepts them.
@@ -4033,7 +4293,9 @@ function applySnapshot(snap, { refit = false, keepGoogle = false } = {}) {
   updateMultiBar();
   updateStats();
   if (refit && S.nodes.length) fitAll();
-  if (S.nodes.some(n => n.gsvPhotoId && !n.gsvConfirmed && n.gsvStatus !== 'missing')) startGoogleBackgroundSync();
+  if (S.nodes.some(n => n.gsvPhotoId && n.gsvStatus !== 'missing' && (!n.gsvConfirmed || n.gsvSig !== gsvSignature(n)))) {
+    startGoogleBackgroundSync();
+  }
 }
 
 function doUndo() {
@@ -4270,12 +4532,26 @@ function setSaveStatus(mode, text) {
   saveStatusText.textContent = text;
 }
 
+let autosaveDue = false;
 function scheduleAutosave() {
   markDirty();
   clearTimeout(autosaveTimer);
+  autosaveDue = true;
   setSaveStatus('saving', 'Saving…');
   autosaveTimer = setTimeout(saveSessionNow, 1200);
 }
+
+// The app window calls this before it closes. Only a pending autosave is
+// written: saving an untouched, empty editor would throw away a previous
+// session the user hasn't restored yet.
+window.__svtBeforeClose = async () => {
+  if (autosaveDue) {
+    clearTimeout(autosaveTimer);
+    saveSessionNow();
+  }
+  await Promise.race([sessionSaveChain, new Promise(resolve => setTimeout(resolve, 8000))]);
+  return true;
+};
 
 // Photos are stored once each, under their own 'photo:…' key, and the session
 // record only refers to those keys. Rewriting every photo on each autosave was
@@ -4317,6 +4593,7 @@ function idbRequest(req) {
 // autosave delay, and two overlapping ones would write the same photos twice.
 let sessionSaveChain = Promise.resolve();
 function saveSessionNow() {
+  autosaveDue = false;
   sessionSaveChain = sessionSaveChain.then(saveSessionOnce, saveSessionOnce);
   return sessionSaveChain;
 }
@@ -4465,7 +4742,8 @@ async function initSaveDir() {
 }
 
 function updateSaveHint() {
-  saveHint.textContent = `Save target: ${saveDirHandle?.name || 'Downloads'}`;
+  // In the app window every download asks where to save it.
+  saveHint.textContent = `Save target: ${saveDirHandle?.name || (appHasWindow ? t('ask each time') : 'Downloads')}`;
 }
 
 async function saveTextFile(name, content) {
@@ -4485,8 +4763,29 @@ async function saveTextFile(name, content) {
       toast(`${name}: folder save failed, downloading instead`);
     }
   }
+  if (appHasWindow) return saveWithAppDialog(name, content);
   dl(content, name);
   return false;
+}
+
+// The app window has no downloads bar (and each platform's web engine treats
+// downloads differently), so a download is a regular "Save as" there.
+async function saveWithAppDialog(name, content) {
+  const ext = (/\.(\w+)$/.exec(name) || [])[1];
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: name,
+      types: ext ? [{ description: ext.toUpperCase(), accept: { 'application/octet-stream': [`.${ext}`] } }] : [],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(content instanceof Blob ? content : new Blob([content], { type: 'text/plain' }));
+    await writable.close();
+    toast(`Saved ${handle.name}`);
+    return true;
+  } catch (err) {
+    if (err?.name !== 'AbortError') alert(t('Saving {name} failed: {msg}', { name, msg: err.message || err }));
+    return false;
+  }
 }
 
 async function ensureDirectoryPermission(handle) {
@@ -4507,9 +4806,10 @@ function openSaveDb() {
 async function persistDirectoryHandle(handle) {
   try {
     const db = await openSaveDb();
+    const stored = handle instanceof AppFolderHandle ? { appFolder: handle.grant, name: handle.name } : handle;
     await new Promise((resolve, reject) => {
       const tx = db.transaction('kv', 'readwrite');
-      tx.objectStore('kv').put(handle, 'saveDirHandle');
+      tx.objectStore('kv').put(stored, 'saveDirHandle');
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
@@ -4529,6 +4829,12 @@ async function loadSavedDirectoryHandle() {
       req.onerror = () => reject(req.error);
     });
     db.close();
+    if (handle?.appFolder) {
+      const j = await (await fetch('/api/files/folder', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ grant: handle.appFolder }),
+      })).json();
+      return j.ok ? new AppFolderHandle(j.token, j.name, handle.appFolder) : null;
+    }
     return handle;
   } catch (err) {
     console.warn('loadSavedDirectoryHandle failed', err);
@@ -4567,7 +4873,7 @@ const TOOL_ACTIONS = {
   saveas: () => saveProject({ saveAs: true }),
   walkheadings: () => openWalkHeadings(),
   check: () => openTourCheck(),
-  gstatus: () => refreshGoogleStatus(),
+  gstatus: () => openGoogleCompare(),
   lang: () => setLang(currentLang === 'de' ? 'en' : 'de'),
 };
 
@@ -5016,6 +5322,12 @@ async function initAppInfo() {
   try {
     const j = await (await fetch('/api/app-info')).json();
     document.getElementById('app-version').textContent = j.version === 'dev' ? 'dev' : `v${j.version}`;
+    appHasWindow = !!j.window;
+    if (appHasWindow) {
+      useAppFileDialogs();
+      updateSaveHint();
+      updateTitle();
+    }
     return j;
   } catch { return null; }
 }
@@ -5059,11 +5371,13 @@ updateGo.onclick = async () => {
   if (!updateInfo) return;
   if (!updateInfo.canInstall) { window.open(updateInfo.pageUrl, '_blank', 'noopener'); return; }
   updateBanner.classList.remove('show');
+  appUpdating = true;
   const bar = document.getElementById('update-progress');
   const statusEl = document.getElementById('update-status');
   document.getElementById('update-title').textContent = `Updating to ${updateInfo.latest}`;
-  document.getElementById('update-body').innerHTML =
-    '<div class="mini" style="margin-top:0">Your work is saved first. The editor closes briefly while the new version installs, then this page reloads by itself.</div>';
+  document.getElementById('update-body').innerHTML = `<div class="mini" style="margin-top:0">${appHasWindow
+    ? t('Your work is saved first. The window closes while the new version installs, then the editor opens again by itself.')
+    : t('Your work is saved first. The editor closes briefly while the new version installs, then this page reloads by itself.')}</div>`;
   document.getElementById('update-close').style.display = 'none';
   bar.style.display = '';
   bar.classList.remove('indet');
@@ -5074,6 +5388,7 @@ updateGo.onclick = async () => {
   clearTimeout(autosaveTimer);
   await saveSessionNow();
   const fail = msg => {
+    appUpdating = false;
     statusEl.textContent = msg;
     bar.style.display = 'none';
     document.getElementById('update-close').style.display = '';
@@ -5116,6 +5431,7 @@ updateGo.onclick = async () => {
 
 // A .vrtour double-clicked in Explorer (or passed to the .exe) waits on the
 // server until this page fetches it.
+window.__svtOpenPending = () => openPendingProject();
 async function openPendingProject() {
   try {
     const j = await (await fetch('/api/pending-project', { cache: 'no-store' })).json();
@@ -5123,7 +5439,7 @@ async function openPendingProject() {
     toast(`Opening ${j.name}…`);
     const r = await fetch('/api/pending-project/data', { cache: 'no-store' });
     if (!r.ok) return;
-    await openProjectFile(new File([await r.blob()], j.name));
+    await openProjectFile(new File([await r.blob()], j.name), j.token ? new AppFileHandle(j.token, j.name) : null);
   } catch (err) {
     console.warn('openPendingProject failed', err);
   }
@@ -5291,6 +5607,7 @@ async function refreshGoogleStatus({ quiet = false } = {}) {
         n.gsvStatus = s.status;
         n.gsvConfirmed = true;
         n.gsvShareLink = s.shareLink || null;
+        n.gsvRemote = { lat: s.lat, lng: s.lng, heading: s.heading, connections: s.connections || [] };
         // Keep the form of the ID Google actually answers to.
         if (s.resolvedId && s.resolvedId !== n.gsvPhotoId) n.gsvPhotoId = s.resolvedId;
       }
@@ -5308,6 +5625,170 @@ async function refreshGoogleStatus({ quiet = false } = {}) {
     return null;
   }
 }
+
+// ── Compare with Google ───────────────────────────
+// Reads what Google has stored for every photo of the tour (links, position,
+// heading) and compares it with the editor; also finds photos on the account
+// at the same spot that the editor doesn't know about (earlier uploads whose
+// ID got lost, or duplicates). "Repair" links those and pushes whatever differs.
+const GCMP_NEAR = 1; // metres: a Google photo this close to a node is "the same spot"
+
+function findNearbyGooglePhotos(nodes, photos, used) {
+  const out = new Map();
+  nodes.forEach(n => {
+    const near = photos
+      .filter(p => p.id && p.lat != null && !used.has(p.id))
+      .map(p => ({ p, d: distanceMeters(n, { lat: p.lat, lng: p.lng }) }))
+      .filter(x => x.d < GCMP_NEAR)
+      .sort((a, b) => a.d - b.d)
+      .map(x => x.p);
+    if (near.length) out.set(n, near);
+  });
+  return out;
+}
+
+function headingDiff(a, b) {
+  return Math.abs(((a - b) % 360 + 540) % 360 - 180);
+}
+
+let gcmpPlan = null;
+
+async function openGoogleCompare() {
+  openModal('gcmp-back');
+  const list = document.getElementById('gcmp-list');
+  const summary = document.getElementById('gcmp-summary');
+  document.getElementById('gcmp-repair').disabled = true;
+  document.getElementById('gcmp-dupes-row').hidden = true;
+  list.innerHTML = `<div class="check-ok" style="color:var(--text-dim)">${t('Asking Google…')}</div>`;
+  summary.textContent = '';
+
+  const counts = await refreshGoogleStatus({ quiet: true });
+  let photos = [];
+  try {
+    const r = await fetch('/api/list-photos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const j = await r.json();
+    if (r.status === 401) { list.innerHTML = `<div class="check-ok bad">${t('Sign in with Google first (Upload to Google)')}</div>`; return; }
+    if (!j.ok) throw new Error(j.error || 'failed');
+    photos = j.photos;
+  } catch (err) {
+    list.innerHTML = `<div class="check-ok bad">${escapeHtml(t('Could not get the status from Google: {msg}', { msg: err.message }))}</div>`;
+    return;
+  }
+  if (counts === null && S.nodes.some(n => n.gsvPhotoId)) {
+    list.innerHTML = `<div class="check-ok bad">${t('Could not get the status from Google: {msg}', { msg: '?' })}</div>`;
+    return;
+  }
+
+  const nodes = S.nodes.filter(n => n.photoFile || n.gsvPhotoId);
+  const used = new Set(S.nodes.filter(n => n.gsvPhotoId && n.gsvConfirmed).map(n => n.gsvPhotoId));
+  const nearby = findNearbyGooglePhotos(nodes, photos, used);
+  const plan = { adopt: new Map(), push: new Set(), dupes: [] };
+  const rows = [];
+
+  nodes.forEach(n => {
+    const issues = [];
+    let near = [...(nearby.get(n) || [])];
+    if (n.gsvConfirmed && n.gsvRemote) {
+      const r = n.gsvRemote;
+      const expected = new Set(getLinkedNodes(n.id).filter(o => o.gsvConfirmed && o.gsvPhotoId).map(o => o.gsvPhotoId));
+      const remote = new Set(r.connections || []);
+      const missing = [...expected].filter(id => !remote.has(id)).length;
+      const extra = [...remote].filter(id => !expected.has(id)).length;
+      const moved = r.lat != null && distanceMeters(n, { lat: r.lat, lng: r.lng }) > 1;
+      const turned = n.heading != null && (r.heading == null || headingDiff(n.heading, r.heading) > 2);
+      if (missing) issues.push(t('{n} link(s) missing on Google', { n: missing }));
+      if (extra) issues.push(t("{n} link(s) on Google that the editor doesn't have", { n: extra }));
+      if (moved) issues.push(t('position differs by {d}', { d: formatDistance(distanceMeters(n, { lat: r.lat, lng: r.lng })) }));
+      if (turned) issues.push(r.heading == null ? t('no heading on Google') : t('heading on Google {g}° instead of {e}°', { g: Math.round(r.heading), e: Math.round(n.heading) }));
+      if (missing || extra || moved || turned) plan.push.add(n);
+      const notYet = getLinkedNodes(n.id).filter(o => !o.gsvConfirmed).length;
+      if (notYet) issues.push(t('{n} linked photo(s) not on Google yet', { n: notYet }));
+    } else if (n.gsvConfirmed) {
+      issues.push(t('Google status unknown'));
+      near = [];
+    } else if (n.gsvPhotoId && n.gsvStatus === 'pending') {
+      // Just uploaded: only a photo uploaded at the same time can be this one
+      // (listed under another form of its ID). Never touch older photos here.
+      const mine = near.find(p => Date.parse(p.uploadTime || '') >= (n.gsvUploadedAt || 0) - 5 * 60000);
+      if (mine) {
+        plan.adopt.set(n, mine);
+        used.add(mine.id);
+        issues.push(t('found on Google, but the editor had lost track of it - will be linked'));
+      } else {
+        issues.push(t('Uploaded - Google is still processing it'));
+      }
+      near = [];
+    } else if (near.length) {
+      // Google has a photo here the editor can't match by ID: an upload whose ID
+      // got lost, or one still being processed under another form of its ID.
+      // Take the most recently uploaded one.
+      near.sort((a, b) => String(b.uploadTime || '').localeCompare(String(a.uploadTime || '')));
+      const pick = near.shift();
+      plan.adopt.set(n, pick);
+      used.add(pick.id);
+      issues.push(t('found on Google, but the editor had lost track of it - will be linked'));
+    } else if (n.photoFile) {
+      issues.push(n.gsvStatus === 'missing' ? t('Not found on Google (deleted?) - will be uploaded again') : t('not uploaded yet'));
+    }
+    if (near.length) {
+      plan.dupes.push(...near.map(p => p.id));
+      near.forEach(p => used.add(p.id));
+      issues.push(t('{n} more photo(s) on Google at this spot (duplicates)', { n: near.length }));
+    }
+    rows.push({ n, issues, ok: !issues.length });
+  });
+  gcmpPlan = plan;
+
+  const okCount = rows.filter(r => r.ok).length;
+  const fixable = plan.adopt.size + plan.push.size;
+  summary.textContent = t('{ok} of {all} photo(s) match Google exactly.', { ok: okCount, all: rows.length }) +
+    (fixable ? ` ${t('{n} can be repaired.', { n: fixable })}` : '');
+  list.innerHTML = '';
+  rows.sort((a, b) => a.ok - b.ok).forEach(({ n, issues, ok }) => {
+    const row = document.createElement('div');
+    row.className = `check-row ${ok ? 'ok' : 'warn'}`;
+    row.innerHTML = `<span class="lv"></span><span class="nm">${escapeHtml(n.name)}</span><span class="msg">${escapeHtml(ok ? t('matches Google (links, position, heading)') : issues.join(' · '))}</span><button class="btn">${t('Show')}</button>`;
+    row.querySelector('button').onclick = () => { closeModal('gcmp-back'); jumpToNode(n.id, false); };
+    list.appendChild(row);
+  });
+  document.getElementById('gcmp-repair').disabled = !fixable && !plan.dupes.length;
+  document.getElementById('gcmp-dupes-row').hidden = !plan.dupes.length;
+  document.getElementById('gcmp-dupes').checked = false;
+  document.getElementById('gcmp-dupes-label').textContent = t('Also delete the {n} duplicate photo(s) from Google', { n: plan.dupes.length });
+}
+
+document.getElementById('gcmp-repair').onclick = async () => {
+  const plan = gcmpPlan;
+  if (!plan) return;
+  const btn = document.getElementById('gcmp-repair');
+  btn.disabled = true;
+  try {
+    plan.adopt.forEach((p, n) => {
+      Object.assign(n, { gsvPhotoId: p.id, gsvConfirmed: true, gsvStatus: p.status, gsvShareLink: p.shareLink || null, gsvSig: null });
+    });
+    // Linking a lost photo changes what its neighbours should link to as well.
+    plan.adopt.forEach((p, n) => getLinkedNodes(n.id).forEach(o => { if (o.gsvConfirmed) o.gsvSig = null; }));
+    plan.push.forEach(n => { n.gsvSig = null; });
+    const res = await pushGoogleChanges();
+    let deleted = 0;
+    if (plan.dupes.length && document.getElementById('gcmp-dupes').checked
+        && confirm(t('Delete {n} duplicate photo(s) from Google? This cannot be undone.', { n: plan.dupes.length }))) {
+      const r = await fetch('/api/delete-photos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: plan.dupes }) });
+      const j = await r.json();
+      deleted = (j.results || []).filter(x => x.ok).length;
+    }
+    refreshAllMarkers();
+    updateSb();
+    scheduleAutosave();
+    toast(t('Repaired: {a} photo(s) updated on Google, {b} linked again, {c} duplicate(s) deleted', { a: res.ok, b: plan.adopt.size, c: deleted }));
+    if (res.failed) toast(t('{n} photo(s) could not be updated yet - Google may still be processing them; this is retried automatically.', { n: res.failed }));
+    startGoogleBackgroundSync();
+  } catch (err) {
+    toast(t('Updating on Google failed: {msg}', { msg: err.message }));
+  }
+  await openGoogleCompare();
+};
+document.getElementById('gcmp-rerun').onclick = () => openGoogleCompare();
 
 // ── Headings from walking direction ───────────────
 function openWalkHeadings() {

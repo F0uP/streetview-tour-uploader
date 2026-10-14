@@ -48,7 +48,7 @@ them to Google.
 | ☁️ **One-click publishing** | Upload with a live progress view, readable errors and automatic linking once Google has processed the photos. Later changes are **pushed without re-uploading**; the Google status shows on every marker. |
 | 🌐 **Share it anywhere** | Export a **ready-to-host website** of the tour (with info points and a minimap), or `tour-viewer.html` / `tour-config.json` / `tour.csv`. |
 | 💾 **Never lose work** | Autosave, a restore prompt after a crash, and `.vrtour` project files with all photos inside. **Ctrl+S** saves back into the open project. |
-| 🖥️ **A real desktop app** | Windows installer, tray icon, `.vrtour` file association and in-app updates. English and German user interface. |
+| 🖥️ **A real desktop app** | Its own window (no browser needed), Windows' regular open and save dialogs, `.vrtour` file association, installer and in-app updates. English and German user interface. |
 
 <table>
   <tr>
@@ -68,9 +68,12 @@ them to Google.
 1. Download **`StreetviewTourEditor-<version>-Setup.exe`** from the
    [latest release](https://github.com/F0uP/streetview-tour-uploader/releases/latest) and run it.
    No admin rights needed.
-2. Start **Streetview Tour Editor** from the Start menu. It runs in the
-   notification area (next to the clock) and opens the editor in your browser.
+2. Start **Streetview Tour Editor** from the Start menu. The editor opens in
+   its own window; closing the window quits the app.
 3. Drop your 360° photos onto the map.
+
+The window uses Microsoft Edge WebView2, which comes with Windows 10 and 11. On a
+PC without it the editor opens in your browser instead.
 
 > [!NOTE]
 > Releases aren't code-signed yet, so Windows SmartScreen may say *"Windows protected your PC"*.
@@ -81,7 +84,9 @@ Prefer not to install anything? The release also has a
 
 ### Any OS: run from source
 
-Requires **Python 3.9+** and a current browser (Chrome or Edge recommended).
+Requires **Python 3.11+**. On Windows the editor opens in its own window (Edge
+WebView2, via `pywebview`); elsewhere, or with `--browser`, in your browser
+(Chrome or Edge recommended).
 
 ```bash
 git clone https://github.com/F0uP/streetview-tour-uploader.git
@@ -90,8 +95,9 @@ pip install -r requirements.txt
 python run_editor.py
 ```
 
-The editor opens at <http://127.0.0.1:8420/editor.html>. Keep the terminal open
-while you work; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it.
+Closing the window stops it. In the browser, keep the terminal open while you
+work; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it, and so does closing the last editor
+tab (`--keep-running` turns that off).
 
 ## One-time Google setup
 
@@ -212,8 +218,11 @@ Good to know:
   moved, turned or re-linked photos are **updated on Google without re-uploading**.
 - Photos Google hasn't finished yet get their links **automatically in the
   background** while the editor is open.
-- **Check status on Google** shows per photo whether it is *published*, *processing*
-  or *rejected* (coloured dot on the marker, link to Google Maps in the side panel).
+- **Tools → Compare with Google** (also in the upload dialog) reads every photo
+  back from Google and compares links, position and heading with your tour. It
+  shows whether each photo is *published*, *processing* or *rejected*, finds photos
+  the editor lost track of and duplicates at the same spot. **Repair** sends
+  whatever is missing, again without re-uploading.
 - A **Place ID** (optional) links the tour to a place's page on Google Maps. Find it
   with Google's free [Place ID Finder](https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder);
   pasting a Maps URL that contains one works too. If Google rejects the ID, the
@@ -227,13 +236,13 @@ Good to know:
 
 | | |
 |---|---|
-| **Save project** (<kbd>Ctrl</kbd>+<kbd>S</kbd>) | A `.vrtour` file: one zip with the tour and all photos. Chrome/Edge save straight back into it; Firefox downloads a copy. Double-click it to open it in the Windows app. |
+| **Save project** (<kbd>Ctrl</kbd>+<kbd>S</kbd>) | A `.vrtour` file: one zip with the tour and all photos. Once saved or opened, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves straight back into it (in the browser: Chrome/Edge; Firefox downloads a copy). Double-click a `.vrtour` to open it in the app. |
 | **Export as website** | `Tools → Export tour as website (.zip)`: `index.html` + photos, ready for any web space. |
 | **Export** | `tour-viewer.html` + `tour-config.json`, to place next to your photos. |
 | **CSV** | `tour.csv` for the [command-line uploader](#command-line-tools). |
 
-The editor also **autosaves** in the browser. After a crash or closed tab it
-offers to restore the last session.
+The editor also **autosaves** as you work. After a crash it offers to restore
+the last session.
 
 ### Keyboard shortcuts
 
@@ -269,6 +278,17 @@ Place ID Google accepts for Street View photos.
 </details>
 
 <details>
+<summary><b>My photos show up on Google Maps one by one, not as a connected tour</b></summary>
+
+The links between photos are set *after* Google has finished processing them,
+so a tour only becomes walkable once that step went through. Open
+**Tools → Compare with Google**: it lists every photo whose links, position or
+heading differ on Google, and **Repair** sends them. The north direction does not
+decide whether photos are linked; it only turns the arrows. After a repair it can
+take a few hours until Google Maps shows the links.
+</details>
+
+<details>
 <summary><b>The status says "processing" for a long time</b></summary>
 
 That's Google, not the editor: new photos can take hours to be published. Links
@@ -301,10 +321,27 @@ for `file://` pages. Start the app (or `python run_editor.py`) and use
 </details>
 
 <details>
+<summary><b>My work from the browser version is missing in the app window</b></summary>
+
+Up to version 2.2 the editor ran in your browser, and its autosave lives in that
+browser. While the app is running, open <http://127.0.0.1:8420/editor.html> in
+that browser, restore the session there and save it as a project
+(<kbd>Ctrl</kbd>+<kbd>S</kbd>). Then open the `.vrtour` file in the app.
+</details>
+
+<details>
+<summary><b>"This page is not connected to the Streetview Tour Editor app"</b></summary>
+
+The page was opened without the app's key, e.g. from an old bookmark or after
+clearing the browser's site data. Open the editor from the Start menu or the tray
+icon; it passes the key along. Your autosaved work is still there.
+</details>
+
+<details>
 <summary><b>"Could not start on port 8420"</b></summary>
 
-Another program, often a second copy of the editor, uses the port. Quit the other
-copy from its tray icon and start again.
+Another program, often an older copy of the editor, uses the port. Close it
+(in browser mode: from its tray icon) and start again.
 </details>
 
 <details>
@@ -312,9 +349,10 @@ copy from its tray icon and start again.
 
 | What | Where |
 |---|---|
-| Google client & sign-in (Windows app) | `%APPDATA%\StreetviewTourEditor\` (also `editor.log`) |
-| Google client & sign-in (from source) | `uploader/client_secrets.json`, `uploader/token.json` |
-| Autosaved session | Your browser's storage for `127.0.0.1:8420` |
+| Google client & sign-in (Windows app) | `%APPDATA%\StreetviewTourEditor\` (also `editor.log`, window size) |
+| Google client & sign-in (from source) | `uploader/client_secrets.json`, `uploader/token.json`, `uploader/.editor_key` |
+| Autosaved session (app window) | `%LOCALAPPDATA%\StreetviewTourEditor\WebView2\` (from source: `uploader/webview/`) |
+| Autosaved session (browser mode) | Your browser's storage for `127.0.0.1:8420` |
 | Projects | Wherever you save your `.vrtour` files |
 </details>
 
@@ -343,6 +381,18 @@ See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID fo
 - The editor is a small local web server bound to `127.0.0.1`. It only answers
   requests from its own page (host and origin are checked), so other websites
   can't use it.
+- Every API call needs a random key, so other programs or users on the same
+  computer can't use your Google sign-in through the editor either. The app
+  window gets a fresh key on every start, so browser tabs from earlier sessions
+  lose access.
+- In the app window, files are read and written only where you picked them in
+  Windows' own open / save / folder dialogs; the page can't name any other path.
+- The Google sign-in opens in your default browser (Google doesn't allow it in
+  embedded windows), listens on a local port only for that moment and checks the
+  `state` parameter of the reply.
+- Closing the window quits the app; nothing keeps running in the background. In
+  browser mode the app quits about 15 seconds after the last editor tab is
+  closed, and at the latest 5 minutes after no editor page has been heard from.
 - Photos and projects stay on your computer until you upload them; uploads go
   directly to Google's Street View Publish API.
 - In-app updates download only from this repository's GitHub releases and are
@@ -358,7 +408,8 @@ See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID fo
 ```text
 editor/editor.html        the whole editor (single page, no build step)
 run_editor.py             local server, Google API endpoints, desktop-app entry point
-app_tray.py               tray icon of the Windows app
+app_window.py             the app window (Edge WebView2 via pywebview)
+app_tray.py               tray icon (browser mode)
 app_update.py             in-app updates from GitHub Releases
 uploader/                 command-line tools
 installer/                Inno Setup script and app icon
@@ -380,7 +431,8 @@ python build_exe.py --version 2.2.0      # explicit version
 
 Output in `dist/`: the app folder, `…-portable.zip`, `…-Setup.exe` and
 `SHA256SUMS.txt`. `--no-installer` skips Inno Setup; `--console` builds with a
-console window for debugging.
+console window for debugging. Start the app with `--debug` for the developer
+tools (F12) in its window, or with `--browser` to use the browser instead.
 </details>
 
 <details>

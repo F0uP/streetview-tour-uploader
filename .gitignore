@@ -1,6 +1,7 @@
 # Credentials (never commit these)
 client_secrets.json
 token.json
+.editor_key
 
 # Working data
 *.JPG
@@ -34,3 +35,8 @@ Thumbs.db
 
 # Generated winget manifests (see packaging/winget/README.md)
 packaging/winget/manifests/
+
+# App window data when running from source (autosave, settings)
+uploader/webview/
+uploader/window.json
+uploader/folders.json

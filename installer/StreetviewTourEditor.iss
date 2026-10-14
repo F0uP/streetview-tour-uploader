@@ -1,7 +1,8 @@
 ﻿; Inno Setup script for the Streetview Tour Editor.
-; Built by build_exe.py, which passes AppVersion, SourceDir, OutputDir and IconFile
-; (plus Sign and a "signcmd" sign tool when SIGN_CMD is set):
-;   iscc /DAppVersion=1.2.0 /DSourceDir=..\dist\StreetviewTourEditor ... StreetviewTourEditor.iss
+; Built by build_exe.py, which passes AppVersion, Arch (x64 / x86), SourceDir,
+; OutputDir, OutputName and IconFile (plus Sign and a "signcmd" sign tool when
+; SIGN_CMD is set):
+;   iscc /DAppVersion=1.2.0 /DArch=x64 /DSourceDir=..\dist\StreetviewTourEditor ... StreetviewTourEditor.iss
 ;
 ; Installs per user into %LOCALAPPDATA%\Programs by default (no admin prompt),
 ; with an option to install for all users instead. Google credentials live in
@@ -18,11 +19,19 @@
   #define OutputDir "..\dist"
 #endif
 #ifndef IconFile
-  #define IconFile "app.ico"
+  #define IconFile "..\packaging\icons\app.ico"
+#endif
+#ifndef Arch
+  #define Arch "x64"
+#endif
+#ifndef OutputName
+  #define OutputName "StreetviewTourEditor-" + AppVersion + "-Setup"
 #endif
 
 #define AppName "Streetview Tour Editor"
 #define AppExe "StreetviewTourEditor.exe"
+; Held by the running app (APP_MUTEX in run_editor.py).
+#define AppMutex "StreetviewTourEditor.Running"
 #define AppUrl "https://github.com/F0uP/streetview-tour-uploader"
 
 [Setup]
@@ -40,10 +49,16 @@ DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
+#if Arch == "x86"
+; The 32-bit build installs on every Windows PC (64-bit ones run it as 32-bit app).
+ArchitecturesAllowed=x86compatible
+#else
+; The x64 build also serves Windows on ARM, which runs it through its x64 emulation.
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+#endif
 OutputDir={#OutputDir}
-OutputBaseFilename=StreetviewTourEditor-{#AppVersion}-Setup
+OutputBaseFilename={#OutputName}
 SetupIconFile={#IconFile}
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
@@ -91,13 +106,15 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 Type: filesandordirs; Name: "{app}\_internal"
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
+; The same AppUserModelID as the app window sets, so a pinned taskbar icon and
+; the running window share one taskbar button.
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; AppUserModelID: "StreetviewTourEditor.App"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon; AppUserModelID: "StreetviewTourEditor.App"
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 ; In-app updates run this installer with /SILENT: start the new version again
-; right away, without a new browser tab (the open tab reconnects by itself).
+; right away (in browser mode without a new tab: the open one reconnects by itself).
 Filename: "{app}\{#AppExe}"; Parameters: "--no-browser"; Flags: nowait skipifnotsilent
 
 [UninstallRun]
@@ -105,13 +122,23 @@ Filename: "{app}\{#AppExe}"; Parameters: "--no-browser"; Flags: nowait skipifnot
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#AppExe}"; Flags: runhidden; RunOnceId: "StopEditor"
 
 [Code]
-// The editor lives in the notification area, where Windows' Restart Manager
-// can't ask it to close, so stop it before files are replaced. It only serves
-// the editor page; the page itself autosaves the tour in the browser.
+// Stop a running editor before its files are replaced. First ask its window to
+// close, which lets the page finish its autosave, and wait (up to 10 s) until
+// the app has let go of its mutex; a copy that doesn't react (or runs only in
+// the notification area, in browser mode) is then stopped.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  ResultCode: Integer;
+  ResultCode, Waited: Integer;
 begin
+  if Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM {#AppExe}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+  begin
+    Waited := 0;
+    while CheckForMutexes('{#AppMutex}') and (Waited < 10000) do
+    begin
+      Sleep(250);
+      Waited := Waited + 250;
+    end;
+  end;
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#AppExe}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Result := '';
 end;
