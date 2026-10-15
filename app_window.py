@@ -110,8 +110,11 @@ class AppWindow:
         import webview
         dialog = {'open': webview.FileDialog.OPEN, 'save': webview.FileDialog.SAVE,
                   'folder': webview.FileDialog.FOLDER}[kind]
-        # pywebview only takes letters, digits and spaces in a filter's description.
-        types = [f"{re.sub(r'[^\w ]+', ' ', desc).strip() or 'Files'} ({';'.join(pats)})" for desc, pats in filters]
+        types = []
+        for desc, pats in filters:
+            # pywebview only takes letters, digits and spaces in a filter's description.
+            label = re.sub(r'[^\w ]+', ' ', desc).strip() or 'Files'
+            types.append(f"{label} ({';'.join(pats)})")
         if kind == 'open' or not types:
             types.append(f'{all_files_label} (*.*)')
         result = self.window.create_file_dialog(dialog, save_filename=suggested_name,

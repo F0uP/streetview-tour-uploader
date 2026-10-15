@@ -244,6 +244,8 @@ def write_info_plist(app, version):
         "LSApplicationCategoryType": "public.app-category.graphics-design",
         "NSHighResolutionCapable": True,
         "NSHumanReadableCopyright": "MIT License - Streetview Tour Editor contributors",
+        # The editor page comes from the app's own server on http://127.0.0.1.
+        "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
         "UTExportedTypeDeclarations": [{
             "UTTypeIdentifier": uti,
             "UTTypeDescription": "Streetview tour project",

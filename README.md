@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="packaging/icons/icon.svg" alt="" width="96">
+
 # Streetview Tour Editor
 
 **Turn a walk with your 360° camera into a connected Google Street View tour.**<br>
@@ -12,7 +14,7 @@ and publish everything to Google Maps with one click.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Windows | macOS | Linux](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-lightgrey)
 
-[**Download for Windows**](https://github.com/F0uP/streetview-tour-uploader/releases/latest) ·
+[**Download**](#quick-start) ·
 [Quick start](#quick-start) ·
 [Google setup](#one-time-google-setup) ·
 [User guide](#user-guide) ·
@@ -48,7 +50,7 @@ them to Google.
 | ☁️ **One-click publishing** | Upload with a live progress view, readable errors and automatic linking once Google has processed the photos. Later changes are **pushed without re-uploading**; the Google status shows on every marker. |
 | 🌐 **Share it anywhere** | Export a **ready-to-host website** of the tour (with info points and a minimap), or `tour-viewer.html` / `tour-config.json` / `tour.csv`. |
 | 💾 **Never lose work** | Autosave, a restore prompt after a crash, and `.vrtour` project files with all photos inside. **Ctrl+S** saves back into the open project. |
-| 🖥️ **A real desktop app** | Its own window (no browser needed), Windows' regular open and save dialogs, `.vrtour` file association, installer and in-app updates. English and German user interface. |
+| 🖥️ **A real desktop app** | For **Windows, macOS and Linux** (also ARM). Its own window, no browser needed; the system's own open and save dialogs, `.vrtour` file association, installers, and in-app updates on Windows. English and German user interface. |
 
 <table>
   <tr>
@@ -63,36 +65,44 @@ them to Google.
 
 ## Quick start
 
-### Windows: installer (recommended)
+Get the file for your system from the
+[latest release](https://github.com/F0uP/streetview-tour-uploader/releases/latest):
 
-1. Download **`StreetviewTourEditor-<version>-Setup.exe`** from the
-   [latest release](https://github.com/F0uP/streetview-tour-uploader/releases/latest) and run it.
-   No admin rights needed.
-2. Start **Streetview Tour Editor** from the Start menu. The editor opens in
-   its own window; closing the window quits the app.
-3. Drop your 360° photos onto the map.
+| System | Download | |
+|---|---|---|
+| **Windows** 10 / 11 (64-bit, also ARM) | `StreetviewTourEditor-<version>-Setup.exe` | installer, no admin rights needed |
+| Windows, 32-bit | `StreetviewTourEditor-<version>-Setup-x86.exe` | |
+| Windows, without installing | `StreetviewTourEditor-<version>-windows-x64-portable.zip` | unzip, run `StreetviewTourEditor.exe` |
+| **macOS** 11+ on Apple Silicon (M1 …) | `StreetviewTourEditor-<version>-macos-arm64.dmg` | open, drag the app to *Applications* |
+| macOS 11+ on Intel | `StreetviewTourEditor-<version>-macos-x64.dmg` | |
+| **Linux**: Debian 12+, Ubuntu 24.04+ and derivatives (amd64 and arm64) | `streetview-tour-editor_<version>_all.deb` | `sudo apt install ./streetview-tour-editor_*_all.deb` |
 
-The window uses Microsoft Edge WebView2, which comes with Windows 10 and 11. On a
-PC without it the editor opens in your browser instead.
+Then start **Streetview Tour Editor** (Start menu, Launchpad or your app menu)
+and drop your 360° photos onto the map. The editor opens in its own window;
+closing the window quits the app.
+
+The window is the system's own web engine: Edge WebView2 on Windows (part of
+Windows 10 and 11), WKWebView on macOS, WebKitGTK on Linux (installed with the
+package). Without it the editor opens in your browser instead. On Windows on
+ARM the 64-bit build runs through Windows' x64 emulation.
 
 > [!NOTE]
-> Releases aren't code-signed yet, so Windows SmartScreen may say *"Windows protected your PC"*.
-> Click **More info → Run anyway**. Each release has a `SHA256SUMS.txt` to verify the download.
+> Releases aren't code-signed yet. **Windows** SmartScreen may say *"Windows protected your PC"*:
+> click **More info → Run anyway**. **macOS** says it can't check the app for malware the first
+> time: open **System Settings → Privacy & Security** and click **Open Anyway** (or right-click the
+> app → **Open**). Each release has a `SHA256SUMS.txt` to verify the downloads.
 
-Prefer not to install anything? The release also has a
-**`…-portable.zip`**: unzip it anywhere and run `StreetviewTourEditor.exe`.
+### Run from source
 
-### Any OS: run from source
-
-Requires **Python 3.11+**. On Windows the editor opens in its own window (Edge
-WebView2, via `pywebview`); elsewhere, or with `--browser`, in your browser
-(Chrome or Edge recommended).
+Requires **Python 3.11+**. On Linux the window also needs the system's GTK
+bindings: `sudo apt install python3-gi gir1.2-webkit2-4.1` (and create the
+virtual environment with `--system-site-packages`).
 
 ```bash
 git clone https://github.com/F0uP/streetview-tour-uploader.git
 cd streetview-tour-uploader
 pip install -r requirements.txt
-python run_editor.py
+python run_editor.py            # --browser: use the browser instead of the window
 ```
 
 Closing the window stops it. In the browser, keep the terminal open while you
@@ -345,15 +355,34 @@ Another program, often an older copy of the editor, uses the port. Close it
 </details>
 
 <details>
+<summary><b>macOS: "Apple could not verify … is free of malware"</b></summary>
+
+The app isn't signed with an Apple developer certificate yet. Open
+**System Settings → Privacy & Security**, scroll down and click **Open Anyway**
+(once). Or right-click the app in *Applications* → **Open**.
+</details>
+
+<details>
+<summary><b>Linux: the editor opens in the browser instead of its own window</b></summary>
+
+The window needs WebKitGTK and a desktop session. The package pulls in
+`gir1.2-webkit2-4.1`; on other distributions install your equivalent of
+`python3-gi` and WebKit2GTK 4.1 (or 4.0). Started from a terminal
+(`streetview-tour-editor`), the app prints what it is missing.
+</details>
+
+<details>
 <summary><b>Where are my files?</b></summary>
 
-| What | Where |
-|---|---|
-| Google client & sign-in (Windows app) | `%APPDATA%\StreetviewTourEditor\` (also `editor.log`, window size) |
-| Google client & sign-in (from source) | `uploader/client_secrets.json`, `uploader/token.json`, `uploader/.editor_key` |
-| Autosaved session (app window) | `%LOCALAPPDATA%\StreetviewTourEditor\WebView2\` (from source: `uploader/webview/`) |
-| Autosaved session (browser mode) | Your browser's storage for `127.0.0.1:8420` |
-| Projects | Wherever you save your `.vrtour` files |
+| What | Windows | macOS | Linux |
+|---|---|---|---|
+| Google sign-in, settings, `editor.log` | `%APPDATA%\StreetviewTourEditor\` | `~/Library/Application Support/StreetviewTourEditor/` | `~/.config/streetview-tour-editor/` |
+| Autosaved session | `%LOCALAPPDATA%\StreetviewTourEditor\WebView2\` | WebKit's storage for the app | `~/.local/share/streetview-tour-editor/` |
+| Projects | wherever you save your `.vrtour` files | | |
+
+Running from source keeps everything in `uploader/` (`client_secrets.json`,
+`token.json`, `.editor_key`, `webview/`). In browser mode the autosave lives in
+that browser's storage for `127.0.0.1:8420`.
 </details>
 
 ## Command-line tools
@@ -386,7 +415,7 @@ See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID fo
   window gets a fresh key on every start, so browser tabs from earlier sessions
   lose access.
 - In the app window, files are read and written only where you picked them in
-  Windows' own open / save / folder dialogs; the page can't name any other path.
+  the system's own open / save / folder dialogs; the page can't name any other path.
 - The Google sign-in opens in your default browser (Google doesn't allow it in
   embedded windows), listens on a local port only for that moment and checks the
   `state` parameter of the reply.
@@ -408,56 +437,80 @@ See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID fo
 ```text
 editor/editor.html        the whole editor (single page, no build step)
 run_editor.py             local server, Google API endpoints, desktop-app entry point
-app_window.py             the app window (Edge WebView2 via pywebview)
+app_window.py             the app window (WebView2 / WKWebView / WebKitGTK via pywebview)
 app_tray.py               tray icon (browser mode)
-app_update.py             in-app updates from GitHub Releases
+app_update.py             in-app updates from GitHub Releases (Windows)
 uploader/                 command-line tools
-installer/                Inno Setup script and app icon
+build_exe.py              builds the Windows app + installer, or the macOS app + .dmg
+installer/                Inno Setup script (Windows installer)
+packaging/icons/          the logo: icon.svg and make_icons.py, which renders every icon format
+packaging/linux/          build_deb.py: the Linux package
+packaging/macos/          entitlements for signing the macOS app
+packaging/pyinstaller-hooks/  bundle only what the app needs
 packaging/winget/         winget manifest generator
-build_exe.py              builds the app, portable zip, installer and checksums
-.github/workflows/        CI: build and release on every v* tag
+.github/workflows/        CI: build, smoke-test and release on every v* tag
 ```
 </details>
 
 <details>
-<summary><b>Building the Windows app</b></summary>
+<summary><b>Building the apps</b></summary>
+
+Windows (the Python's architecture, x64 or x86, decides the build) and macOS
+(build on a Mac of the target architecture):
 
 ```bash
-pip install -r requirements.txt pyinstaller
-winget install JRSoftware.InnoSetup     # only for the Setup.exe
+pip install -r requirements-build.txt
+winget install JRSoftware.InnoSetup     # Windows, only for the Setup.exe
 python build_exe.py                      # version from `git describe`
-python build_exe.py --version 2.2.0      # explicit version
+python build_exe.py --version 2.3.0      # explicit version
 ```
 
-Output in `dist/`: the app folder, `…-portable.zip`, `…-Setup.exe` and
-`SHA256SUMS.txt`. `--no-installer` skips Inno Setup; `--console` builds with a
-console window for debugging. Start the app with `--debug` for the developer
-tools (F12) in its window, or with `--browser` to use the browser instead.
+Output in `dist/`: on Windows the app folder, `…-portable.zip`, `…-Setup.exe`;
+on macOS `Streetview Tour Editor.app` and the `.dmg`; plus `SHA256SUMS.txt`.
+`--no-installer` skips Inno Setup; `--console` builds with a console window for
+debugging.
+
+Linux (needs `dpkg-deb`; run it with the oldest supported Python, 3.11):
+
+```bash
+python3 packaging/linux/build_deb.py --version 2.3.0
+```
+
+Start the app with `--debug` for the developer tools in its window, with
+`--browser` to use the browser instead, or with `--smoke-test` to check that it
+starts and works (exit code 0), as CI does with every build.
 </details>
 
 <details>
 <summary><b>Releasing</b></summary>
 
-Push a tag and GitHub Actions builds and publishes the release. Installed copies
+Push a tag and GitHub Actions builds every package (Windows x64 and x86, macOS
+arm64 and x64, the Linux .deb), starts each one once on a fresh machine (the .deb
+on Ubuntu 24.04 amd64 and arm64, Ubuntu 26.04 and Debian 12, the Windows build
+also on Windows on ARM) and publishes the release. Installed Windows copies
 offer the update on their next start:
 
 ```bash
-git tag v2.2.0 && git push origin v2.2.0
+git tag v2.3.0 && git push origin v2.3.0
 ```
 
-**Run workflow** in the Actions tab builds without releasing. Optional repository secrets:
+**Run workflow** in the Actions tab builds and tests without releasing. Optional repository secrets:
 
-- **Code signing** (removes the SmartScreen warning) via
+- **Windows code signing** (removes the SmartScreen warning) via
   [Azure Trusted Signing](https://learn.microsoft.com/azure/trusted-signing/):
   `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`,
   `TRUSTED_SIGNING_ENDPOINT`, `TRUSTED_SIGNING_ACCOUNT`, `TRUSTED_SIGNING_PROFILE`.
   Locally, set `SIGN_CMD` to any signing command with `{file}` as placeholder.
+- **macOS signing and notarization** (removes the Gatekeeper warning):
+  `MACOS_CERTIFICATE` (base64 of a *Developer ID Application* `.p12`),
+  `MACOS_CERTIFICATE_PASSWORD`, and for notarization `APPLE_ID`, `APPLE_TEAM_ID`,
+  `APPLE_APP_PASSWORD`. Locally, set `MACOS_SIGN_IDENTITY` (and the three Apple values).
 - **winget**: `WINGET_TOKEN`; the first submission is manual, see
   [packaging/winget/README.md](packaging/winget/README.md).
 </details>
 
 Contributions are welcome: open an [issue](https://github.com/F0uP/streetview-tour-uploader/issues)
-or a pull request. Please test changes in Chrome and Firefox.
+or a pull request. Please test changes in the app window and in Chrome and Firefox.
 
 ## Credits
 

@@ -1,3 +1,6 @@
 # Building the Windows and macOS apps (build_exe.py); the Linux package needs none of it.
 -r requirements.txt
 pyinstaller>=6.22.3
+# Never compile cryptography (Rust + OpenSSL) during a build: take the newest
+# version with a ready-made wheel. Newer releases have none for 32-bit Windows.
+--only-binary=cryptography

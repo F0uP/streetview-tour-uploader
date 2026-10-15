@@ -209,6 +209,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Check the app compiles on Python 3.11
+        run: python -m py_compile run_editor.py app_window.py app_update.py app_tray.py
+
       - name: Build .deb
         run: python packaging/linux/build_deb.py --version ${{ needs.version.outputs.version }}
 
@@ -278,17 +281,22 @@ jobs:
           generate_release_notes: true
 
   winget:
-    # Keeps the winget package current. The very first version has to be
-    # submitted by hand once (see packaging/winget/README.md).
-    needs: release
+    # Keeps the winget package current, with Microsoft's own wingetcreate (the
+    # winget-releaser action no longer loads on current runners). The very first
+    # version has to be submitted by hand once (see packaging/winget/README.md).
+    needs: [version, release]
     runs-on: windows-latest
     env:
-      HAS_TOKEN: ${{ secrets.WINGET_TOKEN != '' }}
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
       - name: Submit to winget
-        if: env.HAS_TOKEN == 'true'
-        uses: vedantmgoyal9/winget-releaser@v2
-        with:
-          identifier: F0uP.StreetviewTourEditor
-          installers-regex: '-Setup(-x86)?\.exe$'
-          token: ${{ secrets.WINGET_TOKEN }}
+        shell: pwsh
+        run: |
+          if (-not $env:WINGET_TOKEN) { Write-Host 'No WINGET_TOKEN secret - skipped.'; exit 0 }
+          $v = '${{ needs.version.outputs.version }}'
+          $base = "https://github.com/${{ github.repository }}/releases/download/v$v"
+          Invoke-WebRequest 'https://aka.ms/wingetcreate/latest' -OutFile wingetcreate.exe
+          # x64 also covers Windows on ARM, which runs it through emulation.
+          .\wingetcreate.exe update F0uP.StreetviewTourEditor --version $v `
+            --urls "$base/StreetviewTourEditor-$v-Setup.exe|x64" "$base/StreetviewTourEditor-$v-Setup-x86.exe|x86" `
+            --submit --token $env:WINGET_TOKEN
