@@ -1,0 +1,3 @@
+# Third-party files are checked byte for byte against packaging/vendor.lock.json:
+# Git must not touch their line endings (some upstream files use CRLF).
+editor/vendor/** -text
