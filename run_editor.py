@@ -764,6 +764,20 @@ class PageTracker:
 PAGES = PageTracker()
 
 
+def _editor_url(key=True):
+    """The editor's address. It carries the version: web engines that cached an
+    older editor under its address (before the server forbade caching) would
+    otherwise keep showing it - a new address can't be in any cache."""
+    stamp = APP_VERSION
+    if stamp == 'dev':
+        try:
+            stamp = str(int((EDITOR_DIR / "editor.html").stat().st_mtime))
+        except OSError:
+            pass
+    url = f"http://127.0.0.1:{PORT}/editor.html?v={stamp}"
+    return f"{url}#k={EDITOR_KEY}" if key else url
+
+
 class Handler(SimpleHTTPRequestHandler):
     # Fixed types for the editor's own files: Python would otherwise ask the
     # system (on Windows the registry, which some programs bend), and module
@@ -781,6 +795,23 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         if self.path.startswith('/api/') and not self.path.startswith(('/api/update/status', '/api/pending-project')):
             super().log_message(fmt, *args)
+
+    # Nothing from here may be kept in a browser cache. Without Cache-Control a
+    # web engine guesses how long a file stays valid and, after an update, kept
+    # showing the old editor. Everything is local, so loading it again is cheap.
+    def send_response(self, *args, **kwargs):
+        self._cache_header = False
+        super().send_response(*args, **kwargs)
+
+    def send_header(self, keyword, value):
+        if keyword.lower() == 'cache-control':
+            self._cache_header = True
+        super().send_header(keyword, value)
+
+    def end_headers(self):
+        if not getattr(self, '_cache_header', True):
+            self.send_header('Cache-Control', 'no-store')
+        super().end_headers()
 
     def _json(self, status, payload):
         body = json.dumps(payload).encode('utf-8')
@@ -823,7 +854,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._bad_key()
         if parsed.path in ('/', '/index.html'):
             self.send_response(302)
-            self.send_header('Location', '/editor.html')
+            self.send_header('Location', _editor_url(key=False))
             self.end_headers()
             return
         if parsed.path == '/api/status':
@@ -1189,7 +1220,7 @@ def main():
                 ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY: let it come to the front
             _local_api('/api/focus', {})
         elif not args.no_browser:
-            webbrowser.open(f"http://127.0.0.1:{PORT}/editor.html#k={EDITOR_KEY}")
+            webbrowser.open(_editor_url())
         return
 
     _migrate_legacy_credentials()
@@ -1228,7 +1259,7 @@ def main():
         print("  (no client_secrets.json yet - see README for the one-time Google setup)")
     # The key travels in the URL fragment: it never reaches the server log or
     # any other site, and the page moves it into its own storage right away.
-    url = f"http://127.0.0.1:{PORT}/editor.html#k={EDITOR_KEY}"
+    url = _editor_url()
 
     if use_window:
         server = threading.Thread(target=httpd.serve_forever, daemon=True)
