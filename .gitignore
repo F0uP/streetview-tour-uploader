@@ -40,3 +40,4 @@ packaging/winget/manifests/
 uploader/webview/
 uploader/window.json
 uploader/folders.json
+uploader/recent.json

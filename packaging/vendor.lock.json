@@ -1,0 +1,147 @@
+{
+ "exifr/LICENSE": {
+  "url": "https://cdn.jsdelivr.net/npm/exifr@7.1.3/LICENSE",
+  "sha256": "e32a745bc4816c774d8e26bb9f04acde451b54669079e8b728d22fe9805c1225",
+  "size": 1081
+ },
+ "exifr/full.esm.js": {
+  "url": "https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.esm.js",
+  "sha256": "71e59a46f2d09263485da3d77cd7d9bf5c6a61f69e5e7e39a22a7b8e9066001c",
+  "size": 75505
+ },
+ "leaflet/LICENSE": {
+  "url": "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/LICENSE",
+  "sha256": "53e8dc25862014e4324741ca18fbe3611e11d42ef69f59f86ea8c5389647d4cb",
+  "size": 1395
+ },
+ "leaflet/images/layers-2x.png": {
+  "url": "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/layers-2x.png",
+  "sha256": "066daca850d8ffbef007af00b06eac0015728dee279c51f3cb6c716df7c42edf",
+  "size": 1259
+ },
+ "leaflet/images/layers.png": {
+  "url": "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/layers.png",
+  "sha256": "1dbbe9d028e292f36fcba8f8b3a28d5e8932754fc2215b9ac69e4cdecf5107c6",
+  "size": 696
+ },
+ "leaflet/images/marker-icon-2x.png": {
+  "url": "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  "sha256": "00179c4c1ee830d3a108412ae0d294f55776cfeb085c60129a39aa6fc4ae2528",
+  "size": 2464
+ },
+ "leaflet/images/marker-icon.png": {
+  "url": "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon.png",
+  "sha256": "574c3a5cca85f4114085b6841596d62f00d7c892c7b03f28cbfa301deb1dc437",
+  "size": 1466
+ },
+ "leaflet/images/marker-shadow.png": {
+  "url": "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-shadow.png",
+  "sha256": "264f5c640339f042dd729062cfc04c17f8ea0f29882b538e3848ed8f10edb4da",
+  "size": 618
+ },
+ "leaflet/leaflet.css": {
+  "url": "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css",
+  "sha256": "a7837102824184820dfa198d1ebcd109ff6d0ff9a2672a074b9a1b4d147d04c6",
+  "size": 14806
+ },
+ "leaflet/leaflet.js": {
+  "url": "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js",
+  "sha256": "db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a",
+  "size": 147552
+ },
+ "manrope/LICENSE": {
+  "url": "https://cdn.jsdelivr.net/npm/@fontsource-variable/manrope@5.0.19/LICENSE",
+  "sha256": "d826ab6583b12c26807d8716a545bdbbb672df04f48608a364ba9efdbe501c30",
+  "size": 4383
+ },
+ "manrope/manrope-latin-ext-wght-normal.woff2": {
+  "url": "https://cdn.jsdelivr.net/npm/@fontsource-variable/manrope@5.0.19/files/manrope-latin-ext-wght-normal.woff2",
+  "sha256": "c184517a0e8aa8b086eeb86897d34750aeb95e881502a424d02ffec19a9c91af",
+  "size": 14804
+ },
+ "manrope/manrope-latin-wght-normal.woff2": {
+  "url": "https://cdn.jsdelivr.net/npm/@fontsource-variable/manrope@5.0.19/files/manrope-latin-wght-normal.woff2",
+  "sha256": "14be4114dcfde74652f19f9ffae8c9bb50707e9e88bd2b1fcd86fb50224109e7",
+  "size": 24376
+ },
+ "mediapipe/blaze_face_full_range.tflite": {
+  "url": "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite",
+  "sha256": "3698b18f063835bc609069ef052228fbe86d9c9a6dc8dcb7c7c2d69aed2b181b",
+  "size": 1083786
+ },
+ "mediapipe/blaze_face_short_range.tflite": {
+  "url": "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
+  "sha256": "b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f",
+  "size": 229746
+ },
+ "mediapipe/vision_bundle.mjs": {
+  "url": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/vision_bundle.mjs",
+  "sha256": "d885630c297c0b20b1fe86096cb06291c4c8080876f27852e724f24ac603713f",
+  "size": 155439
+ },
+ "mediapipe/wasm/vision_wasm_internal.js": {
+  "url": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm/vision_wasm_internal.js",
+  "sha256": "e170ee67dd4e16c1a6fcd8840a206687e5a59b22c20e4a902bc445b095454d73",
+  "size": 323377
+ },
+ "mediapipe/wasm/vision_wasm_internal.wasm": {
+  "url": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm/vision_wasm_internal.wasm",
+  "sha256": "8da277a733926eacd0474b8704b36742d6ec3231c57a860c5b889dff8f1df886",
+  "size": 11756954
+ },
+ "psv/core/LICENSE": {
+  "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/LICENSE",
+  "sha256": "eca62e66214ee9f00c6ba9b7e790f9dc83dcfea508e3c81ab9ad14f9f81ae187",
+  "size": 1125
+ },
+ "psv/core/index.css": {
+  "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/index.css",
+  "sha256": "168454dae9d42b1f15dd5385f0b4ff3767c69479068749bbac79fd8d3366f2b7",
+  "size": 12185
+ },
+ "psv/core/index.module.js": {
+  "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/index.module.js",
+  "sha256": "675846a09bd38666bb1289ceeefcf815172d23782167d82bd218351fa5d71f45",
+  "size": 201209
+ },
+ "psv/markers-plugin/LICENSE": {
+  "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.11.5/LICENSE",
+  "sha256": "eca62e66214ee9f00c6ba9b7e790f9dc83dcfea508e3c81ab9ad14f9f81ae187",
+  "size": 1125
+ },
+ "psv/markers-plugin/index.css": {
+  "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.11.5/index.css",
+  "sha256": "cafd1323a4d066b6eb3a1fd1e9af1aece14836debff0a61ae036c31a246a708e",
+  "size": 1007
+ },
+ "psv/markers-plugin/index.module.js": {
+  "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.11.5/index.module.js",
+  "sha256": "9cf7815bb678b10130833e5f38195442d4e7d8a1674821e8dce8c8493fe7c548",
+  "size": 80148
+ },
+ "psv/virtual-tour-plugin/LICENSE": {
+  "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/virtual-tour-plugin@5.11.5/LICENSE",
+  "sha256": "eca62e66214ee9f00c6ba9b7e790f9dc83dcfea508e3c81ab9ad14f9f81ae187",
+  "size": 1125
+ },
+ "psv/virtual-tour-plugin/index.css": {
+  "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/virtual-tour-plugin@5.11.5/index.css",
+  "sha256": "0b47770c6fd853f4012d510b203165cda213bfca2a2658724beef83896a5354b",
+  "size": 2504
+ },
+ "psv/virtual-tour-plugin/index.module.js": {
+  "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/virtual-tour-plugin@5.11.5/index.module.js",
+  "sha256": "224b3818ceee7e203d6d5646092ae885d429fce018c0980681695d2997a89248",
+  "size": 47990
+ },
+ "three/LICENSE": {
+  "url": "https://cdn.jsdelivr.net/npm/three@0.169.0/LICENSE",
+  "sha256": "4c40a1ef62450b857c3b2aaf294936304cd552d965fbcd9d32d4c5bcf4ba4454",
+  "size": 1081
+ },
+ "three/three.module.min.js": {
+  "url": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.min.js",
+  "sha256": "f7cee3c7533449a1505cc12cb5128b89e3d4fd3d7ea62b05f9f5464a217472ee",
+  "size": 687458
+ }
+}

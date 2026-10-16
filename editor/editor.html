@@ -5,107 +5,167 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Walkthrough Tour Editor</title>
 <link rel="icon" href="favicon.png">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/index.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.11.5/index.css">
+<script>
+  // Light or dark: the user's choice, else the system's. Set before anything is drawn.
+  (() => {
+    let theme = null;
+    try { theme = localStorage.getItem('theme'); } catch {}
+    if (theme !== 'light' && theme !== 'dark') theme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    document.documentElement.dataset.theme = theme;
+  })();
+</script>
+<!-- Libraries ship with the app (vendor/, see packaging/vendor.py): no code from a CDN. -->
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="vendor/psv/core/index.css">
+<link rel="stylesheet" href="vendor/psv/markers-plugin/index.css">
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
-    "@photo-sphere-viewer/core": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/index.module.js",
-    "@photo-sphere-viewer/virtual-tour-plugin": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/virtual-tour-plugin@5.11.5/index.module.js",
-    "@photo-sphere-viewer/markers-plugin": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.11.5/index.module.js"
+    "three": "./vendor/three/three.module.min.js",
+    "@photo-sphere-viewer/core": "./vendor/psv/core/index.module.js",
+    "@photo-sphere-viewer/virtual-tour-plugin": "./vendor/psv/virtual-tour-plugin/index.module.js",
+    "@photo-sphere-viewer/markers-plugin": "./vendor/psv/markers-plugin/index.module.js"
   }
 }
 </script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/manrope@5.0.19/index.css">
+<link rel="stylesheet" href="vendor/manrope/manrope.css">
 <style>
 /* ── Design tokens ─────────────────────────────── */
+/* One flat design system, two themes. Components only use these variables. */
 :root {
-  --bg: #060608;
-  --bg-grad: radial-gradient(ellipse 140% 90% at 15% -10%, #241338 0%, #0b0710 45%, #060608 75%),
-             radial-gradient(ellipse 100% 60% at 100% 0%, #12222f 0%, transparent 55%);
-  --panel: rgba(17,15,23,.82);
-  --panel-solid: #100e16;
-  --panel-2: #171420;
-  --panel-3: #1c1826;
-  --border: rgba(255,255,255,.08);
-  --border-2: rgba(255,255,255,.14);
-  --text: #f3f1f7;
-  --text-dim: #9793a6;
-  --text-faint: #615d70;
-  --accent: #8b5cf6;
-  --accent-2: #c4b5fd;
-  --accent-soft: rgba(139,92,246,.16);
-  --accent-glow: rgba(139,92,246,.55);
-  --gold: #f6b93b;
-  --gold-glow: rgba(246,185,59,.5);
-  --danger: #fb5878;
-  --danger-glow: rgba(251,88,120,.4);
-  --success: #2dd9a8;
-  --radius: 14px;
-  --radius-sm: 9px;
-  --blur: blur(20px) saturate(1.4);
-  --shadow-lg: 0 24px 60px -12px rgba(0,0,0,.65), 0 2px 8px rgba(0,0,0,.4);
-  --shadow-md: 0 12px 32px -8px rgba(0,0,0,.55);
   --font: 'Manrope Variable', 'Manrope', system-ui, -apple-system, sans-serif;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --blur: none;
+  --bg-grad: none;
+  --accent: #8b5cf6;
+  --on-accent: #fff;
+  --gold: #f2a91f;
+  --gold-glow: rgba(242,169,31,.45);
+  --danger: #ef4f6b;
+  --danger-glow: rgba(239,79,107,.35);
+  --success: #22b98a;
+  --map-line: #8b5cf6;
+}
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e0d12;
+  --panel: #141319;
+  --panel-solid: #141319;
+  --panel-2: #1b1a21;
+  --panel-3: #25232d;
+  --hover: rgba(255,255,255,.05);
+  --border: #24222b;
+  --border-2: #2f2d38;
+  --border-strong: #423f4d;
+  --text: #ecebf1;
+  --text-dim: #a29fae;
+  --text-faint: #6d6a7a;
+  --accent-2: #b9a3ff;
+  --accent-soft: rgba(139,92,246,.16);
+  --accent-glow: rgba(139,92,246,.4);
+  --overlay: rgba(6,5,9,.62);
+  --inset: #0b0a0f;
+  --map-bg: #0b0a0f;
+  --scroll: rgba(255,255,255,.14);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.35);
+  --shadow-lg: 0 18px 50px -12px rgba(0,0,0,.65), 0 2px 6px rgba(0,0,0,.3);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f5f8;
+  --panel: #ffffff;
+  --panel-solid: #ffffff;
+  --panel-2: #f4f4f7;
+  --panel-3: #e9e9ef;
+  --hover: rgba(20,18,30,.045);
+  --border: #e7e6ec;
+  --border-2: #dbdae2;
+  --border-strong: #c3c1cd;
+  --text: #17161c;
+  --text-dim: #5a5766;
+  --text-faint: #8c8998;
+  --accent: #7c4dff;
+  --accent-2: #6a3be8;
+  --accent-soft: rgba(124,77,255,.1);
+  --accent-glow: rgba(124,77,255,.22);
+  --gold: #d68f0a;
+  --danger: #dc3a57;
+  --success: #12a173;
+  --overlay: rgba(23,22,28,.32);
+  --inset: #f4f4f7;
+  --map-bg: #e9e9ee;
+  --scroll: rgba(20,18,30,.18);
+  --shadow-md: 0 1px 2px rgba(20,18,30,.06), 0 4px 14px rgba(20,18,30,.07);
+  --shadow-lg: 0 16px 44px -10px rgba(20,18,30,.22), 0 2px 6px rgba(20,18,30,.06);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  font-family: var(--font); background:var(--bg); background-image:var(--bg-grad);
+  font-family: var(--font); background:var(--bg);
   color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden;
-  letter-spacing:-.01em;
+  letter-spacing:-.005em; -webkit-font-smoothing:antialiased;
 }
 ::selection { background:var(--accent); color:#fff; }
 ::-webkit-scrollbar { width:9px; height:9px; }
 ::-webkit-scrollbar-track { background:transparent; }
-::-webkit-scrollbar-thumb { background:rgba(255,255,255,.14); border-radius:99px; border:2px solid transparent; background-clip:padding-box; }
-::-webkit-scrollbar-thumb:hover { background:rgba(255,255,255,.24); background-clip:padding-box; }
+::-webkit-scrollbar-thumb { background:var(--scroll); border-radius:99px; border:2px solid transparent; background-clip:padding-box; }
+::-webkit-scrollbar-thumb:hover { background:var(--border-strong); background-clip:padding-box; }
 
 /* ── Toolbar ───────────────────────────────────── */
 #tb {
-  display:flex; align-items:center; gap:10px; margin:14px 16px 0 16px; padding:9px 14px;
-  background:var(--panel); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
-  border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow-md);
+  display:flex; align-items:center; gap:6px; height:52px; padding:0 10px 0 14px;
+  background:var(--panel-solid); border-bottom:1px solid var(--border);
   /* Above Leaflet's panes/controls (up to 1000) so toolbar dropdowns aren't hidden
      behind the map, but below modals (2000). */
   flex-shrink:0; position:relative; z-index:1700;
 }
 .tg { display:flex; gap:4px; }
 .sep { width:1px; height:22px; background:var(--border-2); margin:0 2px; }
-.brand { display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; letter-spacing:-.02em; padding-right:6px; }
-.brand .dot { width:9px; height:9px; border-radius:50%; background:linear-gradient(135deg,var(--accent),var(--gold)); box-shadow:0 0 12px var(--accent-glow); }
+.brand { display:flex; align-items:center; gap:9px; min-width:0; padding-right:4px; }
+.brand .logo { width:24px; height:24px; flex-shrink:0; }
+.brand .proj { font-weight:700; font-size:13px; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:280px; }
+.brand .dirty { width:7px; height:7px; border-radius:50%; background:var(--gold); flex-shrink:0; }
+.tb-fill { flex:1; }
+.btn.icon { width:32px; padding:0; justify-content:center; border-color:transparent; background:transparent; }
+.btn.icon:hover { background:var(--hover); border-color:transparent; }
+.btn.icon:disabled:hover { background:transparent; border-color:transparent; }
+.btn.icon svg { width:16px; height:16px; }
+.theme-ico .sun, :root[data-theme="light"] .theme-ico .moon { display:none; }
+:root[data-theme="light"] .theme-ico .sun { display:block; }
+.btn .chev { width:12px; height:12px; margin-left:-2px; opacity:.6; }
+.btn.soft { background:var(--accent-soft); border-color:transparent; color:var(--accent-2); }
+.btn.soft:hover { background:var(--accent-soft); border-color:var(--accent); }
+.btn.ghost { background:transparent; }
+.btn.wide { width:100%; justify-content:center; }
 
 /* ── Buttons ───────────────────────────────────── */
 .btn, .fl, .walkchip, .dbtn, .conn-x, .cx {
   transition: background .15s ease, border-color .15s ease, color .15s ease, transform .1s ease, box-shadow .15s ease;
 }
 .btn {
-  display:inline-flex; align-items:center; gap:6px; padding:7px 12px; border:1px solid var(--border-2);
-  border-radius:var(--radius-sm); background:var(--panel-2); color:var(--text); cursor:pointer;
-  font:inherit; font-weight:600; font-size:12px; white-space:nowrap;
+  display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px; border:1px solid var(--border-2);
+  border-radius:var(--radius-sm); background:var(--panel-solid); color:var(--text); cursor:pointer;
+  font:inherit; font-weight:600; font-size:12.5px; white-space:nowrap;
 }
-.btn svg { width:14px; height:14px; flex-shrink:0; }
-.btn:hover { background:var(--panel-3); border-color:rgba(255,255,255,.22); }
+.btn svg { width:15px; height:15px; flex-shrink:0; color:var(--text-dim); }
+.btn:hover { background:var(--hover); border-color:var(--border-strong); }
 .btn:active { transform:scale(.96); }
 .btn.on { background:var(--accent); border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
-.btn.g {
-  background:linear-gradient(135deg,var(--accent),#6d3fe0); border-color:transparent; color:#fff; font-weight:700;
-  box-shadow:0 4px 16px -4px var(--accent-glow);
-}
-.btn.g:hover { filter:brightness(1.1); box-shadow:0 6px 20px -4px var(--accent-glow); }
+.btn.g { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.btn.g svg { color:currentColor; }
+.btn.g:hover { background:var(--accent); filter:brightness(1.08); }
 .btn.danger { border-color:rgba(251,88,120,.4); color:var(--danger); }
-.btn.danger:hover { background:rgba(251,88,120,.12); }
+.btn.danger:hover { background:color-mix(in srgb, var(--danger) 12%, transparent); }
 .btn:disabled { opacity:.35; cursor:not-allowed; transform:none; }
-.btn:disabled:hover { background:var(--panel-2); }
+.btn:disabled:hover { background:var(--panel-solid); border-color:var(--border-2); }
 .btn.g:disabled:hover { filter:none; }
-kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace; background:rgba(255,255,255,.08); border:1px solid var(--border-2); border-radius:4px; padding:1px 5px; color:var(--text-dim); }
+kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace; background:var(--panel-2); border:1px solid var(--border-2); border-radius:4px; padding:1px 5px; color:var(--text-dim); }
 
-#st { font-size:11px; color:var(--text-dim); font-weight:600; white-space:nowrap; }
+#st { font-size:11.5px; color:var(--text-dim); font-weight:600; white-space:nowrap; }
 #st b { color:var(--text); }
-.savehint { max-width:220px; min-width:0; flex-shrink:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:var(--text-dim); }
-.hintline { font-size:11px; color:var(--text-faint); white-space:nowrap; min-width:0; flex-shrink:1; overflow:hidden; text-overflow:ellipsis; }
-#tb .tg, #tb .btn, #st, #save-status { flex-shrink:0; }
+#tb .tg, #tb .btn, #save-status { flex-shrink:0; }
+/* Narrow windows: icons only, the menus and the upload button keep working. */
+@media (max-width:1100px) { #tb .btn > span { display:none; } #save-status-text { display:none; } }
 
 /* ── Autosave status ───────────────────────────── */
 #save-status { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-dim); white-space:nowrap; }
@@ -115,10 +175,10 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 @keyframes pulse-dot { 0%,100% { opacity:1; } 50% { opacity:.35; } }
 
 /* ── Layout ────────────────────────────────────── */
-#main { display:flex; flex:1; overflow:hidden; padding:14px 16px 16px 16px; gap:14px; }
+#main { display:flex; flex:1; overflow:hidden; }
 #sb {
-  width:360px; flex-shrink:0; background:var(--panel-solid); border:1px solid var(--border);
-  border-radius:var(--radius); overflow-y:auto; padding:16px; box-shadow:var(--shadow-md);
+  width:320px; flex-shrink:0; background:var(--panel-solid); border-right:1px solid var(--border);
+  overflow-y:auto; padding:14px 14px 18px;
 }
 @keyframes panel-in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
 #no-sel, #n-pr { animation:panel-in .2s ease; }
@@ -126,7 +186,7 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 .pg { margin-bottom:16px; }
 .pi {
   width:100%; padding:8px 10px; border-radius:var(--radius-sm); border:1px solid var(--border-2);
-  background:var(--panel-2); color:var(--text); font:inherit; font-size:12.5px; transition:border-color .15s ease, box-shadow .15s ease;
+  background:var(--panel-solid); color:var(--text); font:inherit; font-size:12.5px; transition:border-color .15s ease, box-shadow .15s ease;
 }
 .pi:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
 .pb {
@@ -155,7 +215,7 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 .walkchip:hover { background:var(--panel-3); border-color:var(--accent-2); }
 .dbtn {
   display:flex; align-items:center; justify-content:center; gap:6px; width:100%; padding:9px;
-  border:1px solid rgba(251,88,120,.35); border-radius:var(--radius-sm); background:rgba(251,88,120,.06);
+  border:1px solid color-mix(in srgb, var(--danger) 35%, transparent); border-radius:var(--radius-sm); background:transparent;
   color:var(--danger); cursor:pointer; font:inherit; font-weight:700; font-size:12px; margin-top:8px;
 }
 .dbtn:hover { background:var(--danger); color:#fff; box-shadow:0 6px 18px -6px var(--danger-glow); }
@@ -171,35 +231,123 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 .rowbtn .btn { flex:1; padding:7px 8px; font-size:11px; justify-content:center; }
 .slider { width:100%; margin-top:8px; accent-color:var(--accent); }
 
-.brandmark { display:flex; align-items:center; gap:10px; margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--border); }
-.brandmark .mk { width:30px; height:30px; border-radius:8px; background:url(logo.svg) center/contain no-repeat; box-shadow:0 4px 16px -4px var(--accent-glow); flex-shrink:0; }
-.brandmark .tx { font-size:12.5px; font-weight:800; letter-spacing:-.01em; }
-.brandmark .tx span { display:block; font-size:10px; font-weight:600; color:var(--text-faint); letter-spacing:.02em; }
+/* ── Side panel ────────────────────────────────── */
+.sb-head { display:flex; align-items:center; justify-content:space-between; margin:2px 2px 8px; }
+.pi.search { padding:6px 10px; font-size:12px; }
+.empty { text-align:center; padding:26px 8px 8px; }
+.empty-icon svg { width:42px; height:42px; color:var(--accent-2); opacity:.7; }
+.empty-t { font-size:13.5px; font-weight:700; margin:10px 0 6px; }
+.empty-s { font-size:12px; color:var(--text-dim); line-height:1.55; margin:0 auto 16px; max-width:260px; }
+.empty-tips { list-style:none; display:inline-flex; flex-direction:column; gap:6px; text-align:left; font-size:11.5px; color:var(--text-faint); }
+.empty-tips b { color:var(--text-dim); font-weight:600; }
+.empty-actions { display:flex; flex-direction:column; gap:6px; max-width:230px; margin:0 auto 18px; }
+.empty-actions .btn { justify-content:center; padding:8px 12px; }
+.recent-box { text-align:left; margin:0 2px 18px; }
+.recent-list { display:flex; flex-direction:column; gap:1px; }
+.recent-item { display:flex; flex-direction:column; align-items:flex-start; gap:1px; width:100%; padding:7px 9px; border:none; border-radius:6px; background:transparent; color:var(--text); font:inherit; text-align:left; cursor:pointer; }
+.recent-item:hover { background:var(--hover); }
+.recent-item .rn, .recent-item .rw { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.recent-item .rn { font-size:12.5px; font-weight:600; }
+.recent-item .rw { font-size:10.5px; color:var(--text-faint); }
+#menu-recent-list .rn { max-width:260px; overflow:hidden; text-overflow:ellipsis; }
+.imp-drop { border:1.5px dashed var(--border-2); border-radius:var(--radius-sm); padding:18px 14px 16px; text-align:center; margin-bottom:12px; transition:border-color .15s ease, background .15s ease; }
+.imp-drop.over { border-color:var(--accent); background:var(--accent-soft); }
+.imp-drop > svg { width:28px; height:28px; color:var(--accent-2); opacity:.8; }
+.imp-drop-t { font-size:12.5px; font-weight:600; margin:6px 0 10px; }
+.imp-drop .rowbtn { justify-content:center; }
+.imp-drop .rowbtn .btn { flex:0 0 auto; padding:7px 14px; }
+.imp-sum { font-size:12px; color:var(--text-dim); margin:0 0 10px; line-height:1.6; }
+.imp-sum b { color:var(--text); }
+.imp-sum .x { margin-left:4px; color:var(--text-faint); cursor:pointer; text-decoration:underline; }
+.opt .inline-num { margin:7px 0 0; font-size:11px; }
+.opt .inline-num .pi { width:64px; padding:3px 7px; }
+#no-sel .pick-hint, #no-sel.has-nodes .first-run { display:none; }
+#no-sel.has-nodes .pick-hint { display:block; }
+.np-head { display:flex; align-items:center; gap:6px; margin-bottom:12px; }
+.np-name { font-size:14.5px; font-weight:700; background:transparent; border-color:transparent; padding:6px 8px; }
+.np-name:hover { border-color:var(--border-2); }
+.iconbtn {
+  display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; flex-shrink:0;
+  border:1px solid transparent; border-radius:var(--radius-sm); background:transparent; color:var(--text-dim); cursor:pointer;
+}
+.iconbtn svg { width:16px; height:16px; }
+.iconbtn:hover { background:var(--hover); color:var(--text); }
+.iconbtn.sm { width:28px; height:28px; }
+.iconbtn.sm svg { width:14px; height:14px; }
+.iconbtn.danger:hover { background:color-mix(in srgb, var(--danger) 12%, transparent); color:var(--danger); }
+.iconbtn.star input { display:none; }
+.iconbtn.star:has(input:checked) { color:var(--gold); }
+.iconbtn.star:has(input:checked) svg { fill:var(--gold); }
+.np-photo { margin-bottom:14px; }
+.np-photo .pb { cursor:pointer; margin-bottom:0; }
+.np-photo .pb:hover { border-color:var(--accent); color:var(--text-dim); }
+.np-photo .pvw { margin-top:0; }
+.np-photo-bar { display:flex; align-items:center; gap:6px; margin-top:6px; min-height:28px; }
+.np-photo-bar .fn { flex:1; min-width:0; margin-top:0; font-size:10.5px; }
+.pl-row { display:flex; align-items:baseline; justify-content:space-between; }
+.pl-note { font-size:10.5px; color:var(--text-faint); }
+.heading-row { display:grid; grid-template-columns:72px 1fr; gap:6px; }
+.seg { display:flex; }
+.seg .btn { flex:1; justify-content:center; padding:7px 0; border-radius:0; margin-left:-1px; font-size:11px; }
+.seg .btn:first-child { border-radius:var(--radius-sm) 0 0 var(--radius-sm); margin-left:0; }
+.seg .btn:last-child { border-radius:0 var(--radius-sm) var(--radius-sm) 0; }
+.rowbtn .btn.ghost { flex:0 0 auto; padding:7px 12px; }
+details.sec { border-top:1px solid var(--border); padding:2px 0; }
+details.sec > summary {
+  list-style:none; cursor:pointer; display:flex; align-items:center; gap:8px; padding:10px 2px;
+  font-size:12px; font-weight:700; color:var(--text-dim); user-select:none;
+}
+details.sec > summary::-webkit-details-marker { display:none; }
+details.sec > summary::before {
+  content:''; width:6px; height:6px; border-right:1.6px solid currentColor; border-bottom:1.6px solid currentColor;
+  transform:rotate(-45deg); transition:transform .15s ease; margin:0 2px 0 3px; opacity:.7;
+}
+details.sec[open] > summary::before { transform:rotate(45deg); }
+details.sec > summary:hover { color:var(--text); }
+details.sec[open] { padding-bottom:12px; }
+.cnt { font-size:10px; font-weight:700; color:var(--text-faint); background:var(--panel-2); border:1px solid var(--border); border-radius:999px; padding:0 6px; }
+.cnt:empty { display:none; }
+.chips { display:flex; flex-wrap:wrap; gap:6px; }
+.chip { display:inline-flex; align-items:center; border:1px solid var(--border-2); background:var(--panel-2); border-radius:999px; overflow:hidden; }
+.chip button { border:none; background:transparent; color:var(--text); font:inherit; font-size:11.5px; font-weight:600; cursor:pointer; padding:5px 4px 5px 11px; }
+.chip button.x { color:var(--text-faint); padding:5px 9px 5px 4px; font-size:13px; line-height:1; }
+.chip button:hover { color:var(--accent-2); }
+.chip button.x:hover { color:var(--danger); }
+.chips-empty { font-size:11.5px; color:var(--text-faint); }
+.menu-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); padding:6px 10px 3px; }
+.menu-foot { font-size:10.5px; color:var(--text-faint); padding:8px 10px 4px; border-top:1px solid var(--border); margin-top:5px; }
+.menu-foot:empty { display:none; }
+.pv-foot { display:flex; align-items:center; gap:8px; margin-top:10px; }
+.pv-foot .mini { flex:1; margin:0; }
 
 /* ── Node list ─────────────────────────────────── */
 #node-list-panel { margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--border); }
 #node-list { max-height:220px; overflow-y:auto; margin-top:8px; }
 .nrow { display:flex; align-items:center; gap:6px; padding:6px 7px; border-radius:var(--radius-sm); cursor:pointer; font-size:12px; border-top:2px solid transparent; transition:background .12s ease; }
 .nrow:hover { background:var(--panel-2); }
+.nrow:hover { background:var(--hover); }
 .nrow.sel { background:var(--accent-soft); }
 .nrow.multi { outline:1.5px solid var(--accent); outline-offset:-1px; }
 .nrow.drag-over { border-top-color:var(--accent); }
 .nrow .nrow-drag { cursor:grab; color:var(--text-faint); font-size:12px; }
 .nrow .nrow-idx { color:var(--text-faint); font-size:10px; width:16px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums; }
 .nrow .nrow-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nrow .cx { opacity:0; }
+.nrow:hover .cx, .nrow.sel .cx { opacity:1; }
+.nrow .nrow-drag { opacity:0; }
+.nrow:hover .nrow-drag { opacity:1; }
 .nrow-empty { font-size:11px; color:var(--text-faint); padding:10px 2px; text-align:center; }
 
 /* ── Map ───────────────────────────────────────── */
-#mw { flex:1; position:relative; border-radius:var(--radius); overflow:hidden; border:1px solid var(--border); box-shadow:var(--shadow-lg); }
-#map { width:100%; height:100%; background:#0a0910; }
+#mw { flex:1; position:relative; overflow:hidden; }
+#map { width:100%; height:100%; background:var(--map-bg); }
 #map.connecting, #map.connecting .leaflet-container { cursor:crosshair; }
-.leaflet-control-zoom { border:none !important; box-shadow:var(--shadow-md) !important; }
+.leaflet-control-zoom { border:1px solid var(--border-2) !important; box-shadow:var(--shadow-md) !important; border-radius:var(--radius-sm) !important; overflow:hidden; }
 .leaflet-control-zoom a {
-  background:var(--panel) !important; backdrop-filter:var(--blur); color:var(--text) !important;
-  border-color:var(--border) !important;
+  background:var(--panel-solid) !important; color:var(--text) !important; border-color:var(--border) !important;
 }
 .leaflet-control-zoom a:hover { background:var(--panel-3) !important; }
-.leaflet-control-attribution { background:rgba(6,6,8,.65) !important; color:var(--text-faint) !important; backdrop-filter:blur(6px); }
+.leaflet-control-attribution { background:color-mix(in srgb, var(--panel-solid) 80%, transparent) !important; color:var(--text-faint) !important; }
 .leaflet-control-attribution a { color:var(--text-dim) !important; }
 #do {
   position:absolute; inset:0; z-index:1000; pointer-events:none; display:flex; align-items:center; justify-content:center;
@@ -210,27 +358,25 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 
 /* ── Node markers ──────────────────────────────── */
 .nd {
-  width:32px; height:32px; border-radius:50%; background:radial-gradient(circle at 32% 28%, #ff9d9d, #fb5878 55%, #e21e50);
-  border:2px solid rgba(255,255,255,.85); display:flex; align-items:center; justify-content:center; font-size:11px;
-  font-weight:800; color:#fff; box-shadow:0 2px 10px rgba(0,0,0,.55), 0 0 0 0 var(--danger-glow); cursor:pointer;
-  position:relative; transition:transform .18s cubic-bezier(.34,1.56,.64,1), box-shadow .18s ease, background .15s ease;
+  width:28px; height:28px; border-radius:50%; background:#8b5cf6; border:2px solid #fff;
+  display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:#fff;
+  box-shadow:0 1px 4px rgba(0,0,0,.45); cursor:pointer; position:relative;
+  transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
 }
-.nd:hover { transform:scale(1.16); box-shadow:0 4px 18px rgba(0,0,0,.6); }
-.nd:active { transform:scale(.94); }
-.nd.sel { background:radial-gradient(circle at 32% 28%, #b9a6ff, var(--accent) 55%, #6d3fe0); border-color:#fff; box-shadow:0 0 0 5px var(--accent-soft), 0 4px 18px rgba(0,0,0,.6); }
-.nd.start { background:radial-gradient(circle at 32% 28%, #ffe3a3, var(--gold) 55%, #d6910f); border-color:#fff; }
+.nd:not(.hp) { background:#fff; color:#6b6878; border:2px dashed #8b5cf6; }
+.nd:hover { transform:scale(1.12); }
+.nd:active { transform:scale(.95); }
+.nd.sel { background:#fff; color:#6a3be8; border:2px solid #8b5cf6; box-shadow:0 0 0 4px rgba(139,92,246,.45), 0 1px 4px rgba(0,0,0,.45); }
+.nd.start { background:#f2a91f; color:#2e1d00; border-color:#fff; }
+.nd.start.sel { box-shadow:0 0 0 4px rgba(242,169,31,.45), 0 1px 4px rgba(0,0,0,.45); }
 .nd.csrc { animation:pulse 1s infinite; }
-@keyframes pulse { 0%,100% { box-shadow:0 0 0 0 var(--danger-glow); } 50% { box-shadow:0 0 0 11px rgba(251,88,120,0); } }
+@keyframes pulse { 0%,100% { box-shadow:0 0 0 0 rgba(139,92,246,.55); } 50% { box-shadow:0 0 0 10px rgba(139,92,246,0); } }
 @keyframes nd-pop { 0% { transform:scale(0); opacity:0; } 65% { transform:scale(1.24); opacity:1; } 100% { transform:scale(1); } }
 .nd-pop .nd { animation:nd-pop .32s cubic-bezier(.34,1.56,.64,1); }
-.nd.hp::after {
-  content:'360°'; position:absolute; bottom:-8px; right:-11px; font-size:7.5px; font-weight:700; background:var(--panel-solid);
-  border:1px solid var(--border-2); border-radius:999px; padding:1.5px 4px; color:var(--text-dim); letter-spacing:0;
-}
 .nd-wedge { position:absolute; top:50%; left:50%; width:44px; height:44px; margin:-22px 0 0 -22px; pointer-events:none; filter:drop-shadow(0 1px 2px rgba(0,0,0,.7)); }
 .nl {
-  position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:5px; background:var(--panel);
-  backdrop-filter:var(--blur); border:1px solid var(--border-2); color:var(--text); font-size:9.5px; font-weight:600;
+  position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:5px; background:var(--panel-solid);
+  border:1px solid var(--border-2); color:var(--text); font-size:10px; font-weight:600;
   padding:2px 7px; border-radius:999px; white-space:nowrap; pointer-events:none; box-shadow:var(--shadow-md);
 }
 .conn-x {
@@ -238,8 +384,9 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
   display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; box-shadow:0 1px 6px rgba(0,0,0,.5);
 }
 .conn-x:hover { background:var(--danger); color:#fff; transform:scale(1.15); }
+.leaflet-marker-icon.hide { display:none; }
 .leaflet-tooltip.conn-dist-wrap {
-  background:var(--panel); backdrop-filter:var(--blur); border:1px solid var(--border-2); color:var(--text);
+  background:var(--panel-solid); border:1px solid var(--border-2); color:var(--text);
   font-size:10.5px; font-weight:700; font-family:var(--font); padding:3px 8px; border-radius:999px;
   box-shadow:var(--shadow-md);
 }
@@ -247,8 +394,8 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 
 /* ── Node quick-action flyout ──────────────────── */
 .qm {
-  position:fixed; z-index:1400; display:flex; gap:3px; padding:4px; background:var(--panel);
-  backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur); border:1px solid var(--border-2);
+  position:fixed; z-index:1400; display:flex; gap:3px; padding:4px; background:var(--panel-solid);
+  border:1px solid var(--border-2);
   border-radius:999px; box-shadow:var(--shadow-lg); transform:translate(-50%,-100%) translateY(-14px) scale(.85);
   opacity:0; pointer-events:none; transition:opacity .15s ease, transform .15s cubic-bezier(.34,1.56,.64,1);
 }
@@ -262,37 +409,37 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
   display:flex; align-items:center; justify-content:center; cursor:pointer; transition:background .12s ease, color .12s ease;
 }
 .qm button svg { width:15px; height:15px; }
-.qm button:hover { background:var(--panel-3); color:var(--text); }
-.qm button.danger:hover { background:rgba(251,88,120,.18); color:var(--danger); }
-.qm button.gold:hover { background:rgba(246,185,59,.18); color:var(--gold); }
+.qm button:hover { background:var(--hover); color:var(--text); }
+.qm button.danger:hover { background:color-mix(in srgb, var(--danger) 14%, transparent); color:var(--danger); }
+.qm button.gold:hover { background:color-mix(in srgb, var(--gold) 16%, transparent); color:var(--gold); }
 
 /* ── Toast ─────────────────────────────────────── */
 .toast {
-  position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--panel);
-  backdrop-filter:var(--blur); color:var(--text); padding:9px 16px; border:1px solid var(--border-2);
+  position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--text);
+  color:var(--panel-solid); padding:9px 16px; border:1px solid transparent;
   border-radius:999px; font-size:12px; font-weight:600; z-index:9999; box-shadow:var(--shadow-lg); pointer-events:none;
   opacity:0; transition:opacity .25s ease, transform .25s cubic-bezier(.34,1.56,.64,1);
 }
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 
 /* ── Modal ─────────────────────────────────────── */
-.modal-back { position:fixed; inset:0; background:rgba(4,3,7,.7); backdrop-filter:blur(4px); z-index:2000; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity .2s ease; }
+.modal-back { position:fixed; inset:0; background:var(--overlay); z-index:2000; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity .2s ease; }
 .modal-back.show { opacity:1; pointer-events:all; }
 .modal {
   width:480px; max-width:92vw; max-height:86vh; overflow-y:auto; background:var(--panel-solid); border:1px solid var(--border-2);
-  border-radius:calc(var(--radius) + 2px); padding:20px; transform:scale(.95) translateY(8px);
-  transition:transform .22s cubic-bezier(.34,1.56,.64,1); box-shadow:var(--shadow-lg);
+  border-radius:var(--radius); padding:22px; transform:translateY(6px);
+  transition:transform .18s ease; box-shadow:var(--shadow-lg);
 }
 .modal.wide { width:820px; }
 .modal-back.show .modal { transform:scale(1) translateY(0); }
-.modal h2 { font-size:15px; font-weight:800; margin-bottom:14px; letter-spacing:-.01em; }
+.modal h2 { display:flex; align-items:baseline; gap:8px; font-size:15px; font-weight:700; margin-bottom:14px; letter-spacing:-.01em; }
 .modal .row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
-.modal .close { margin-left:auto; cursor:pointer; color:var(--text-faint); font-size:13px; }
+.modal .close { margin-left:auto; cursor:pointer; color:var(--text-faint); font-size:12.5px; font-weight:500; }
 .modal .close:hover { color:var(--text); }
 .signin-dot { width:8px; height:8px; border-radius:50%; background:var(--gold); flex-shrink:0; }
 .signin-dot.on { background:var(--success); }
 #upl-log {
-  background:#020203; border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px; font-size:11px;
+  background:var(--inset); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px; font-size:11px;
   font-family:ui-monospace,Consolas,monospace; height:180px; overflow-y:auto; white-space:pre-wrap; margin-top:10px; line-height:1.6;
 }
 .preview-frame-wrap { width:100%; aspect-ratio:16/10; border-radius:var(--radius-sm); overflow:hidden; border:1px solid var(--border); background:#000; }
@@ -300,15 +447,14 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 
 /* ── Restore banner / multibar ─────────────────── */
 .restore-banner {
-  position:fixed; top:0; left:50%; transform:translateX(-50%) translateY(-100%); background:var(--panel);
-  backdrop-filter:var(--blur); border:1px solid var(--border-2); border-top:none; border-radius:0 0 var(--radius) var(--radius);
+  position:fixed; top:0; left:50%; transform:translateX(-50%) translateY(-100%); background:var(--panel-solid); border:1px solid var(--border-2); border-top:none; border-radius:0 0 var(--radius) var(--radius);
   padding:11px 18px; display:flex; align-items:center; gap:10px; font-size:12px; z-index:3000; box-shadow:var(--shadow-lg);
   transition:transform .25s cubic-bezier(.34,1.56,.64,1);
 }
+.restore-banner:not(.show) { box-shadow:none; }
 .restore-banner.show { transform:translateX(-50%) translateY(0); }
 .multibar {
-  position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--panel);
-  backdrop-filter:var(--blur); border:1px solid var(--border-2); border-radius:999px; padding:8px 10px 8px 16px;
+  position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--panel-solid); border:1px solid var(--border-2); border-radius:999px; padding:8px 10px 8px 16px;
   display:flex; align-items:center; gap:8px; box-shadow:var(--shadow-lg); z-index:1500; font-size:12px; opacity:0;
   pointer-events:none; transition:opacity .2s ease, transform .2s cubic-bezier(.34,1.56,.64,1);
 }
@@ -317,7 +463,7 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 #multibar-count { color:var(--text); font-weight:800; padding-right:4px; }
 
 /* ── Command palette ───────────────────────────── */
-.cmdk-back { position:fixed; inset:0; background:rgba(4,3,7,.6); backdrop-filter:blur(4px); z-index:4000; display:flex; align-items:flex-start; justify-content:center; padding-top:14vh; opacity:0; pointer-events:none; transition:opacity .15s ease; }
+.cmdk-back { position:fixed; inset:0; background:var(--overlay); z-index:4000; display:flex; align-items:flex-start; justify-content:center; padding-top:14vh; opacity:0; pointer-events:none; transition:opacity .15s ease; }
 .cmdk-back.show { opacity:1; pointer-events:all; }
 .cmdk { width:560px; max-width:90vw; background:var(--panel-solid); border:1px solid var(--border-2); border-radius:var(--radius); box-shadow:var(--shadow-lg); overflow:hidden; transform:translateY(-10px) scale(.97); transition:transform .18s cubic-bezier(.34,1.56,.64,1); }
 .cmdk-back.show .cmdk { transform:translateY(0) scale(1); }
@@ -340,24 +486,22 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 /* ── Tools menu ────────────────────────────────── */
 .menu-wrap { position:relative; }
 .menu {
-  position:absolute; top:calc(100% + 6px); right:0; min-width:250px; width:max-content; z-index:1800; padding:6px; background:var(--panel-solid);
+  position:absolute; top:calc(100% + 8px); right:0; min-width:250px; width:max-content; z-index:1800; padding:6px; background:var(--panel-solid);
   border:1px solid var(--border-2); border-radius:var(--radius-sm); box-shadow:var(--shadow-lg); display:none;
 }
 .menu.show { display:block; }
 .menu button {
-  display:flex; align-items:center; gap:9px; width:100%; white-space:nowrap; padding:8px 10px; border:none; background:transparent; color:var(--text);
-  font:inherit; font-size:12px; font-weight:600; text-align:left; border-radius:7px; cursor:pointer;
+  display:flex; align-items:center; gap:10px; width:100%; white-space:nowrap; padding:8px 10px; border:none; background:transparent; color:var(--text);
+  font:inherit; font-size:12.5px; font-weight:500; text-align:left; border-radius:6px; cursor:pointer;
 }
-.menu button:hover { background:var(--accent-soft); }
+.menu button:hover { background:var(--hover); }
 .menu button svg { width:14px; height:14px; color:var(--text-faint); flex-shrink:0; }
 .menu button .h { margin-left:auto; padding-left:14px; font-size:10px; color:var(--text-faint); font-weight:500; }
 .menu hr { border:none; border-top:1px solid var(--border); margin:5px 2px; }
-.brand .ver { font-size:10px; font-weight:600; color:var(--text-faint); margin-left:2px; }
 
 /* ── Update banner / progress ──────────────────── */
 .update-banner {
-  position:fixed; top:64px; right:16px; z-index:3000; max-width:360px; padding:12px 14px; background:var(--panel);
-  backdrop-filter:var(--blur); border:1px solid var(--border-2); border-left:3px solid var(--accent);
+  position:fixed; top:62px; right:14px; z-index:3000; max-width:360px; padding:12px 14px; background:var(--panel-solid); border:1px solid var(--border-2); border-left:3px solid var(--accent);
   border-radius:var(--radius-sm); box-shadow:var(--shadow-lg); font-size:12px; display:none;
 }
 .update-banner.show { display:block; animation:ub-in .3s cubic-bezier(.34,1.56,.64,1); }
@@ -366,7 +510,7 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 .update-banner .t span { color:var(--text-faint); }
 .update-banner .rowbtn { margin-top:0; }
 .progress { height:8px; border-radius:99px; background:var(--panel-3); overflow:hidden; margin:12px 0 8px; }
-.progress > div { height:100%; width:0; background:linear-gradient(90deg, var(--accent), var(--accent-2)); transition:width .3s ease; }
+.progress > div { height:100%; width:0; background:var(--accent); transition:width .3s ease; }
 .progress.indet > div { width:40% !important; animation:indet 1.1s ease-in-out infinite; }
 @keyframes indet { from { transform:translateX(-100%); } to { transform:translateX(250%); } }
 .notes { white-space:pre-wrap; font-size:12px; color:var(--text-dim); line-height:1.6; background:var(--panel-2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px; max-height:50vh; overflow:auto; }
@@ -402,14 +546,14 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 /* ── Map layers / box select ───────────────────── */
 /* OSM tiles are light by default; invert+rotate hue to match the app's dark theme.
    Only the street map gets this - satellite imagery keeps its real colours. */
-.osm-dark { filter:invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.7); }
+:root[data-theme="dark"] .osm-dark { filter:invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.7); }
 .leaflet-control-layers {
-  background:var(--panel) !important; backdrop-filter:var(--blur); color:var(--text) !important;
+  background:var(--panel-solid) !important; color:var(--text) !important;
   border:1px solid var(--border-2) !important; border-radius:var(--radius-sm) !important; box-shadow:var(--shadow-md) !important;
 }
 .leaflet-control-layers-expanded { padding:8px 12px 8px 8px !important; font-family:var(--font); font-size:12px; }
 .leaflet-control-layers-separator { border-top-color:var(--border-2) !important; }
-.leaflet-control-layers-toggle { filter:invert(1); }
+:root[data-theme="dark"] .leaflet-control-layers-toggle { filter:invert(1); }
 
 /* ── Node thumbnails / Google status ───────────── */
 .nrow-thumb { width:44px; height:22px; border-radius:4px; object-fit:cover; flex-shrink:0; background:var(--panel-3); }
@@ -492,22 +636,20 @@ kbd { font:inherit; font-size:10px; font-family:ui-monospace,Consolas,monospace;
 .up-step-line { flex:1; height:2px; border-radius:2px; background:var(--panel-3); min-width:16px; }
 @keyframes up-pulse { 50% { box-shadow:0 0 0 7px rgba(139,92,246,0); } }
 
-.up-overall { border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; background:linear-gradient(180deg, var(--panel-2), var(--panel-solid)); }
+.up-overall { border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; background:var(--panel-2); }
 .up-overall-top { display:flex; justify-content:space-between; align-items:baseline; font-weight:800; font-size:14px; }
 #up-pct { font-variant-numeric:tabular-nums; font-size:20px; letter-spacing:-.02em; }
 .up-bar { position:relative; height:10px; border-radius:99px; background:var(--panel-3); overflow:hidden; margin:10px 0 8px; }
-#up-bar-fill { position:absolute; inset:0 auto 0 0; width:0; border-radius:99px; background:linear-gradient(90deg, #7c4dff, var(--accent), #c4b5fd); transition:width .35s ease; overflow:hidden; }
-#up-bar-fill::after { content:''; position:absolute; inset:0; background:linear-gradient(110deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%); animation:up-shine 1.6s linear infinite; }
+#up-bar-fill { position:absolute; inset:0 auto 0 0; width:0; border-radius:99px; background:var(--accent); transition:width .35s ease; overflow:hidden; }
 .up-bar.indet #up-bar-fill { width:35% !important; animation:up-indet 1.4s ease-in-out infinite; }
-.up-bar.success #up-bar-fill { background:linear-gradient(90deg, #22c38e, var(--success)); }
-.up-bar.success #up-bar-fill::after, .up-bar.stopped #up-bar-fill::after { display:none; }
+.up-bar.success #up-bar-fill { background:var(--success); }
 @keyframes up-shine { from { transform:translateX(-100%); } to { transform:translateX(100%); } }
 @keyframes up-indet { 0% { left:-35%; } 100% { left:100%; } }
 .up-sub { font-size:11.5px; color:var(--text-dim); font-variant-numeric:tabular-nums; min-height:16px; }
 
-.up-notice { margin-top:10px; padding:10px 12px; border-radius:var(--radius-sm); font-size:12px; line-height:1.5; border:1px solid rgba(246,185,59,.35); background:rgba(246,185,59,.08); color:var(--text); animation:up-in .3s ease; }
-.up-notice.info { border-color:rgba(139,92,246,.35); background:var(--accent-soft); }
-.up-notice.error { border-color:rgba(251,88,120,.4); background:rgba(251,88,120,.08); }
+.up-notice { margin-top:10px; padding:10px 12px; border-radius:var(--radius-sm); font-size:12px; line-height:1.5; border:1px solid color-mix(in srgb, var(--gold) 40%, transparent); background:color-mix(in srgb, var(--gold) 9%, transparent); color:var(--text); animation:up-in .3s ease; }
+.up-notice.info { border-color:color-mix(in srgb, var(--accent) 35%, transparent); background:var(--accent-soft); }
+.up-notice.error { border-color:color-mix(in srgb, var(--danger) 40%, transparent); background:color-mix(in srgb, var(--danger) 8%, transparent); }
 
 .up-list { display:flex; flex-direction:column; gap:6px; margin-top:12px; max-height:38vh; overflow-y:auto; padding-right:2px; }
 .up-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--panel-2); animation:up-in .35s cubic-bezier(.34,1.56,.64,1) both; transition:border-color .3s, background .3s; }
@@ -555,19 +697,38 @@ a.btn { text-decoration:none; }
 
 /* ── App connection / Google compare ─────────── */
 .key-banner {
-  position:fixed; left:50%; top:76px; transform:translateX(-50%); z-index:3500; max-width:640px; padding:12px 16px;
-  border-radius:var(--radius-sm); background:rgba(251,88,120,.14); border:1px solid rgba(251,88,120,.5);
-  color:var(--text); font-size:12.5px; line-height:1.5; box-shadow:var(--shadow-lg); backdrop-filter:var(--blur);
+  position:fixed; left:50%; top:64px; transform:translateX(-50%); z-index:3500; max-width:640px; padding:12px 16px;
+  border-radius:var(--radius-sm); background:color-mix(in srgb, var(--danger) 10%, var(--panel-solid)); border:1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  color:var(--text); font-size:12.5px; line-height:1.5; box-shadow:var(--shadow-lg);
 }
 .key-banner { padding-right:40px; }
 .key-banner-x {
   position:absolute; top:6px; right:8px; width:26px; height:26px; border:0; border-radius:50%; background:transparent;
   color:var(--text-dim); font-size:18px; line-height:1; cursor:pointer;
 }
-.key-banner-x:hover { background:rgba(255,255,255,.08); color:var(--text); }
+.key-banner-x:hover { background:var(--hover); color:var(--text); }
 .check-row.ok .lv { background:var(--success); }
 .check-row.ok .msg { color:var(--text-faint); }
 .check-ok.bad { color:var(--danger); }
+
+/* ── First-run tour ────────────────────────────── */
+#tour { position:fixed; inset:0; z-index:5000; }
+.tour-spot {
+  position:fixed; border-radius:var(--radius); pointer-events:none;
+  box-shadow:0 0 0 2px var(--accent), 0 0 0 9999px var(--overlay);
+  transition:left .3s ease, top .3s ease, width .3s ease, height .3s ease;
+}
+.tour-card {
+  position:fixed; width:340px; max-width:calc(100vw - 32px); padding:18px 18px 14px; background:var(--panel-solid);
+  border:1px solid var(--border-2); border-radius:var(--radius); box-shadow:var(--shadow-lg);
+  transition:left .3s ease, top .3s ease;
+}
+.tour-step { font-size:11px; font-weight:600; color:var(--accent-2); margin-bottom:6px; font-variant-numeric:tabular-nums; }
+.tour-card h3 { font-size:15px; font-weight:700; margin-bottom:6px; letter-spacing:-.01em; }
+.tour-card p { font-size:12.5px; line-height:1.6; color:var(--text-dim); }
+.tour-card p kbd { color:var(--text); }
+.tour-nav { display:flex; align-items:center; gap:6px; margin-top:16px; }
+.tour-fill { flex:1; }
 
 /* ── Misc ──────────────────────────────────────── */
 .ico { width:14px; height:14px; }
@@ -576,73 +737,71 @@ a.btn { text-decoration:none; }
 <body>
 
 <div id="tb">
-  <div class="brand"><span class="dot"></span>Walkthrough <span class="ver" id="app-version"></span></div>
-  <div class="sep"></div>
-  <div class="tg">
-    <button class="btn" id="bundo" title="Undo (Ctrl+Z)" disabled>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-    </button>
-    <button class="btn" id="bredo" title="Redo (Ctrl+Y)" disabled>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>
-    </button>
+  <div class="brand" title="Streetview Tour Editor">
+    <img class="logo" src="logo.svg" alt="">
+    <span class="proj" id="proj-title" data-no-i18n></span>
+    <span class="dirty" id="proj-dirty" title="Unsaved changes" hidden></span>
   </div>
-  <div class="sep"></div>
-  <span id="st">Nodes <b>0</b> · Links <b>0</b></span>
-  <span class="hintline">dbl-click to add · click to select · right-click ×2 to connect</span>
-  <div style="flex:1"></div>
-  <div id="save-status"><span class="dot"></span><span id="save-status-text">Autosave on</span></div>
-  <button class="btn" id="bcmdk" title="Command palette (Ctrl+K)"><kbd>Ctrl K</kbd></button>
-  <span class="savehint" id="savehint">Save target: Downloads</span>
   <div class="tg">
-    <button class="btn" id="bdir" title="Save target folder">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-    </button>
-    <button class="btn" id="best" title="Estimate heading">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
-    </button>
-    <div class="menu-wrap">
-      <button class="btn" id="btools" title="Tools">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-        Tools
-      </button>
-      <div class="menu" id="tools-menu">
-        <button data-run="autoconnect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M6 8l5 8M18 8l-5 8"/></svg>Auto-connect nodes…</button>
-        <button data-run="gpx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place photos from GPX track…</button>
-        <button data-run="blur"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/><line x1="3" y1="3" x2="21" y2="21"/></svg>Blur faces &amp; plates…<span class="h">selected node</span></button>
-        <hr>
-        <button data-run="saveas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>Save project as…<span class="h">Ctrl Shift S</span></button>
-        <button data-run="website"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Export tour as website (.zip)</button>
-        <hr>
-        <button data-run="walkheadings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>Headings from walking direction…</button>
-        <button data-run="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Check tour…</button>
-        <button data-run="gstatus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>Compare with Google…</button>
-        <hr>
-        <button data-run="lang"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l6 6"/><path d="M4 14l6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="M22 22l-5-10-5 10"/><path d="M14 18h6"/></svg><span id="lang-label" data-no-i18n>Deutsch</span></button>
-        <button data-run="updates"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Check for updates</button>
-      </div>
+    <button class="btn icon" id="bundo" title="Undo (Ctrl+Z)" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button>
+    <button class="btn icon" id="bredo" title="Redo (Ctrl+Y)" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg></button>
+  </div>
+  <div class="tb-fill"></div>
+  <div id="save-status"><span class="dot"></span><span id="save-status-text">Autosave on</span></div>
+  <button class="btn icon" id="btheme" title="Light or dark"><svg class="theme-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="moon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></g><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></g></svg></button>
+  <div class="menu-wrap">
+    <button class="btn" id="bproject" title="Open, save and export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Project</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+    <div class="menu" id="project-menu">
+      <button id="bimport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Import photos…<span class="h">Ctrl I</span></button>
+      <button id="bopen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><polyline points="9 14 12 11 15 14"/><line x1="12" y1="11" x2="12" y2="18"/></svg>Open…<span class="h">Ctrl O</span></button>
+      <button id="bsave"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save<span class="h">Ctrl S</span></button>
+      <button data-run="saveas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>Save as…<span class="h">Ctrl Shift S</span></button>
+      <div id="menu-recent" hidden><hr><div class="menu-label">Recent</div><div id="menu-recent-list" data-no-i18n></div></div>
+      <hr>
+      <div class="menu-label">Export</div>
+      <button data-run="website"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Website with photos (.zip)</button>
+      <button data-run="viewer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Viewer files (HTML + JSON)</button>
+      <button id="bcsv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>CSV for the command-line uploader</button>
+      <hr>
+      <button id="bdir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Export folder…<span class="h" id="savehint" data-no-i18n>Downloads</span></button>
     </div>
-    <button class="btn" id="bopen" title="Open project (Ctrl+O)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><polyline points="9 14 12 11 15 14"/><line x1="12" y1="11" x2="12" y2="18"/></svg>
-    </button>
-    <input type="file" id="bopen-file" accept=".vrtour,.zip,.json" hidden>
-    <button class="btn" id="bsave" title="Save project with photos (Ctrl+S)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-    </button>
-    <button class="btn" id="bcsv" title="Export CSV">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
-    </button>
-    <button class="btn" id="bpreview" title="Preview tour">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-      Preview
-    </button>
-    <button class="btn g" id="bexp">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Export
-    </button>
-    <button class="btn g" id="bupload">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-      Upload to Google
-    </button>
+  </div>
+  <input type="file" id="bopen-file" accept=".vrtour,.zip,.json" hidden>
+  <div class="menu-wrap">
+    <button class="btn" id="btools" title="Tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span>Tools</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+    <div class="menu" id="tools-menu">
+      <button data-run="autoconnect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M6 8l5 8M18 8l-5 8"/></svg>Auto-connect nodes…</button>
+      <button data-run="gpx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place photos from GPX track…</button>
+      <button data-run="walkheadings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>Headings from walking direction…</button>
+      <button data-run="blur"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/><line x1="3" y1="3" x2="21" y2="21"/></svg>Blur faces &amp; plates…<span class="h">selected node</span></button>
+      <hr>
+      <button data-run="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Check tour…</button>
+      <button data-run="gstatus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>Compare with Google…</button>
+      <hr>
+      <button id="bcmdk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/></svg>Command palette<span class="h">Ctrl K</span></button>
+      <button data-run="tour"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Introduction</button>
+      <button data-run="shortcuts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="6" y1="9" x2="6" y2="9"/><line x1="10" y1="9" x2="10" y2="9"/><line x1="14" y1="9" x2="14" y2="9"/><line x1="18" y1="9" x2="18" y2="9"/><line x1="6" y1="13" x2="18" y2="13"/></svg>Keyboard shortcuts<span class="h">?</span></button>
+      <button data-run="lang"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l6 6"/><path d="M4 14l6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="M22 22l-5-10-5 10"/><path d="M14 18h6"/></svg><span id="lang-label" data-no-i18n>Deutsch</span></button>
+      <button data-run="updates"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Check for updates</button>
+      <div class="menu-foot" id="app-version" data-no-i18n></div>
+    </div>
+  </div>
+  <button class="btn" id="bpreview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>Preview</span></button>
+  <button class="btn g" id="bupload" title="Upload to Google Street View"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg><span>Upload</span></button>
+</div>
+
+<div id="tour" hidden>
+  <div class="tour-spot"></div>
+  <div class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title">
+    <div class="tour-step" id="tour-step" data-no-i18n></div>
+    <h3 id="tour-title" data-no-i18n></h3>
+    <p id="tour-text" data-no-i18n></p>
+    <div class="tour-nav">
+      <button class="btn ghost" id="tour-skip">Skip</button>
+      <span class="tour-fill"></span>
+      <button class="btn" id="tour-back">Back</button>
+      <button class="btn g" id="tour-next">Next</button>
+    </div>
   </div>
 </div>
 
@@ -667,6 +826,37 @@ a.btn { text-decoration:none; }
     <div id="update-body"></div>
     <div class="progress" id="update-progress" style="display:none"><div></div></div>
     <div class="mini" id="update-status"></div>
+  </div>
+</div>
+
+<div class="modal-back" id="imp-back">
+  <div class="modal">
+    <h2>Import photos <span class="close" data-close="imp-back">Close</span></h2>
+    <div class="imp-drop" id="imp-drop">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      <div class="imp-drop-t">Drop photos or a folder here</div>
+      <div class="rowbtn">
+        <button class="btn" id="imp-pick-files">Choose photos…</button>
+        <button class="btn" id="imp-pick-folder">Choose folder…</button>
+      </div>
+      <input type="file" id="imp-files-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden>
+      <input type="file" id="imp-folder-input" webkitdirectory hidden>
+    </div>
+    <div class="imp-sum" id="imp-sum" data-no-i18n hidden></div>
+    <label class="opt"><input type="checkbox" id="imp-connect" checked>
+      <div><b>Link them in the order they were taken</b><span>By capture time (EXIF), otherwise by file name.</span>
+        <div class="inline-num">No link across gaps over <input class="pi" id="imp-dist" type="number" min="1" step="1" value="25"> m</div></div></label>
+    <label class="opt"><input type="checkbox" id="imp-north" checked>
+      <div><b>North from the walking direction</b><span>For photos without a compass heading. Assumes the camera's front faced where you walked - fine-tune single photos afterwards.</span></div></label>
+    <label class="opt"><input type="checkbox" id="imp-check" checked>
+      <div><b>Check the tour afterwards</b><span>Lists what still needs attention before uploading.</span></div></label>
+    <div class="pg" id="imp-gpx-row" hidden style="margin:10px 0 0">
+      <p class="pl">GPX track for the photos without GPS (optional)</p>
+      <input class="pi" id="imp-gpx" type="file" accept=".gpx,application/gpx+xml">
+      <div class="mini">Without a track they are placed in a row where you dropped them - drag them to the right spot afterwards. The camera clock's time zone comes from the photos, otherwise from this computer.</div>
+    </div>
+    <button class="btn g" id="imp-go" data-no-i18n style="width:100%;margin-top:10px" disabled>Import</button>
+    <div class="mini" id="imp-status" data-no-i18n></div>
   </div>
 </div>
 
@@ -719,136 +909,119 @@ a.btn { text-decoration:none; }
 
 <div id="main">
   <div id="sb">
-    <div class="brandmark">
-      <div class="mk"></div>
-      <div class="tx">Tour Editor<span>360&deg; walkthrough builder</span></div>
-    </div>
-
     <div id="node-list-panel">
-      <input class="pi" id="node-search" type="text" placeholder="Search nodes…">
+      <div class="sb-head"><span id="st"></span></div>
+      <input class="pi search" id="node-search" type="search" placeholder="Search…">
       <div id="node-list"></div>
     </div>
 
     <div id="no-sel">
-      <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">Drop 360 JPG files onto the map to plan links and orientation.</p>
-      <div class="hint">
-        <strong>How to Use</strong>
-        <ol>
-          <li>Drop photos onto the map, or double-click empty map area to add a point</li>
-          <li>If GPS exists, photos are placed automatically; otherwise they are placed at the drop point</li>
-          <li>Click a node to select it &mdash; a quick-action ring pops up for start / connect / duplicate / delete</li>
-          <li>Right-click a node, then right-click a second node to connect them (right-click again to cancel)</li>
-          <li>Type exact coordinates, adjust heading, and use the compare view on the selected node</li>
-          <li>Walk to linked nodes inside the same file while checking the result</li>
-        </ol>
-      </div>
-      <div class="hint" style="margin-top:10px">
-        <strong>Power tools</strong>
-        <ol>
-          <li data-i18n="tip-keys">Press <kbd>Ctrl K</kbd> for the command palette, <kbd>?</kbd> for all shortcuts</li>
-          <li>Ctrl/Shift-click nodes or Shift-drag on the map to multi-select, then bulk-connect or delete</li>
-          <li>Everything autosaves &mdash; closing the tab is safe, a restore prompt appears next time</li>
-          <li data-i18n="tip-vrtour">Save the whole project with photos as a <code>.vrtour</code> file; open it again or drop it on the map</li>
-        </ol>
+      <div class="empty">
+        <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/></svg></div>
+        <p class="empty-t first-run">Start with your 360° photos</p>
+        <p class="empty-t pick-hint">Pick a node in the list or on the map</p>
+        <p class="empty-s first-run">Drop photos or a whole folder onto the map - they are placed, linked and turned to north in one go.</p>
+        <div class="empty-actions first-run">
+          <button class="btn g" id="es-import">Import photos…</button>
+          <button class="btn" id="es-open">Open project…</button>
+        </div>
+        <div class="recent-box first-run" id="es-recent" hidden>
+          <p class="pl">Recent</p>
+          <div class="recent-list" id="es-recent-list" data-no-i18n></div>
+        </div>
+        <ul class="empty-tips">
+          <li data-i18n="tip-link"><b>Right-click</b> two nodes to link them</li>
+          <li data-i18n="tip-multi"><b>Shift-drag</b> on the map to select several</li>
+          <li data-i18n="tip-cmds"><kbd>Ctrl K</kbd> all commands · <kbd>?</kbd> shortcuts</li>
+        </ul>
       </div>
     </div>
 
     <div id="n-pr" style="display:none">
-      <p class="pl" style="margin-bottom:8px">Node Settings</p>
-
-      <div class="pg">
-        <p class="pl">Name</p>
-        <input class="pi" id="ni-n" type="text" placeholder="Node name">
+      <div class="np-head">
+        <input class="pi np-name" id="ni-n" type="text" placeholder="Name">
+        <label class="iconbtn star" title="Start node of the tour"><input type="checkbox" id="ni-s"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></label>
+        <button class="iconbtn danger" id="bn-d" title="Delete (Del)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
       </div>
 
-      <div class="pg">
-        <p class="pl">Position</p>
-        <div class="latlng">
-          <input class="pi" id="ni-lat" type="number" step="any" placeholder="Latitude">
-          <input class="pi" id="ni-lng" type="number" step="any" placeholder="Longitude">
-        </div>
-        <div class="mini">Type exact coordinates, or drag the marker on the map.</div>
-      </div>
-
-      <div class="pg">
-        <p class="pl">360 Photo <span id="gps-b"></span></p>
-        <div class="pb" id="ph-b"><span>No photo</span></div>
-        <label class="fl">Replace Photo<input type="file" id="ni-p" accept="image/*" hidden></label>
-        <button class="btn" id="bn-blur" style="width:100%;justify-content:center;margin-top:6px">Blur faces &amp; plates…</button>
-        <div class="fn" id="ph-n"></div>
+      <div class="np-photo">
+        <label class="pb" id="ph-b" for="ni-p"><span>Choose a 360° photo…</span></label>
         <div class="pvw" id="pano-wrap" style="display:none"><div id="pano-view"></div></div>
-        <div class="mini" id="pano-help">Choose a photo to check north alignment here.</div>
+        <div class="np-photo-bar">
+          <span id="gps-b"></span>
+          <span class="fn" id="ph-n"></span>
+          <label class="iconbtn sm" title="Replace photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><input type="file" id="ni-p" accept="image/*" hidden></label>
+          <button class="iconbtn sm" id="bn-blur" title="Blur faces &amp; plates…"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/><line x1="3" y1="3" x2="21" y2="21"/></svg></button>
+        </div>
+        <div class="mini" id="pano-help" hidden></div>
       </div>
 
       <div class="pg">
-        <p class="pl">Heading / North</p>
-        <input class="pi" id="ni-h" type="number" min="0" max="359.9" step="0.1" placeholder="0 - 359.9">
+        <div class="pl-row"><p class="pl">North</p><span class="pl-note" id="heading-meta"></span></div>
+        <div class="heading-row">
+          <input class="pi" id="ni-h" type="number" min="0" max="359.9" step="0.1" placeholder="–" title="Heading of the photo's centre, in degrees from north">
+          <div class="seg hnudge">
+            <button class="btn" data-hnudge="-10">−10</button>
+            <button class="btn" data-hnudge="-1">−1</button>
+            <button class="btn" data-hnudge="180" title="Turn the photo round">180°</button>
+            <button class="btn" data-hnudge="1">+1</button>
+            <button class="btn" data-hnudge="10">+10</button>
+          </div>
+        </div>
         <div class="rowbtn">
-          <button class="btn" id="bh-set">Set This Direction as North</button>
-          <button class="btn" id="bh-reset">Reset to EXIF</button>
+          <button class="btn soft" id="bh-set" title="Turn the view above until you face north, then press this">Current view is north</button>
+          <button class="btn ghost" id="bh-reset" title="Back to the heading stored in the photo (EXIF)">EXIF</button>
         </div>
-        <div class="rowbtn hnudge">
-          <button class="btn" data-hnudge="-10">−10°</button>
-          <button class="btn" data-hnudge="-1">−1°</button>
-          <button class="btn" data-hnudge="180" title="Turn the photo round">180°</button>
-          <button class="btn" data-hnudge="1">+1°</button>
-          <button class="btn" data-hnudge="10">+10°</button>
-        </div>
-        <div class="mini" id="heading-meta">Heading not set</div>
-        <div class="mini">Only horizontal alignment matters here, not up/down.</div>
       </div>
 
-      <div class="pg">
-        <p class="pl">Info points</p>
+      <details class="sec" data-sec="links" open>
+        <summary>Connections <span class="cnt" id="cl-count"></span></summary>
+        <div class="chips" id="cl-l"></div>
+        <div class="walklist" id="walk-list" hidden></div>
+        <div class="rowbtn" id="walk-row">
+          <button class="btn" id="walk-back" title="Walk back to the previous node">Back one step</button>
+          <button class="btn" id="walk-start" title="Walk back to the start node">Back to start</button>
+        </div>
+        <div class="mini" id="walk-help" hidden></div>
+      </details>
+
+      <details class="sec" data-sec="hotspots">
+        <summary>Info points <span class="cnt" id="hs-count"></span></summary>
         <div id="hs-list"></div>
-        <button class="btn" id="hs-add" style="width:100%;justify-content:center">Add info point at current view</button>
-        <div class="mini">Shown as clickable "i" markers in the preview and the exported tour.</div>
-      </div>
+        <button class="btn wide" id="hs-add" title="Shown as clickable &quot;i&quot; markers in the preview and the exported tour">Add at current view</button>
+      </details>
 
-      <div class="pg">
-        <label class="cb2"><input type="checkbox" id="ni-s"> Use as Start Node</label>
-      </div>
-
-      <div class="pg">
-        <p class="pl">Walkthrough</p>
-        <div class="rowbtn">
-          <button class="btn" id="walk-back">Back One Step</button>
-          <button class="btn" id="walk-start">Back to Start</button>
+      <details class="sec" data-sec="position">
+        <summary>Position</summary>
+        <div class="latlng">
+          <input class="pi" id="ni-lat" type="number" step="any" placeholder="Latitude" title="Latitude">
+          <input class="pi" id="ni-lng" type="number" step="any" placeholder="Longitude" title="Longitude">
         </div>
-        <div class="mini" id="walk-help">Move to linked nodes directly inside the editor.</div>
-        <div class="walklist" id="walk-list"></div>
-      </div>
+      </details>
 
-      <div class="pg">
-        <p class="pl">Linked Nodes</p>
-        <div id="cl-l" style="font-size:11px"></div>
-      </div>
-
-      <div class="pg">
-        <p class="pl">Compare / Walkthrough Check</p>
+      <details class="sec" data-sec="compare">
+        <summary>Compare with a linked node</summary>
         <div class="r2wide">
           <select class="pi" id="cmp-target"></select>
           <button class="btn" id="cmp-step">Move</button>
         </div>
         <div class="rowbtn">
-          <button class="btn" id="cmp-center">Match Same View</button>
-          <button class="btn" id="cmp-swap">Swap Front/Back</button>
+          <button class="btn" id="cmp-center">Match same view</button>
+          <button class="btn" id="cmp-swap">Swap front/back</button>
         </div>
         <input class="slider" id="cmp-opacity" type="range" min="0" max="100" value="45">
-        <div class="mini" id="cmp-help">Pick a linked node to overlay the current and next viewpoints for alignment.</div>
+        <div class="mini" id="cmp-help"></div>
         <div class="cmp" id="cmp-wrap" style="display:none">
           <div class="cmp-layer"><div id="cmp-base"></div></div>
           <div class="cmp-layer fade" id="cmp-overlay-layer"><div id="cmp-overlay"></div></div>
         </div>
-      </div>
-
-      <button class="dbtn" id="bn-d">Delete This Node</button>
+      </details>
     </div>
   </div>
 
   <div id="mw">
     <div id="map"></div>
-    <div id="do">Drop 360 JPG files here</div>
+    <div id="do">Drop 360° photos or a folder here</div>
   </div>
 </div>
 
@@ -997,13 +1170,11 @@ a.btn { text-decoration:none; }
       <button class="btn" data-pvnudge="10">+10°</button>
       <span class="pv-val" id="pv-align-val"></span>
     </div>
-    <div class="mini" style="margin-top:4px">If a photo looks turned after a jump (e.g. you face where you came from), turn it here until the view matches the way you walked. Changes are saved to the node.</div>
-    <div class="mini" id="preview-help" style="margin:10px 0 12px">Drag to look around, scroll to zoom &mdash; exactly like the exported tour.</div>
-    <button class="btn g" id="preview-export" style="width:100%">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Export Now
-    </button>
-    <button class="btn" id="preview-website" style="width:100%;margin-top:8px;justify-content:center">Export as website with photos (.zip)</button>
+    <div class="pv-foot">
+      <div class="mini" id="preview-help">Drag to look around. If a photo looks turned after a jump, turn it with the buttons above - it's saved to the node.</div>
+      <button class="btn" id="preview-website"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Website (.zip)</button>
+      <button class="btn g" id="preview-export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Viewer files</button>
+    </div>
   </div>
 </div>
 
@@ -1105,6 +1276,7 @@ a.btn { text-decoration:none; }
       <div class="cheat-row"><span>Save project</span><kbd>Ctrl S</kbd></div>
       <div class="cheat-row"><span>Save project as…</span><kbd>Ctrl Shift S</kbd></div>
       <div class="cheat-row"><span>Open project</span><kbd>Ctrl O</kbd></div>
+      <div class="cheat-row"><span>Import photos</span><kbd>Ctrl I</kbd></div>
       <div class="cheat-row"><span>Add point</span><kbd>Dbl-click map</kbd></div>
       <div class="cheat-row"><span>Select node</span><kbd>Click</kbd></div>
       <div class="cheat-row"><span>Multi-select</span><kbd>Ctrl+Click</kbd></div>
@@ -1115,9 +1287,9 @@ a.btn { text-decoration:none; }
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
 <script type="module">
-import exifr from 'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.esm.js';
+import exifr from './vendor/exifr/full.esm.js';
 import { Viewer } from '@photo-sphere-viewer/core';
 import { MarkersPlugin } from '@photo-sphere-viewer/markers-plugin';
 
@@ -1235,7 +1407,7 @@ async function appPick(kind, opts = {}) {
   }));
   const r = await fetch('/api/files/pick', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ kind, suggestedName: opts.suggestedName || '', types }),
+    body: JSON.stringify({ kind, suggestedName: opts.suggestedName || '', types, multiple: !!opts.multiple, remember: opts.remember !== false }),
   });
   const j = await r.json();
   if (!j.ok) throw new Error(j.error || 'The file dialog failed.');
@@ -1244,7 +1416,10 @@ async function appPick(kind, opts = {}) {
 }
 
 function useAppFileDialogs() {
-  window.showOpenFilePicker = async opts => { const j = await appPick('open', opts); return [new AppFileHandle(j.token, j.name)]; };
+  window.showOpenFilePicker = async opts => {
+    const j = await appPick('open', opts);
+    return (j.files || [j]).map(f => new AppFileHandle(f.token, f.name));
+  };
   window.showSaveFilePicker = async opts => { const j = await appPick('save', opts); return new AppFileHandle(j.token, j.name); };
   window.showDirectoryPicker = async opts => { const j = await appPick('folder', opts); return new AppFolderHandle(j.token, j.name, j.grant); };
 }
@@ -1298,7 +1473,7 @@ function t(s, vars) {
 }
 
 const i18nOrig = new WeakMap();
-const I18N_SKIP = 'script,style,.leaflet-pane,.nl,.nrow-name,#upl-log,.notes,.psv-container,[data-no-i18n],.cil,.walkchip,.check-row .nm,#cmp-target,#walkh-ref,.hs-row .t,.thumb-tip,.up-name';
+const I18N_SKIP = 'script,style,.leaflet-pane,.nl,.nrow-name,#upl-log,.notes,.psv-container,[data-no-i18n],.cil,.walkchip,.chip,.check-row .nm,#cmp-target,#walkh-ref,.hs-row .t,.thumb-tip,.up-name';
 
 function translateTextNode(node) {
   const orig = i18nOrig.get(node) ?? node.nodeValue;
@@ -1383,7 +1558,7 @@ const DE = {
   'Walkthrough Tour Editor': 'Rundgang-Editor',
   'Tour Editor': 'Tour-Editor',
   '360° walkthrough builder': '360°-Rundgang-Baukasten',
-  'Nodes': 'Knoten',
+  'Nodes': 'Punkte',
   '· Links': '· Verbindungen',
   'dbl-click to add · click to select · right-click ×2 to connect': 'Doppelklick: neu · Klick: wählen · 2× Rechtsklick: verbinden',
   'Autosave on': 'Autospeichern an',
@@ -1412,14 +1587,86 @@ const DE = {
   'Export CSV': 'CSV exportieren',
   'Preview tour': 'Tour-Vorschau',
   'Untitled': 'Unbenannt',
+  'Light or dark': 'Hell oder dunkel',
+  'Switch to light mode': 'Zum hellen Design wechseln',
+  'Switch to dark mode': 'Zum dunklen Design wechseln',
+  'Switch between light and dark mode': 'Zwischen hellem und dunklem Design wechseln',
+  'Introduction': 'Einführung',
+  'Skip': 'Überspringen',
+  'Back': 'Zurück',
+  'Next': 'Weiter',
+  'Start the tour': 'Tour starten',
+  'Welcome to Streetview Tour Editor': 'Willkommen beim Streetview Tour Editor',
+  'Turn the 360° photos of a walk into a connected tour on Google Street View. This short tour shows you around - it takes a minute.': 'Mach aus den 360°-Fotos eines Rundgangs eine verbundene Tour auf Google Street View. Diese kurze Einführung zeigt dir alles Wichtige – sie dauert eine Minute.',
+  'Drop your photos on the map': 'Fotos auf die Karte ziehen',
+  'Drag your 360° JPEGs here. Photos with GPS land where they were taken; double-click the map to add an empty node.': 'Zieh deine 360°-JPEGs hierher. Fotos mit GPS landen dort, wo sie aufgenommen wurden; ein Doppelklick auf die Karte fügt einen leeren Punkt hinzu.',
+  'Edit a node': 'Einen Punkt bearbeiten',
+  'Click a node - on the map or in this list - to edit it here: its name, the photo, the north direction, links and info points.': 'Klick einen Punkt an – auf der Karte oder in dieser Liste –, um ihn hier zu bearbeiten: Name, Foto, Nordrichtung, Verbindungen und Info-Punkte.',
+  'Link the nodes': 'Punkte verbinden',
+  'Right-click a node, then a second one, to link them - that is how visitors walk from photo to photo. Tools → Auto-connect links everything in the order you walked.': 'Rechtsklick auf einen Punkt, dann auf einen zweiten, verbindet sie – so gehen Besucher von Foto zu Foto. Werkzeuge → Punkte automatisch verbinden verknüpft alles in der Reihenfolge deines Rundgangs.',
+  'Get north right': 'Norden ausrichten',
+  'Turn the photo in the side panel until you face north, then click "Current view is north". Tools → Headings from walking direction does all photos at once.': 'Dreh das Foto in der Seitenleiste, bis du nach Norden schaust, und klick dann „Aktuelle Ansicht ist Norden“. Werkzeuge → Blickrichtung aus Laufrichtung erledigt alle Fotos auf einmal.',
+  'Auto-connect, placing photos from a GPX track, blurring faces and licence plates, a tour check before uploading, and comparing your tour with Google.': 'Automatisch verbinden, Fotos per GPX-Track platzieren, Gesichter und Kennzeichen verpixeln, die Tour vor dem Hochladen prüfen und mit Google abgleichen.',
+  'Walk through the tour exactly as visitors will see it. If a photo looks turned after a jump, fix it right there.': 'Geh die Tour genau so durch, wie Besucher sie sehen. Wirkt ein Foto nach einem Sprung verdreht, korrigierst du es direkt dort.',
+  'Save and export': 'Speichern und exportieren',
+  'Ctrl+S saves the project with all photos as one .vrtour file - everything is autosaved as well. Export the tour as a website or as files for your own server.': 'Strg+S speichert das Projekt mit allen Fotos als eine .vrtour-Datei – außerdem wird alles automatisch gesichert. Exportiere die Tour als Website oder als Dateien für deinen eigenen Server.',
+  'Publish to Google': 'Auf Google veröffentlichen',
+  'Uploads the photos with their position, direction and links to Google Street View. The first time, a short guide connects your Google account.': 'Lädt die Fotos mit Position, Blickrichtung und Verbindungen zu Google Street View hoch. Beim ersten Mal verbindet eine kurze Anleitung dein Google-Konto.',
+  'Make it yours': 'Ganz nach deinem Geschmack',
+  'Switch between light and dark here. Ctrl+K lists every command, ? all shortcuts - and Tools → Introduction shows this tour again.': 'Hier wechselst du zwischen hell und dunkel. Strg+K zeigt alle Befehle, ? alle Tastenkürzel – und Werkzeuge → Einführung zeigt diese Tour noch einmal.',
+  'Unsaved changes': 'Ungespeicherte Änderungen',
+  'Project': 'Projekt',
+  'Open, save and export': 'Öffnen, speichern und exportieren',
+  'Open…': 'Öffnen…',
+  'Save as…': 'Speichern unter…',
+  'Website with photos (.zip)': 'Website mit Fotos (.zip)',
+  'Viewer files (HTML + JSON)': 'Viewer-Dateien (HTML + JSON)',
+  'CSV for the command-line uploader': 'CSV für den Kommandozeilen-Uploader',
+  'Export folder…': 'Exportordner…',
+  'Keyboard shortcuts': 'Tastenkürzel',
+  'Search…': 'Suchen…',
+  'Drop your 360° photos onto the map': '360°-Fotos auf die Karte ziehen',
+  'Pick a node in the list or on the map': 'Wähle einen Punkt in der Liste oder auf der Karte',
+  'Photos with GPS land where they were taken. Double-click the map to add an empty node.': 'Fotos mit GPS landen dort, wo sie aufgenommen wurden. Doppelklick auf die Karte fügt einen leeren Punkt hinzu.',
+  'Start node of the tour': 'Startpunkt der Tour',
+  'Delete (Del)': 'Löschen (Entf)',
+  'Choose a 360° photo…': '360°-Foto wählen…',
+  'Replace photo': 'Foto ersetzen',
+  'North': 'Norden',
+  'Heading of the photo\'s centre, in degrees from north': 'Blickrichtung der Bildmitte in Grad ab Norden',
+  'Current view is north': 'Aktuelle Ansicht ist Norden',
+  'Turn the view above until you face north, then press this': 'Die Ansicht oben drehen, bis du nach Norden schaust, dann hier klicken',
+  'Back to the heading stored in the photo (EXIF)': 'Zurück zur im Foto gespeicherten Richtung (EXIF)',
+  'Connections': 'Verbindungen',
+  'Walk back to the previous node': 'Zum vorherigen Punkt zurückgehen',
+  'Back one step': 'Einen Schritt zurück',
+  'Walk back to the start node': 'Zurück zum Startpunkt gehen',
+  'Back to start': 'Zurück zum Start',
+  'Shown as clickable "i" markers in the preview and the exported tour': 'Erscheinen als anklickbare „i“-Marker in der Vorschau und der exportierten Tour',
+  'Add at current view': 'In aktueller Blickrichtung hinzufügen',
+  'Compare with a linked node': 'Mit verbundenem Punkt vergleichen',
+  'Match same view': 'Gleiche Ansicht',
+  'Swap front/back': 'Vorne/Hinten tauschen',
+  'Drag to look around. If a photo looks turned after a jump, turn it with the buttons above - it\'s saved to the node.': 'Ziehen zum Umsehen. Wirkt ein Foto nach einem Sprung verdreht, mit den Knöpfen oben drehen – das wird für diesen Punkt gespeichert.',
+  'Website (.zip)': 'Website (.zip)',
+  'Viewer files': 'Viewer-Dateien',
+  'Export viewer files (HTML + JSON)': 'Viewer-Dateien exportieren (HTML + JSON)',
+  'Choose export folder…': 'Exportordner wählen…',
+  'not set': 'nicht gesetzt',
+  'set by hand': 'von Hand gesetzt',
+  'from the photo (EXIF)': 'aus dem Foto (EXIF)',
+  'from the walking direction': 'aus der Laufrichtung',
+  'Right-click this node, then another one, to link them.': 'Rechtsklick auf diesen Punkt, dann auf einen anderen, um sie zu verbinden.',
+  'Walk there': 'Dorthin gehen',
+  'Remove link': 'Verbindung entfernen',
   'Deutsch': 'Deutsch',
   'English': 'English',
 
   // Tools menu / command palette
-  'Auto-connect nodes…': 'Knoten automatisch verbinden…',
+  'Auto-connect nodes…': 'Punkte automatisch verbinden…',
   'Place photos from GPX track…': 'Fotos per GPX-Track platzieren…',
   'Blur faces & plates…': 'Gesichter & Kennzeichen verpixeln…',
-  'selected node': 'ausgewählter Knoten',
+  'selected node': 'ausgewählter Punkt',
   'Save project as…': 'Projekt speichern unter…',
   'Export tour as website (.zip)': 'Tour als Website exportieren (.zip)',
   'Headings from walking direction…': 'Blickrichtung aus Laufrichtung…',
@@ -1438,8 +1685,8 @@ const DE = {
   'Undo': 'Rückgängig',
   'Redo': 'Wiederholen',
   'Show keyboard shortcuts': 'Tastenkürzel anzeigen',
-  'Jump to node': 'Zum Knoten springen',
-  'Type a command or search nodes…': 'Befehl eingeben oder Knoten suchen…',
+  'Jump to node': 'Zum Punkt springen',
+  'Type a command or search nodes…': 'Befehl eingeben oder Punkt suchen…',
   'No matching commands': 'Keine passenden Befehle',
   'Switch to English': 'Switch to English',
 
@@ -1450,24 +1697,24 @@ const DE = {
   'Drop 360 JPG files here': '360°-JPGs hier ablegen',
 
   // Sidebar
-  'Search nodes…': 'Knoten suchen…',
+  'Search nodes…': 'Punkte suchen…',
   'No matches': 'Keine Treffer',
-  'No nodes yet': 'Noch keine Knoten',
+  'No nodes yet': 'Noch keine Punkte',
   'Delete': 'Löschen',
   'Drop 360 JPG files onto the map to plan links and orientation.': '360°-JPGs auf die Karte ziehen, um Verbindungen und Ausrichtung zu planen.',
   'How to Use': 'So geht’s',
   'Drop photos onto the map, or double-click empty map area to add a point': 'Fotos auf die Karte ziehen oder auf eine freie Stelle doppelklicken, um einen Punkt hinzuzufügen',
   'If GPS exists, photos are placed automatically; otherwise they are placed at the drop point': 'Fotos mit GPS werden automatisch platziert, sonst dort, wo sie abgelegt wurden',
-  'Click a node to select it — a quick-action ring pops up for start / connect / duplicate / delete': 'Knoten anklicken zum Auswählen – ein Schnellmenü bietet Start / Verbinden / Duplizieren / Löschen',
-  'Right-click a node, then right-click a second node to connect them (right-click again to cancel)': 'Knoten rechtsklicken, dann einen zweiten rechtsklicken, um sie zu verbinden (erneuter Rechtsklick bricht ab)',
-  'Type exact coordinates, adjust heading, and use the compare view on the selected node': 'Beim ausgewählten Knoten Koordinaten eingeben, Blickrichtung anpassen und die Vergleichsansicht nutzen',
-  'Walk to linked nodes inside the same file while checking the result': 'Zu verbundenen Knoten laufen und das Ergebnis direkt prüfen',
+  'Click a node to select it — a quick-action ring pops up for start / connect / duplicate / delete': 'Punkt anklicken zum Auswählen – ein Schnellmenü bietet Start / Verbinden / Duplizieren / Löschen',
+  'Right-click a node, then right-click a second node to connect them (right-click again to cancel)': 'Punkt rechtsklicken, dann einen zweiten rechtsklicken, um sie zu verbinden (erneuter Rechtsklick bricht ab)',
+  'Type exact coordinates, adjust heading, and use the compare view on the selected node': 'Beim ausgewählten Punkt Koordinaten eingeben, Blickrichtung anpassen und die Vergleichsansicht nutzen',
+  'Walk to linked nodes inside the same file while checking the result': 'Zu verbundenen Punkten laufen und das Ergebnis direkt prüfen',
   'Power tools': 'Profi-Funktionen',
-  'Ctrl/Shift-click nodes or Shift-drag on the map to multi-select, then bulk-connect or delete': 'Strg/Umschalt-Klick oder Umschalt+Ziehen auf der Karte wählt mehrere Knoten aus – dann gemeinsam verbinden oder löschen',
+  'Ctrl/Shift-click nodes or Shift-drag on the map to multi-select, then bulk-connect or delete': 'Strg/Umschalt-Klick oder Umschalt+Ziehen auf der Karte wählt mehrere Punkte aus – dann gemeinsam verbinden oder löschen',
   'Everything autosaves — closing the tab is safe, a restore prompt appears next time': 'Alles wird automatisch gesichert – beim nächsten Öffnen wird die Wiederherstellung angeboten',
-  'Node Settings': 'Knoten-Einstellungen',
+  'Node Settings': 'Punkt-Einstellungen',
   'Name': 'Name',
-  'Node name': 'Knotenname',
+  'Node name': 'Name des Punkts',
   'Position': 'Position',
   'Latitude': 'Breitengrad',
   'Longitude': 'Längengrad',
@@ -1480,7 +1727,7 @@ const DE = {
   'Heading / North': 'Blickrichtung / Norden',
   'Turn the photo round': 'Foto umdrehen',
   'Direction of': 'Ausrichtung von',
-  'If a photo looks turned after a jump (e.g. you face where you came from), turn it here until the view matches the way you walked. Changes are saved to the node.': 'Wirkt ein Foto nach einem Sprung verdreht (z. B. schaust du dorthin, wo du herkamst), hier drehen, bis die Ansicht zur Laufrichtung passt. Die Änderung wird im Knoten gespeichert.',
+  'If a photo looks turned after a jump (e.g. you face where you came from), turn it here until the view matches the way you walked. Changes are saved to the node.': 'Wirkt ein Foto nach einem Sprung verdreht (z. B. schaust du dorthin, wo du herkamst), hier drehen, bis die Ansicht zur Laufrichtung passt. Die Änderung wird für diesen Punkt gespeichert.',
   'Set This Direction as North': 'Diese Richtung als Norden setzen',
   'Reset to EXIF': 'Auf EXIF zurücksetzen',
   'Heading not set': 'Blickrichtung nicht gesetzt',
@@ -1492,42 +1739,42 @@ const DE = {
   'Look at it': 'Hinschauen',
   '(no title)': '(ohne Titel)',
   'Edit': 'Bearbeiten',
-  'Use as Start Node': 'Als Startknoten verwenden',
+  'Use as Start Node': 'Als Startpunkt verwenden',
   'Walkthrough Check': 'Rundgang prüfen',
   'Back One Step': 'Einen Schritt zurück',
   'Back to Start': 'Zurück zum Start',
-  'Move to linked nodes directly inside the editor.': 'Direkt im Editor zu verbundenen Knoten wechseln.',
-  'Select a node with links and you can walk from here inside the editor.': 'Einen Knoten mit Verbindungen auswählen, um von hier aus durch den Rundgang zu gehen.',
-  'Linked Nodes': 'Verbundene Knoten',
+  'Move to linked nodes directly inside the editor.': 'Direkt im Editor zu verbundenen Punkten wechseln.',
+  'Select a node with links and you can walk from here inside the editor.': 'Einen Punkt mit Verbindungen auswählen, um von hier aus durch den Rundgang zu gehen.',
+  'Linked Nodes': 'Verbundene Punkte',
   'None': 'Keine',
   'Compare / Walkthrough Check': 'Vergleich / Rundgang prüfen',
   'Move': 'Wechseln',
   'Match Same View': 'Gleiche Ansicht',
   'Swap Front/Back': 'Vorne/Hinten tauschen',
-  'Pick a linked node to overlay the current and next viewpoints for alignment.': 'Einen verbundenen Knoten wählen, um beide Standpunkte zur Ausrichtung zu überlagern.',
-  'If a linked node has a photo, you can overlay-compare it here.': 'Hat ein verbundener Knoten ein Foto, lässt es sich hier überlagern und vergleichen.',
-  'No comparable linked nodes': 'Keine vergleichbaren verbundenen Knoten',
-  'Choose linked node': 'Verbundenen Knoten wählen',
+  'Pick a linked node to overlay the current and next viewpoints for alignment.': 'Einen verbundenen Punkt wählen, um beide Standpunkte zur Ausrichtung zu überlagern.',
+  'If a linked node has a photo, you can overlay-compare it here.': 'Hat ein verbundener Punkt ein Foto, lässt es sich hier überlagern und vergleichen.',
+  'No comparable linked nodes': 'Keine vergleichbaren verbundenen Punkte',
+  'Choose linked node': 'Verbundenen Punkt wählen',
   'Use the translucent overlap and align it by eye.': 'Die durchscheinende Überlagerung nutzen und nach Augenmaß ausrichten.',
   'Comparing with the same view heading. Align where the overlap looks natural.': 'Vergleich mit gleicher Blickrichtung. Dort ausrichten, wo die Überlagerung natürlich wirkt.',
   'Comparing with front/back swapped. Align where the overlap looks natural.': 'Vergleich mit getauschtem Vorne/Hinten. Dort ausrichten, wo die Überlagerung natürlich wirkt.',
   'Swapped comparison order. Use whichever view makes the overlap easier to read.': 'Reihenfolge getauscht. Die Ansicht nehmen, in der die Überlagerung besser zu erkennen ist.',
-  'Delete This Node': 'Diesen Knoten löschen',
+  'Delete This Node': 'Diesen Punkt löschen',
   'blurred': 'verpixelt',
   'EXIF': 'EXIF',
   'manual': 'manuell',
   'auto': 'automatisch',
 
   // Quick menu / multibar
-  'Set / unset as start node': 'Als Startknoten setzen / entfernen',
-  'Connect to another node': 'Mit anderem Knoten verbinden',
-  'Duplicate node': 'Knoten duplizieren',
-  'Delete node': 'Knoten löschen',
+  'Set / unset as start node': 'Als Startpunkt setzen / entfernen',
+  'Connect to another node': 'Mit anderem Punkt verbinden',
+  'Duplicate node': 'Punkt duplizieren',
+  'Delete node': 'Punkt löschen',
   '0 selected': '0 ausgewählt',
   'Connect in Sequence': 'Der Reihe nach verbinden',
   'Delete Selected': 'Auswahl löschen',
   'Clear': 'Leeren',
-  'Those nodes are already connected': 'Diese Knoten sind bereits verbunden',
+  'Those nodes are already connected': 'Diese Punkte sind bereits verbunden',
 
   // Restore banner
   'Restore': 'Wiederherstellen',
@@ -1541,11 +1788,11 @@ const DE = {
   'Show this cheatsheet': 'Diese Übersicht anzeigen',
   'Add point': 'Punkt hinzufügen',
   'Dbl-click map': 'Doppelklick Karte',
-  'Select node': 'Knoten auswählen',
+  'Select node': 'Punkt auswählen',
   'Click': 'Klick',
   'Multi-select': 'Mehrfachauswahl',
   'Ctrl+Click': 'Strg+Klick',
-  'Connect two nodes': 'Zwei Knoten verbinden',
+  'Connect two nodes': 'Zwei Punkte verbinden',
   'Right-click ×2': '2× Rechtsklick',
   'Delete selection': 'Auswahl löschen',
   'Cancel / deselect': 'Abbrechen / abwählen',
@@ -1583,7 +1830,7 @@ const DE = {
   'FAILED': 'FEHLGESCHLAGEN',
   'update': 'Aktualisierung',
   'Status on Google': 'Status bei Google',
-  'No nodes with a loaded photo and GPS position to upload.': 'Keine Knoten mit geladenem Foto und Position zum Hochladen.',
+  'No nodes with a loaded photo and GPS position to upload.': 'Keine Punkte mit geladenem Foto und Position zum Hochladen.',
   '{n} warning(s) - see Tools → Check tour': '{n} Warnung(en) – siehe Werkzeuge → Tour prüfen',
   'Uploading {n} photo(s)...': '{n} Foto(s) werden hochgeladen…',
   'Skipping {n} photo(s) uploaded earlier.': '{n} bereits hochgeladene(s) Foto(s) übersprungen.',
@@ -1621,9 +1868,9 @@ const DE = {
   'Export Now': 'Jetzt exportieren',
   'Export as website with photos (.zip)': 'Als Website mit Fotos exportieren (.zip)',
   'Exported tour-viewer.html and tour-config.json': 'tour-viewer.html und tour-config.json exportiert',
-  'No nodes found.': 'Keine Knoten vorhanden.',
-  'None of the nodes has a photo loaded.': 'Keiner der Knoten hat ein geladenes Foto.',
-  'None of the nodes has a photo loaded in this session - drop the photos again (or open a .vrtour project) to preview.': 'Keiner der Knoten hat in dieser Sitzung ein geladenes Foto – Fotos erneut ablegen (oder ein .vrtour-Projekt öffnen), um die Vorschau zu sehen.',
+  'No nodes found.': 'Keine Punkte vorhanden.',
+  'None of the nodes has a photo loaded.': 'Keiner der Punkte hat ein geladenes Foto.',
+  'None of the nodes has a photo loaded in this session - drop the photos again (or open a .vrtour project) to preview.': 'Keiner der Punkte hat in dieser Sitzung ein geladenes Foto – Fotos erneut ablegen (oder ein .vrtour-Projekt öffnen), um die Vorschau zu sehen.',
   'Map': 'Karte',
 
   // Project files
@@ -1631,22 +1878,22 @@ const DE = {
   'Opening a project replaces the current tour (Ctrl+Z undoes it). Continue?': 'Das Öffnen ersetzt die aktuelle Tour (Strg+Z macht es rückgängig). Fortfahren?',
   'Not a .vrtour / zip file': 'Keine .vrtour- oder Zip-Datei',
   'Corrupt zip directory': 'Beschädigtes Zip-Verzeichnis',
-  'No nodes in project': 'Keine Knoten im Projekt',
+  'No nodes in project': 'Keine Punkte im Projekt',
   'project.json missing - not a .vrtour file': 'project.json fehlt – keine .vrtour-Datei',
   'Project too large (over 4 GB)': 'Projekt zu groß (über 4 GB)',
   'This browser does not support saving directly to a folder.': 'Dieser Browser kann nicht direkt in einen Ordner speichern.',
 
   // Auto-connect
-  'Auto-connect nodes': 'Knoten automatisch verbinden',
+  'Auto-connect nodes': 'Punkte automatisch verbinden',
   'In the order the photos were taken': 'In Aufnahmereihenfolge',
   "Follows your walk using each photo's capture time (EXIF). Photos without a capture time keep their list order.": 'Folgt deinem Weg anhand der Aufnahmezeit (EXIF). Fotos ohne Aufnahmezeit behalten ihre Listenreihenfolge.',
   'Nearest neighbours': 'Nächste Nachbarn',
-  'Links every node to its closest nodes (up to 3) within the distance below.': 'Verbindet jeden Knoten mit seinen nächsten Nachbarn (bis zu 3) innerhalb der Entfernung unten.',
-  'Only link nodes up to': 'Nur Knoten verbinden, die höchstens',
+  'Links every node to its closest nodes (up to 3) within the distance below.': 'Verbindet jeden Punkt mit seinen nächsten Nachbarn (bis zu 3) innerhalb der Entfernung unten.',
+  'Only link nodes up to': 'Nur Punkte verbinden, die höchstens',
   'm apart': 'm auseinander liegen',
-  'Remove existing connections between these nodes first': 'Bestehende Verbindungen zwischen diesen Knoten vorher entfernen',
+  'Remove existing connections between these nodes first': 'Bestehende Verbindungen zwischen diesen Punkten vorher entfernen',
   'Connect': 'Verbinden',
-  'Add at least two nodes first.': 'Zuerst mindestens zwei Knoten hinzufügen.',
+  'Add at least two nodes first.': 'Zuerst mindestens zwei Punkte hinzufügen.',
 
   // GPX
   'Place photos from a GPX track': 'Fotos per GPX-Track platzieren',
@@ -1672,7 +1919,7 @@ const DE = {
   'Apply to photo': 'Auf Foto anwenden',
   'Applying…': 'Wird angewendet…',
   'Loading photo…': 'Foto wird geladen…',
-  'Select a node with a photo first.': 'Zuerst einen Knoten mit Foto auswählen.',
+  'Select a node with a photo first.': 'Zuerst einen Punkt mit Foto auswählen.',
   'The blurred photo replaces the original in this project (Ctrl+Z undoes it). Its EXIF block, which can hold an unblurred thumbnail, is dropped; the 360° (XMP) metadata is kept. The Street View Publish API does not blur anything itself, so do this before uploading.': 'Das verpixelte Foto ersetzt das Original in diesem Projekt (Strg+Z macht es rückgängig). Der EXIF-Block, der ein unverpixeltes Vorschaubild enthalten kann, wird entfernt; die 360°-Metadaten (XMP) bleiben erhalten. Die Street View Publish API verpixelt selbst nichts – also vor dem Hochladen erledigen.',
   'Loading face detection…': 'Gesichtserkennung wird geladen…',
   'Looking for faces… {p}%': 'Suche nach Gesichtern… {p} %',
@@ -1685,16 +1932,16 @@ const DE = {
   "Sets each photo's north so the camera faces the way you walked. Align one photo by hand first and pick it as reference: its offset is then copied to all others (as long as you held the camera the same way).": 'Setzt die Nordausrichtung jedes Fotos so, dass die Kamera in Laufrichtung zeigt. Am besten ein Foto von Hand ausrichten und als Referenz wählen: Seine Abweichung wird auf alle anderen übertragen (solange die Kamera gleich gehalten wurde).',
   'Walk order by capture time': 'Laufreihenfolge nach Aufnahmezeit',
   "From the photos' EXIF time stamps.": 'Aus den EXIF-Zeitstempeln der Fotos.',
-  'Walk order as in the node list': 'Laufreihenfolge wie in der Knotenliste',
-  'Drag nodes in the list to change it.': 'Knoten in der Liste ziehen, um sie zu ändern.',
+  'Walk order as in the node list': 'Laufreihenfolge wie in der Liste',
+  'Drag nodes in the list to change it.': 'Punkte in der Liste ziehen, um sie zu ändern.',
   'Reference photo': 'Referenzfoto',
   'Also overwrite headings from EXIF or set by hand': 'Auch Blickrichtungen aus EXIF oder von Hand überschreiben',
   'Set headings': 'Blickrichtungen setzen',
   'None - the camera front faced the walking direction': 'Keins – die Kamerafront zeigte in Laufrichtung',
   'The reference photo has no neighbour to walk from or to.': 'Das Referenzfoto hat keinen Nachbarn, von dem oder zu dem gelaufen wurde.',
   'Set the heading of {n} photo(s)': 'Blickrichtung von {n} Foto(s) gesetzt',
-  'Select one anchor node and align north there first.': 'Zuerst einen Ankerknoten auswählen und dort Norden ausrichten.',
-  'The selected node has no heading yet. Align north first.': 'Der ausgewählte Knoten hat noch keine Blickrichtung. Zuerst Norden ausrichten.',
+  'Select one anchor node and align north there first.': 'Zuerst einen Ankerpunkt auswählen und dort Norden ausrichten.',
+  'The selected node has no heading yet. Align north first.': 'Der ausgewählte Punkt hat noch keine Blickrichtung. Zuerst Norden ausrichten.',
 
   // Tour check
   'Tour check': 'Tour-Prüfung',
@@ -1704,7 +1951,7 @@ const DE = {
   'Everything looks good.': 'Alles in Ordnung.',
   'Show': 'Zeigen',
   '{e} problem(s) that stop the upload, {w} warning(s).': '{e} Problem(e), die den Upload verhindern, {w} Warnung(en).',
-  'No photo loaded - this node is not uploaded': 'Kein Foto geladen – dieser Knoten wird nicht hochgeladen',
+  'No photo loaded - this node is not uploaded': 'Kein Foto geladen – dieser Punkt wird nicht hochgeladen',
   'Could not read the image size': 'Bildgröße nicht lesbar',
   'Not a 360° panorama: {w}×{h}, Google needs a 2:1 image': 'Kein 360°-Panorama: {w}×{h}, Google verlangt ein Bild im Format 2:1',
   'Only {w}×{h} - Google recommends at least 4096×2048': 'Nur {w}×{h} – Google empfiehlt mindestens 4096×2048',
@@ -1712,7 +1959,7 @@ const DE = {
   "Larger than Google's 75 MB limit": 'Größer als Googles Grenze von 75 MB',
   'Position was placed by hand, not from GPS - check that it is right': 'Position von Hand gesetzt, nicht per GPS – bitte prüfen',
   'No heading (north) set': 'Keine Blickrichtung (Norden) gesetzt',
-  'Not connected to any other node': 'Mit keinem anderen Knoten verbunden',
+  'Not connected to any other node': 'Mit keinem anderen Punkt verbunden',
   'Rejected by Google': 'Von Google abgelehnt',
   'Link to {name} is {d} long': 'Verbindung zu {name} ist {d} lang',
   'Same position as {name}': 'Gleiche Position wie {name}',
@@ -1810,7 +2057,7 @@ const DE = {
   'On Google, not yet shown on Maps': 'Bei Google, noch nicht auf Maps sichtbar',
   'Not found on Google (deleted?) - will be uploaded again': 'Bei Google nicht gefunden (gelöscht?) – wird erneut hochgeladen',
   'pending': 'in Verarbeitung',
-  'These nodes have no photo: {names}': 'Diese Knoten haben kein Foto: {names}',
+  'These nodes have no photo: {names}': 'Diese Punkte haben kein Foto: {names}',
   'Sign-in expired - please sign in again': 'Anmeldung abgelaufen – bitte erneut anmelden',
   'Not signed in (or the sign-in expired) - click "Sign in with Google".': 'Nicht angemeldet (oder Anmeldung abgelaufen) – „Mit Google anmelden“ klicken. Bei Google-Projekten im Testmodus läuft die Anmeldung nach 7 Tagen ab.',
   'old version deleted on Google': 'alte Version bei Google gelöscht',
@@ -1848,7 +2095,7 @@ const DE = {
   '{n} photo(s) could not be updated yet - Google may still be processing them; this is retried automatically.': '{n} Foto(s) konnten noch nicht aktualisiert werden – vermutlich verarbeitet Google sie noch; es wird automatisch erneut versucht.',
   '{n} of the photos to upload seem to be on Google already, at exactly the same spot (probably an earlier upload). Link them to those instead of uploading them again?': '{n} der Fotos scheinen schon bei Google zu sein, an genau derselben Stelle (vermutlich ein früherer Upload). Mit diesen verknüpfen, statt sie erneut hochzuladen?',
   // Box select
-  '{n} node(s) selected': '{n} Knoten ausgewählt',
+  '{n} node(s) selected': '{n} Punkt(e) ausgewählt',
   'Point {n}': 'Punkt {n}',
 
   // Updates
@@ -1867,11 +2114,51 @@ const DE = {
   'This is taking unusually long. Start the editor again from the Start menu, then reload this page.': 'Das dauert ungewöhnlich lange. Den Editor über das Startmenü neu starten und diese Seite neu laden.',
   'Running from source - update with git pull': 'Läuft aus dem Quellcode – Update per git pull',
   'Update check failed - is the app still running?': 'Update-Prüfung fehlgeschlagen – läuft die App noch?',
+  // Import assistant
+  'Import photos…': 'Fotos importieren…',
+  'Import photos': 'Fotos importieren',
+  'Ctrl I': 'Strg I',
+  'Import': 'Importieren',
+  'Import {n} photo(s)': '{n} Foto(s) importieren',
+  'Start with your 360° photos': 'Starte mit deinen 360°-Fotos',
+  'Drop photos or a whole folder onto the map - they are placed, linked and turned to north in one go.': 'Zieh Fotos oder einen ganzen Ordner auf die Karte – sie werden in einem Rutsch platziert, verbunden und nach Norden ausgerichtet.',
+  'Open project…': 'Projekt öffnen…',
+  'Drop 360° photos or a folder here': '360°-Fotos oder einen Ordner hier ablegen',
+  'Drop photos or a folder here': 'Fotos oder einen Ordner hierher ziehen',
+  'Choose photos…': 'Fotos wählen…',
+  'Choose folder…': 'Ordner wählen…',
+  'Link them in the order they were taken': 'In Aufnahmereihenfolge verbinden',
+  'By capture time (EXIF), otherwise by file name.': 'Nach Aufnahmezeit (EXIF), sonst nach Dateiname.',
+  'No link across gaps over': 'Keine Verbindung über Lücken von mehr als',
+  'North from the walking direction': 'Norden aus der Laufrichtung',
+  "For photos without a compass heading. Assumes the camera's front faced where you walked - fine-tune single photos afterwards.": 'Für Fotos ohne Kompass-Richtung. Setzt voraus, dass die Vorderseite der Kamera in Laufrichtung zeigte – einzelne Fotos danach feinjustieren.',
+  'Check the tour afterwards': 'Danach die Tour prüfen',
+  'Lists what still needs attention before uploading.': 'Zeigt, was vor dem Hochladen noch zu tun ist.',
+  'GPX track for the photos without GPS (optional)': 'GPX-Track für die Fotos ohne GPS (optional)',
+  "Without a track they are placed in a row where you dropped them - drag them to the right spot afterwards. The camera clock's time zone comes from the photos, otherwise from this computer.": 'Ohne Track landen sie in einer Reihe dort, wo du sie abgelegt hast – zieh sie danach an die richtige Stelle. Die Zeitzone der Kamera-Uhr kommt aus den Fotos, sonst von diesem Computer.',
+  'Looking for photos…': 'Fotos werden gesucht…',
+  'Reading photos… {i} of {n}': 'Fotos werden gelesen… {i} von {n}',
+  'Could not read the photos: {msg}': 'Die Fotos konnten nicht gelesen werden: {msg}',
+  'No photos found.': 'Keine Fotos gefunden.',
+  '{n} photo(s)': '{n} Foto(s)',
+  '{n} with GPS': '{n} mit GPS',
+  '{n} with capture time': '{n} mit Aufnahmezeit',
+  '{n} with compass heading': '{n} mit Kompass-Richtung',
+  '{n} already in the tour - skipped': '{n} schon in der Tour – übersprungen',
+  'Imported {n} photo(s): {l} link(s), {h} heading(s) from the walking direction.': '{n} Foto(s) importiert: {l} Verbindung(en), {h} Blickrichtung(en) aus der Laufrichtung.',
+  '{n} placed from the GPX track.': '{n} aus dem GPX-Track platziert.',
+  '{n} without a position, placed in a row - drag them to the right spot.': '{n} ohne Position in einer Reihe abgelegt – an die richtige Stelle ziehen.',
+  'Photos': 'Fotos',
+  'Bring in your photos': 'Fotos hinzufügen',
+  'Drag your 360° photos - or a whole folder - onto the map, or use Project → Import photos. They are placed by GPS, linked in the order you walked and turned to north in one go.': 'Zieh deine 360°-Fotos – oder einen ganzen Ordner – auf die Karte oder nutze Projekt → Fotos importieren. Sie werden per GPS platziert, in Laufreihenfolge verbunden und in einem Rutsch nach Norden ausgerichtet.',
+  // Recent projects
+  'Recent': 'Zuletzt geöffnet',
+  '{name} is no longer there - removed from the list.': '{name} ist nicht mehr da – aus der Liste entfernt.',
 };
 
 // Rendered texts with values baked in (toasts, status lines, alerts).
 const DE_RX = [
-  [/^Previous session found: (\d+) node\(s\), (\d+) connection\(s\)\.$/, 'Vorherige Sitzung gefunden: $1 Knoten, $2 Verbindung(en).'],
+  [/^Previous session found: (\d+) node\(s\), (\d+) connection\(s\)\.$/, 'Vorherige Sitzung gefunden: $1 Punkt(e), $2 Verbindung(en).'],
   [/^Session restored - (\d+) photo\(s\) could not be recovered, drop them again$/, 'Sitzung wiederhergestellt – $1 Foto(s) nicht wiederherstellbar, bitte erneut ablegen'],
   [/^(\d+) selected$/, '$1 ausgewählt'],
   [/^Save target: (.+)$/, 'Speicherort: $1'],
@@ -1883,7 +2170,7 @@ const DE_RX = [
   [/^Saving the project failed: (.+)$/, 'Speichern des Projekts fehlgeschlagen: $1'],
   [/^Could not open (.+?): (.+)$/, '$1 konnte nicht geöffnet werden: $2'],
   [/^Opened (.+) - (\d+) photo\(s\) not included, drop them again$/, '$1 geöffnet – $2 Foto(s) fehlen, bitte erneut ablegen'],
-  [/^Opened (.+) \((\d+) nodes\)$/, '$1 geöffnet ($2 Knoten)'],
+  [/^Opened (.+) \((\d+) nodes\)$/, '$1 geöffnet ($2 Punkte)'],
   [/^Opening (.+)…$/, '$1 wird geöffnet…'],
   [/^(.+): no GPS found, placed at the drop point$/, '$1: kein GPS gefunden, am Ablageort platziert'],
   [/^(.+): heading set to (.+)°$/, '$1: Blickrichtung auf $2° gesetzt'],
@@ -1893,15 +2180,15 @@ const DE_RX = [
   [/^(\d+) node headings estimated$/, '$1 Blickrichtungen geschätzt'],
   [/^Duplicated (.+)$/, '$1 dupliziert'],
   [/^View yaw (.+)°\. Rotate horizontally only and face north\.$/, 'Blickwinkel $1°. Nur waagerecht drehen und nach Norden schauen.'],
-  [/^Current: (.+)\. Click a linked node to move there\.$/, 'Aktuell: $1. Verbundenen Knoten anklicken, um dorthin zu wechseln.'],
-  [/^There are (\d+) nodes without photos\. Continue\?$/, 'Es gibt $1 Knoten ohne Foto. Fortfahren?'],
-  [/^(\d+) node\(s\) without a loaded photo are left out of the preview$/, '$1 Knoten ohne geladenes Foto fehlen in der Vorschau'],
-  [/^(\d+) node\(s\) without a photo were left out$/, '$1 Knoten ohne Foto wurden weggelassen'],
+  [/^Current: (.+)\. Click a linked node to move there\.$/, 'Aktuell: $1. Verbundenen Punkt anklicken, um dorthin zu wechseln.'],
+  [/^There are (\d+) nodes without photos\. Continue\?$/, 'Es gibt $1 Punkt(e) ohne Foto. Fortfahren?'],
+  [/^(\d+) node\(s\) without a loaded photo are left out of the preview$/, '$1 Punkt(e) ohne geladenes Foto fehlen in der Vorschau'],
+  [/^(\d+) node\(s\) without a photo were left out$/, '$1 Punkt(e) ohne Foto wurden weggelassen'],
   [/^Added (\d+) connection\(s\)$/, '$1 Verbindung(en) hinzugefügt'],
   [/^Added (\d+) connection\(s\) - (.+)$/, (m, n, rest) => `${n} Verbindung(en) hinzugefügt – ${rest.replace(/(\d+) without capture time/, '$1 ohne Aufnahmezeit').replace(/(\d+) gap\(s\) over (\d+) m skipped/, '$1 Lücke(n) über $2 m übersprungen')}`],
-  [/^Connected (\d+) nodes in sequence$/, '$1 Knoten der Reihe nach verbunden'],
-  [/^Applies to the (\d+) selected nodes\.$/, 'Gilt für die $1 ausgewählten Knoten.'],
-  [/^Applies to all (\d+) nodes \(select nodes first to limit it\)\.$/, 'Gilt für alle $1 Knoten (vorher Knoten auswählen, um es einzuschränken).'],
+  [/^Connected (\d+) nodes in sequence$/, '$1 Punkte der Reihe nach verbunden'],
+  [/^Applies to the (\d+) selected nodes\.$/, 'Gilt für die $1 ausgewählten Punkte.'],
+  [/^Applies to all (\d+) nodes \(select nodes first to limit it\)\.$/, 'Gilt für alle $1 Punkte (vorher Punkte auswählen, um es einzuschränken).'],
   [/^Placed (\d+) of (\d+) photo\(s\)\.(.*)$/, (m, a, b, rest) => `${a} von ${b} Foto(s) platziert.${rest.replace(/(\d+) without capture time/, '$1 ohne Aufnahmezeit').replace(/(\d+) outside the track's time range - check the time zone/, '$1 außerhalb des Track-Zeitraums – Zeitzone prüfen')}`],
   [/^Placed (\d+) photo\(s\) from (.+)$/, '$1 Foto(s) aus $2 platziert'],
   [/^(\d+) area\(s\) marked\.$/, '$1 Bereich(e) markiert.'],
@@ -1926,6 +2213,9 @@ const DE_RX = [
 
 // Blocks with inline markup, marked with data-i18n="key".
 const DE_HTML = {
+  'tip-link': '<b>Rechtsklick</b> auf zwei Punkte verbindet sie',
+  'tip-multi': '<b>Umschalt+Ziehen</b> auf der Karte wählt mehrere aus',
+  'tip-cmds': '<kbd>Strg K</kbd> alle Befehle · <kbd>?</kbd> Tastenkürzel',
   'tip-keys': '<kbd>Strg K</kbd> öffnet die Befehlspalette, <kbd>?</kbd> alle Tastenkürzel',
   'tip-vrtour': 'Das ganze Projekt mit Fotos als <code>.vrtour</code>-Datei speichern (Strg+S); wieder öffnen oder einfach auf die Karte ziehen',
   'place-help': '<p>Eine Place ID verknüpft deine Fotos mit einem Ort auf Google Maps (Geschäft, Museum, Platz), sodass sie auch auf dessen Seite erscheinen. <b>Sie ist optional</b> – ohne sie werden die Fotos trotzdem an ihrer Position veröffentlicht.</p><ol><li>Googles <a href="https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder" target="_blank" rel="noopener">Place ID Finder</a> öffnen (kostenlos, kein Schlüssel oder Konto nötig).</li><li>Im Suchfeld auf der Karte den Namen oder die Adresse des Ortes eingeben und aus der Liste wählen.</li><li>Die angezeigte <b>Place ID</b> kopieren – sie beginnt meist mit <code>ChIJ</code> – und oben einfügen.</li></ol><p>Nicht jede Adresse hat eine Place ID, die Google für Street-View-Fotos akzeptiert. Lehnt Google sie ab, werden die Fotos ohne sie hochgeladen und du bekommst einen Hinweis.</p>',
@@ -2151,6 +2441,7 @@ mw.addEventListener('dragleave', e => { if (!mw.contains(e.relatedTarget)) doEl.
 mw.addEventListener('drop', async e => {
   e.preventDefault();
   doEl.classList.remove('show');
+  const entries = dropEntries(e.dataTransfer); // only readable while the drop is dispatched
   const projectItem = [...e.dataTransfer.items].find(it => it.kind === 'file' && /\.(vrtour|zip)$/i.test(it.getAsFile()?.name || ''));
   if (projectItem) {
     // getAsFileSystemHandle() only works while the drop event is being dispatched.
@@ -2160,10 +2451,13 @@ mw.addEventListener('drop', async e => {
     await openProjectFile(file, handle?.kind === 'file' ? handle : null);
     return;
   }
-  const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
-  if (!files.length) return;
+  const files = [...e.dataTransfer.files].filter(isPhotoFile);
   const rect = document.getElementById('map').getBoundingClientRect();
   const fallback = map.containerPointToLatLng(L.point(e.clientX - rect.left, e.clientY - rect.top));
+  // Several photos or a folder: the import assistant places, links and aligns them in one go.
+  const folders = entries.some(en => en.isDirectory);
+  if (files.length > 1 || folders) { openImport({ entries: folders ? entries : null, files, point: fallback }); return; }
+  if (!files.length) return;
   for (const file of files) await addPhotoNode(file, fallback);
   if (S.nodes.length >= 2) fitAll();
 });
@@ -2224,7 +2518,7 @@ niH.addEventListener('input', () => {
     panoViewer?.rotate({ yaw: northYaw(n), pitch: 0 });
   }
   refreshMarker(n);
-  headingMeta.textContent = n.heading == null ? 'Heading not set' : `heading ${n.heading.toFixed(1)}° (manual)`;
+  headingMeta.textContent = n.heading == null ? t('not set') : t('set by hand');
   refreshCompareUi(n);
   scheduleAutosave();
 });
@@ -2375,10 +2669,6 @@ document.getElementById('walk-start').onclick = () => {
   jumpToNode(S.startId, false);
 };
 
-// The old estimate pointed the last photo of a route back to where it came from
-// and ignored how the camera was held; the walking-direction tool handles both.
-document.getElementById('best').onclick = () => openWalkHeadings();
-
 cmpOpacity.addEventListener('input', () => {
   cmpOverlayLayer.style.opacity = `${Number(cmpOpacity.value) / 100}`;
 });
@@ -2469,6 +2759,8 @@ const PROJECT_PICKER_TYPES = [{ description: 'Tour project', accept: { 'applicat
 
 function updateTitle() {
   document.title = `${projectDirty ? '• ' : ''}${projectName || t('Untitled')} – ${t('Tour Editor')}`;
+  document.getElementById('proj-title').textContent = projectName || t('Untitled');
+  document.getElementById('proj-dirty').hidden = !projectDirty;
   if (appHasWindow) {
     fetch('/api/window-title', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: document.title }),
@@ -2503,6 +2795,7 @@ async function saveProject({ saveAs = false } = {}) {
       projectName = handle.name;
       await rebindPhotos(await handle.getFile());
       toast(`Saved ${handle.name}`);
+      rememberRecent(handle);
     } else {
       await saveTextFile(projectName || PROJECT_FILE, zip);
     }
@@ -2541,7 +2834,6 @@ async function rebindPhotos(file) {
     if (swap.has(n.photoFile)) n.photoFile = swap.get(n.photoFile);
   }));
   const sel = gn(S.selId);
-  if (sel?.photoUrl) phB.innerHTML = `<img src="${sel.photoUrl}" alt="">`;
 }
 
 document.getElementById('bsave').onclick = () => saveProject();
@@ -2616,6 +2908,7 @@ async function openProjectFile(file, handle = null) {
     projectHandle = legacyJson ? null : handle;
     projectName = legacyJson ? file.name.replace(/\.json$/i, '.vrtour') : file.name;
     markClean();
+    if (projectHandle) rememberRecent(projectHandle);
     const missing = snap.nodes.filter(n => n.photoName && !n.photoFile).length;
     toast(missing
       ? `Opened ${file.name} - ${missing} photo(s) not included, drop them again`
@@ -2824,7 +3117,7 @@ function openExportPreview() {
   if (previewNodes.length < S.nodes.length) {
     toast(`${S.nodes.length - previewNodes.length} node(s) without a loaded photo are left out of the preview`);
   }
-  previewFrame.srcdoc = genViewer(previewStart, previewNodes, { editable: true });
+  previewFrame.srcdoc = genViewer(previewStart, previewNodes, { editable: true, libBase: new URL('vendor/', location.href).href });
   setPreviewAlignNode(previewStart);
   previewBack.classList.add('show');
 }
@@ -2851,19 +3144,23 @@ document.querySelectorAll('[data-pvnudge]').forEach(b => {
   };
 });
 
-document.getElementById('bexp').onclick = openExportPreview;
 document.getElementById('bpreview').onclick = openExportPreview;
 document.getElementById('preview-close').onclick = () => previewBack.classList.remove('show');
 
-document.getElementById('preview-export').onclick = async () => {
-  if (!pendingExport) return;
-  // Rebuild: headings may have been turned in the preview since it was opened.
+// tour-viewer.html + tour-config.json, to place next to the photos.
+async function exportViewerFiles() {
+  if (!S.nodes.length) {
+    alert('No nodes found.');
+    return;
+  }
+  // Built now: headings may have been turned in the preview.
   const { startId, nodesConf } = buildTourConfig();
   await saveTextFile('tour-viewer.html', genViewer(startId, nodesConf));
   await saveTextFile('tour-config.json', JSON.stringify({ startNodeId: startId, nodes: nodesConf }, null, 2));
   previewBack.classList.remove('show');
   setTimeout(() => toast('Exported tour-viewer.html and tour-config.json'), 200);
-};
+}
+document.getElementById('preview-export').onclick = exportViewerFiles;
 
 // ── Command palette ───────────────────────────────
 const ICONS = {
@@ -2891,9 +3188,10 @@ let cmdkItems = [];
 
 function staticCommands() {
   const cmds = [
+    { icon: ICONS.plus, label: 'Import photos…', hint: 'Ctrl I', run: () => openImport() },
     { icon: ICONS.plus, label: 'Add point at map center', run: () => addEmptyNode(map.getCenter().lat, map.getCenter().lng) },
     { icon: ICONS.eye, label: 'Preview tour', run: openExportPreview },
-    { icon: ICONS.download, label: 'Export tour', run: openExportPreview },
+    { icon: ICONS.download, label: 'Export viewer files (HTML + JSON)', run: exportViewerFiles },
     { icon: ICONS.upload, label: 'Upload to Google Street View', run: () => document.getElementById('bupload').click() },
     { icon: ICONS.save, label: 'Save project', hint: 'Ctrl S', run: () => saveProject() },
     { icon: ICONS.save, label: 'Save project as…', hint: 'Ctrl Shift S', run: () => saveProject({ saveAs: true }) },
@@ -2908,10 +3206,12 @@ function staticCommands() {
     { icon: ICONS.upload, label: 'Compare with Google…', run: () => openGoogleCompare() },
     { icon: ICONS.keyboard, label: currentLang === 'de' ? 'Switch to English' : 'Auf Deutsch umschalten', run: () => setLang(currentLang === 'de' ? 'en' : 'de') },
     { icon: ICONS.grid, label: 'Export CSV manifest', run: () => document.getElementById('bcsv').click() },
-    { icon: ICONS.folder, label: 'Set save target folder', run: () => document.getElementById('bdir').click() },
+    { icon: ICONS.folder, label: 'Choose export folder…', run: () => document.getElementById('bdir').click() },
     { icon: ICONS.undo, label: 'Undo', hint: 'Ctrl Z', run: doUndo },
     { icon: ICONS.redo, label: 'Redo', hint: 'Ctrl Y', run: doRedo },
     { icon: ICONS.keyboard, label: 'Show keyboard shortcuts', hint: '?', run: () => cheatBack.classList.add('show') },
+    { icon: ICONS.eye, label: 'Switch between light and dark mode', run: toggleTheme },
+    { icon: ICONS.target, label: 'Introduction', run: startTour },
   ];
   S.nodes.forEach(n => cmds.push({ icon: ICONS.target, label: n.name, hint: 'Jump to node', run: () => jumpToNode(n.id, false) }));
   return cmds;
@@ -3717,24 +4017,7 @@ async function readPhotoMeta(file) {
 async function addPhotoNode(file, fallback) {
   pushUndo();
   const meta = await readPhotoMeta(file);
-  const node = {
-    id: uid(),
-    name: file.name.replace(/\.[^.]+$/, ''),
-    lat: meta.hasGps ? meta.lat : fallback.lat,
-    lng: meta.hasGps ? meta.lng : fallback.lng,
-    heading: meta.heading,
-    origHeading: meta.heading,
-    viewYaw: meta.heading != null ? normalizeRad(-degToRad(meta.heading)) : 0,
-    origViewYaw: meta.heading != null ? normalizeRad(-degToRad(meta.heading)) : 0,
-    headingSource: meta.heading != null ? 'exif' : 'manual',
-    hasGps: meta.hasGps,
-    photoUrl: URL.createObjectURL(file),
-    photoName: file.name,
-    photoFile: file,
-    captureTime: meta.captureTime,
-    captureOffset: meta.captureOffset,
-    marker: null,
-  };
+  const node = meta.hasGps ? newPhotoNode(file, meta, meta, true) : newPhotoNode(file, meta, fallback, false);
   if (!meta.hasGps) toast(`${file.name}: no GPS found, placed at the drop point`);
   S.nodes.push(node);
   if (!S.startId) S.startId = node.id;
@@ -3743,6 +4026,27 @@ async function addPhotoNode(file, fallback) {
   updateSb();
   updateStats();
   scheduleAutosave();
+}
+
+function newPhotoNode(file, meta, pos, hasGps) {
+  return {
+    id: uid(),
+    name: file.name.replace(/\.[^.]+$/, ''),
+    lat: pos.lat,
+    lng: pos.lng,
+    heading: meta.heading,
+    origHeading: meta.heading,
+    viewYaw: meta.heading != null ? normalizeRad(-degToRad(meta.heading)) : 0,
+    origViewYaw: meta.heading != null ? normalizeRad(-degToRad(meta.heading)) : 0,
+    headingSource: meta.heading != null ? 'exif' : 'manual',
+    hasGps,
+    photoUrl: URL.createObjectURL(file),
+    photoName: file.name,
+    photoFile: file,
+    captureTime: meta.captureTime,
+    captureOffset: meta.captureOffset,
+    marker: null,
+  };
 }
 
 function addEmptyNode(lat, lng) {
@@ -3858,6 +4162,13 @@ function refreshMarker(n) {
 
 function refreshAllMarkers() {
   S.nodes.forEach(refreshMarker);
+  refreshConnMarks();
+}
+
+// The × that removes a link sits only on the selected node's links: on every
+// link at once it cluttered the whole map.
+function refreshConnMarks() {
+  S.conns.forEach(c => c.xMark?.getElement()?.classList.toggle('hide', c.from !== S.selId && c.to !== S.selId));
 }
 
 function handleNodeClick(id) {
@@ -3891,7 +4202,7 @@ function handleNodeConnectClick(id) {
     refreshAllMarkers();
     const from = gn(id);
     connectLine = L.polyline([[from.lat, from.lng], [from.lat, from.lng]], {
-      color: '#2dd9a8', weight: 2, opacity: 0.7, dashArray: '6 6',
+      color: '#8b5cf6', weight: 2, opacity: 0.8, dashArray: '6 6',
     }).addTo(map);
     document.getElementById('map').classList.add('connecting');
     return;
@@ -3936,7 +4247,7 @@ function drawConn(c, { animate = true } = {}) {
   const a = gn(c.from);
   const b = gn(c.to);
   if (!a || !b) return;
-  c.poly = L.polyline([[a.lat, a.lng], [b.lat, b.lng]], { color: '#2dd9a8', weight: 3, opacity: 0.85 }).addTo(map);
+  c.poly = L.polyline([[a.lat, a.lng], [b.lat, b.lng]], { color: '#8b5cf6', weight: 3, opacity: 0.9 }).addTo(map);
   c.poly.bindTooltip(formatDistance(distanceMeters(a, b)), { className: 'conn-dist-wrap', sticky: true, direction: 'top', opacity: 1 });
   const pathEl = animate ? c.poly.getElement?.() : null;
   if (pathEl) {
@@ -3956,6 +4267,7 @@ function drawConn(c, { animate = true } = {}) {
     L.DomEvent.stopPropagation(e);
     deleteConn(c.id);
   });
+  c.xMark.getElement()?.classList.toggle('hide', c.from !== S.selId && c.to !== S.selId);
 }
 
 function deleteConn(id) {
@@ -3994,11 +4306,12 @@ function updateSb() {
   niS.checked = S.startId === n.id;
   refreshLatLngUi(n);
   gpsBadge.innerHTML = n.hasGps ? '<span class="gok">GPS</span>' : '<span class="gno">No GPS</span>';
-  phB.innerHTML = n.photoUrl ? `<img src="${n.photoUrl}" alt="">` : '<span>No photo</span>';
+  phB.style.display = n.photoUrl ? 'none' : '';
   phN.innerHTML = [escapeHtml(n.photoName || ''), n.blurred && t('blurred')].filter(Boolean).join(' · ') +
     (n.gsvPhotoId ? `<div style="margin-top:4px">${gsvStatusHtml(n)}</div>` : '');
   renderHotspots(n);
   document.getElementById('bn-blur').style.display = n.photoFile ? '' : 'none';
+  document.querySelector('.np-photo-bar').style.display = n.photoUrl ? '' : 'none';
   refreshHeadingUi(n);
   ensurePanoViewer(n);
   renderWalkList(n);
@@ -4013,11 +4326,9 @@ function refreshLatLngUi(n) {
 
 function refreshHeadingUi(n) {
   niH.value = n.heading == null ? '' : n.heading.toFixed(1);
-  if (n.heading == null) {
-    headingMeta.textContent = 'Heading not set';
-  } else {
-    headingMeta.textContent = `heading ${n.heading.toFixed(1)}° (${n.headingSource === 'exif' ? 'EXIF' : n.headingSource === 'auto' ? 'auto' : 'manual'})`;
-  }
+  headingMeta.textContent = n.heading == null ? t('not set')
+    : n.headingSource === 'exif' ? t('from the photo (EXIF)')
+    : n.headingSource === 'auto' ? t('from the walking direction') : t('set by hand');
 }
 
 async function ensurePanoViewer(n) {
@@ -4037,8 +4348,6 @@ async function ensurePanoViewer(n) {
       navbar: ['zoom', 'move'],
       defaultYaw: getNodeEditorYaw(n),
       defaultPitch: 0,
-      minPitch: 0,
-      maxPitch: 0,
       touchmoveTwoFingers: true,
     });
     panoViewer.addEventListener('position-updated', () => {
@@ -4067,26 +4376,32 @@ function renderConnList() {
   if (!n) return;
   const linked = getLinkedNodes(n.id);
   clL.innerHTML = '';
+  document.getElementById('cl-count').textContent = linked.length || '';
+  // Walking back only once you have walked somewhere.
+  const back = document.getElementById('walk-back');
+  const start = document.getElementById('walk-start');
+  back.hidden = !walkHistory.some(id => gn(id));
+  start.hidden = !S.startId || S.startId === n.id || !walkHistory.length;
+  document.getElementById('walk-row').hidden = back.hidden && start.hidden;
   if (!linked.length) {
-    clL.innerHTML = '<span style="color:var(--text-faint)">None</span>';
+    clL.innerHTML = `<span class="chips-empty">${escapeHtml(t('Right-click this node, then another one, to link them.'))}</span>`;
     return;
   }
   linked.forEach(o => {
     const c = gcbs(n.id, o.id)[0];
-    const d = document.createElement('div');
-    d.className = 'ci';
-    d.innerHTML = `<span class="cil" data-node="${o.id}">${escapeHtml(o.name)}</span><span class="cx" data-id="${c.id}">×</span>`;
-    d.querySelector('.cil').onclick = () => {
-      S.compareTargetByNode[n.id] = o.id;
-      refreshCompareUi(n);
-    };
-    d.querySelector('.cx').onclick = () => deleteConn(c.id);
-    clL.appendChild(d);
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.innerHTML = `<button class="go" title="${escapeHtml(t('Walk there'))}">${escapeHtml(o.name)}</button><button class="x" title="${escapeHtml(t('Remove link'))}">×</button>`;
+    chip.querySelector('.go').onclick = () => jumpToNode(o.id, true);
+    chip.querySelector('.x').onclick = () => deleteConn(c.id);
+    clL.appendChild(chip);
   });
 }
 
 function renderWalkList(n) {
+  // The connection chips walk there now; this list stays empty and hidden.
   walkList.innerHTML = '';
+  return;
   const linked = getLinkedNodes(n.id).filter(x => x.photoUrl);
   if (!linked.length) {
     walkHelp.textContent = 'Select a node with links and you can walk from here inside the editor.';
@@ -4103,6 +4418,10 @@ function renderWalkList(n) {
 }
 
 function refreshCompareUi(n) {
+  if (n && !document.querySelector('details[data-sec="compare"]').open) {
+    cmpWrap.style.display = 'none';
+    return;
+  }
   if (!n) {
     cmpWrap.style.display = 'none';
     cmpTarget.innerHTML = '';
@@ -4206,6 +4525,11 @@ function alignCompareByHeading(baseNode, targetNode) {
 
 function updateStats() {
   document.getElementById('st').innerHTML = `Nodes <b>${S.nodes.length}</b> &middot; Links <b>${S.conns.length}</b>`;
+  document.getElementById('no-sel').classList.toggle('has-nodes', S.nodes.length > 0);
+  // No list without nodes; a search box only once the list gets long.
+  document.getElementById('node-list-panel').hidden = !S.nodes.length;
+  const search = document.getElementById('node-search');
+  search.hidden = S.nodes.length < 8 && !search.value;
   renderNodeList();
 }
 
@@ -4335,7 +4659,7 @@ function closeAnyOverlay() {
     el.classList.remove('show');
     closed = true;
   });
-  if (toolsMenu.classList.contains('show')) { toolsMenu.classList.remove('show'); closed = true; }
+  if (document.querySelector('#tb .menu.show')) { closeMenus(); closed = true; }
   if (closed && document.activeElement instanceof HTMLElement) document.activeElement.blur();
   return closed;
 }
@@ -4350,10 +4674,11 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  if ((e.ctrlKey || e.metaKey) && !e.altKey && ['s', 'o'].includes(e.key.toLowerCase())) {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && ['s', 'o', 'i'].includes(e.key.toLowerCase())) {
     e.preventDefault();
     if (document.querySelector('.modal-back.show')) return;
     if (e.key.toLowerCase() === 's') saveProject({ saveAs: e.shiftKey });
+    else if (e.key.toLowerCase() === 'i') openImport();
     else pickAndOpenProject();
     return;
   }
@@ -4743,7 +5068,7 @@ async function initSaveDir() {
 
 function updateSaveHint() {
   // In the app window every download asks where to save it.
-  saveHint.textContent = `Save target: ${saveDirHandle?.name || (appHasWindow ? t('ask each time') : 'Downloads')}`;
+  saveHint.textContent = saveDirHandle?.name || (appHasWindow ? t('ask each time') : 'Downloads');
 }
 
 async function saveTextFile(name, content) {
@@ -4850,25 +5175,168 @@ document.querySelectorAll('[data-close]').forEach(el => { el.onclick = () => clo
 function storageGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
 function storageSet(key, value) { try { localStorage.setItem(key, value); } catch {} }
 
-// ── Tools menu ────────────────────────────────────
-const toolsMenu = document.getElementById('tools-menu');
-document.getElementById('btools').onclick = e => {
-  e.stopPropagation();
-  toolsMenu.classList.toggle('show');
-};
-document.addEventListener('click', e => { if (!toolsMenu.contains(e.target)) toolsMenu.classList.remove('show'); });
-toolsMenu.querySelectorAll('button[data-run]').forEach(b => {
-  b.onclick = () => {
-    toolsMenu.classList.remove('show');
-    TOOL_ACTIONS[b.dataset.run]();
-  };
+// ── Collapsible sections of the side panel ───────
+document.querySelectorAll('details.sec').forEach(sec => {
+  const key = `sec:${sec.dataset.sec}`;
+  const saved = storageGet(key);
+  if (saved != null) sec.open = saved === '1';
+  sec.addEventListener('toggle', () => {
+    storageSet(key, sec.open ? '1' : '0');
+    if (sec.dataset.sec === 'compare' && sec.open) refreshCompareUi(gn(S.selId));
+  });
 });
+
+// ── Light / dark ──────────────────────────────────
+// The choice is remembered; without one the editor follows the system. The
+// theme attribute is already set in <head>, before the first paint.
+const themeQuery = matchMedia('(prefers-color-scheme: light)');
+function currentTheme() {
+  const chosen = storageGet('theme');
+  return chosen === 'light' || chosen === 'dark' ? chosen : themeQuery.matches ? 'light' : 'dark';
+}
+function applyTheme() {
+  const theme = currentTheme();
+  document.documentElement.dataset.theme = theme;
+  document.getElementById('btheme').title = theme === 'dark' ? t('Switch to light mode') : t('Switch to dark mode');
+  if (appHasWindow) {  // the window frame follows (title bar colour)
+    fetch('/api/window-theme', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme }),
+    }).catch(() => {});
+  }
+}
+function toggleTheme() {
+  storageSet('theme', currentTheme() === 'dark' ? 'light' : 'dark');
+  applyTheme();
+}
+themeQuery.addEventListener('change', () => { if (!storageGet('theme')) applyTheme(); });
+document.getElementById('btheme').onclick = toggleTheme;
+applyTheme();
+
+// ── First-run tour ────────────────────────────────
+// A few steps that point at the real controls. Shown once (also after an update
+// that brings it), and again from Tools → Introduction.
+const TOUR_STEPS = [
+  { title: 'Welcome to Streetview Tour Editor',
+    text: 'Turn the 360° photos of a walk into a connected tour on Google Street View. This short tour shows you around - it takes a minute.' },
+  { target: '#mw', title: 'Bring in your photos',
+    text: 'Drag your 360° photos - or a whole folder - onto the map, or use Project → Import photos. They are placed by GPS, linked in the order you walked and turned to north in one go.' },
+  { target: '#sb', title: 'Edit a node',
+    text: 'Click a node - on the map or in this list - to edit it here: its name, the photo, the north direction, links and info points.' },
+  { target: '#mw', title: 'Link the nodes',
+    text: 'Right-click a node, then a second one, to link them - that is how visitors walk from photo to photo. Tools → Auto-connect links everything in the order you walked.' },
+  { target: '#sb', title: 'Get north right',
+    text: 'Turn the photo in the side panel until you face north, then click "Current view is north". Tools → Headings from walking direction does all photos at once.' },
+  { target: '#btools', title: 'Tools',
+    text: 'Auto-connect, placing photos from a GPX track, blurring faces and licence plates, a tour check before uploading, and comparing your tour with Google.' },
+  { target: '#bpreview', title: 'Preview',
+    text: 'Walk through the tour exactly as visitors will see it. If a photo looks turned after a jump, fix it right there.' },
+  { target: '#bproject', title: 'Save and export',
+    text: 'Ctrl+S saves the project with all photos as one .vrtour file - everything is autosaved as well. Export the tour as a website or as files for your own server.' },
+  { target: '#bupload', title: 'Publish to Google',
+    text: 'Uploads the photos with their position, direction and links to Google Street View. The first time, a short guide connects your Google account.' },
+  { target: '#btheme', title: 'Make it yours',
+    text: 'Switch between light and dark here. Ctrl+K lists every command, ? all shortcuts - and Tools → Introduction shows this tour again.' },
+];
+const tourEl = document.getElementById('tour');
+const tourSpot = tourEl.querySelector('.tour-spot');
+const tourCard = tourEl.querySelector('.tour-card');
+let tourIndex = -1;
+
+function startTour() {
+  closeMenus();
+  tourIndex = 0;
+  tourEl.hidden = false;
+  showTourStep();
+}
+function endTour() {
+  tourEl.hidden = true;
+  tourIndex = -1;
+  storageSet('tourDone', '1');
+}
+function showTourStep() {
+  const step = TOUR_STEPS[tourIndex];
+  const last = tourIndex === TOUR_STEPS.length - 1;
+  document.getElementById('tour-step').textContent = `${tourIndex + 1} / ${TOUR_STEPS.length}`;
+  document.getElementById('tour-title').textContent = t(step.title);
+  document.getElementById('tour-text').textContent = t(step.text);
+  document.getElementById('tour-back').hidden = tourIndex === 0;
+  document.getElementById('tour-skip').hidden = last;
+  document.getElementById('tour-next').textContent = tourIndex === 0 ? t('Start the tour') : last ? t('Done') : t('Next');
+  placeTour();
+  document.getElementById('tour-next').focus();
+}
+function placeTour() {
+  if (tourIndex < 0) return;
+  const step = TOUR_STEPS[tourIndex];
+  const target = step.target && document.querySelector(step.target);
+  const vw = innerWidth, vh = innerHeight, gap = 14;
+  const card = tourCard.getBoundingClientRect();
+  if (!target) {  // welcome: no spotlight, card in the middle
+    Object.assign(tourSpot.style, { left: `${vw / 2}px`, top: `${vh / 2}px`, width: '0px', height: '0px' });
+    Object.assign(tourCard.style, { left: `${(vw - card.width) / 2}px`, top: `${(vh - card.height) / 2}px` });
+    return;
+  }
+  const r = target.getBoundingClientRect();
+  const pad = r.width > 200 ? 0 : 6;  // big areas (map, side panel) are shown as they are
+  Object.assign(tourSpot.style, {
+    left: `${r.left - pad}px`, top: `${r.top - pad}px`, width: `${r.width + 2 * pad}px`, height: `${r.height + 2 * pad}px`,
+  });
+  let left, top;
+  if (r.width > vw / 2) {           // the map: card inside it, lower middle
+    left = r.left + (r.width - card.width) / 2;
+    top = r.bottom - card.height - 40;
+  } else if (r.height > vh / 2) {   // the side panel: card right of it
+    left = r.right + gap;
+    top = r.top + 80;
+  } else {                          // a toolbar button: card below it
+    left = r.left + r.width / 2 - card.width / 2;
+    top = r.bottom + gap;
+  }
+  left = Math.max(16, Math.min(left, vw - card.width - 16));
+  top = Math.max(16, Math.min(top, vh - card.height - 16));
+  Object.assign(tourCard.style, { left: `${left}px`, top: `${top}px` });
+}
+document.getElementById('tour-next').onclick = () => {
+  if (tourIndex >= TOUR_STEPS.length - 1) endTour();
+  else { tourIndex++; showTourStep(); }
+};
+document.getElementById('tour-back').onclick = () => { if (tourIndex > 0) { tourIndex--; showTourStep(); } };
+document.getElementById('tour-skip').onclick = endTour;
+addEventListener('resize', placeTour);
+// While the tour runs it owns the keyboard (no shortcuts reach the editor).
+addEventListener('keydown', e => {
+  if (tourIndex < 0) return;
+  e.stopPropagation();
+  if (e.key === 'Escape') { e.preventDefault(); endTour(); }
+  else if (e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); document.getElementById('tour-next').click(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); document.getElementById('tour-back').click(); }
+}, true);
+
+// ── Toolbar menus (Project, Tools) ────────────────
+function closeMenus() { document.querySelectorAll('#tb .menu.show').forEach(m => m.classList.remove('show')); }
+document.querySelectorAll('#tb .menu-wrap').forEach(wrap => {
+  const menu = wrap.querySelector('.menu');
+  wrap.querySelector(':scope > .btn').onclick = e => {
+    e.stopPropagation();
+    const open = !menu.classList.contains('show');
+    closeMenus();
+    menu.classList.toggle('show', open);
+  };
+  // Every entry closes the menu; entries with an id have their own handler elsewhere.
+  menu.addEventListener('click', e => { if (e.target.closest('button')) closeMenus(); });
+  menu.querySelectorAll('button[data-run]').forEach(b => { b.onclick = () => TOOL_ACTIONS[b.dataset.run](); });
+});
+document.addEventListener('click', e => { if (!e.target.closest('#tb .menu')) closeMenus(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenus(); });
 
 const TOOL_ACTIONS = {
   autoconnect: openAutoConnect,
   gpx: openGpx,
   blur: () => openBlurTool(S.selId),
   website: exportTourWebsite,
+  viewer: exportViewerFiles,
+  tour: startTour,
+  shortcuts: () => cheatBack.classList.add('show'),
   updates: () => checkForUpdates({ force: true, quiet: false }),
   saveas: () => saveProject({ saveAs: true }),
   walkheadings: () => openWalkHeadings(),
@@ -5241,6 +5709,14 @@ function safeFileName(name) {
   return (name || 'photo.jpg').replace(/[^\w.\-]+/g, '_');
 }
 
+const VIEWER_LICENSES = [
+  'Libraries of this tour viewer:',
+  '  Photo Sphere Viewer 5.11.5 - MIT License - https://photo-sphere-viewer.js.org/',
+  '  three.js 0.169.0 - MIT License - https://threejs.org/',
+  '  Leaflet 1.9.4 - BSD 2-Clause License - https://leafletjs.com/',
+  '',
+].join('\r\n');
+
 async function exportTourWebsite() {
   const withPhoto = S.nodes.filter(n => n.photoFile);
   if (!withPhoto.length) { alert('None of the nodes has a photo loaded.'); return; }
@@ -5265,14 +5741,22 @@ async function exportTourWebsite() {
     'and open http://localhost:8000',
     '',
   ].join('\r\n');
-  const entries = [
-    { name: 'index.html', data: new Blob([genViewer(start, nodes)], { type: 'text/html' }) },
-    { name: 'tour-config.json', data: new Blob([JSON.stringify({ startNodeId: start, nodes }, null, 2)], { type: 'application/json' }) },
-    { name: 'README.txt', data: new Blob([readme], { type: 'text/plain' }) },
-    ...nodes.map(nc => ({ name: nc.panorama, data: gn(nc.id).photoFile })),
-  ];
   try {
     setSaveStatus('saving', 'Packing tour…');
+    // The viewer's libraries go into the zip: the website needs no CDN.
+    const libs = await Promise.all(Object.keys(VIEWER_LIBS).map(async path => {
+      const r = await fetch(`vendor/${path}`);
+      if (!r.ok) throw new Error(`vendor/${path}: HTTP ${r.status}`);
+      return { name: `lib/${path}`, data: await r.blob() };
+    }));
+    const entries = [
+      { name: 'index.html', data: new Blob([genViewer(start, nodes, { libBase: './lib/' })], { type: 'text/html' }) },
+      { name: 'tour-config.json', data: new Blob([JSON.stringify({ startNodeId: start, nodes }, null, 2)], { type: 'application/json' }) },
+      { name: 'README.txt', data: new Blob([readme], { type: 'text/plain' }) },
+      ...libs,
+      { name: 'lib/LICENSES.txt', data: new Blob([VIEWER_LICENSES], { type: 'text/plain' }) },
+      ...nodes.map(nc => ({ name: nc.panorama, data: gn(nc.id).photoFile })),
+    ];
     const zip = await buildZip(entries);
     setSaveStatus('saved', 'Saved');
     await saveTextFile('tour-website.zip', zip);
@@ -5321,12 +5805,13 @@ let updateInfo = null;
 async function initAppInfo() {
   try {
     const j = await (await fetch('/api/app-info')).json();
-    document.getElementById('app-version').textContent = j.version === 'dev' ? 'dev' : `v${j.version}`;
+    document.getElementById('app-version').textContent = `Streetview Tour Editor ${j.version === 'dev' ? 'dev' : j.version}`;
     appHasWindow = !!j.window;
     if (appHasWindow) {
       useAppFileDialogs();
       updateSaveHint();
       updateTitle();
+      applyTheme();
     }
     return j;
   } catch { return null; }
@@ -5850,6 +6335,444 @@ document.getElementById('walkh-go').onclick = async () => {
   toast(t('Set the heading of {n} photo(s)', { n: changed }));
 };
 
+// ── Import assistant ──────────────────────────────
+// Photos or whole folders in one go: placed by GPS (or a GPX track), linked in
+// the order they were taken, turned to north from the walking direction, then
+// the tour check. Project → Import photos / Ctrl+I, and dropping several photos
+// or a folder on the map.
+const IMPORT_TYPES = [{ description: 'Photos', accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.webp'] } }];
+const imp = { files: [], metas: new Map(), skipped: 0, point: null, busy: false, gen: 0 };
+const impBack = document.getElementById('imp-back');
+const impDrop = document.getElementById('imp-drop');
+
+function isPhotoFile(f) {
+  return !!f && !f.name.startsWith('.') && (f.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(f.name));
+}
+const photoKey = f => `${f.name}|${f.size}|${f.lastModified}`;
+const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
+
+// Dropped files and folders. webkitGetAsEntry() works only while the drop event
+// is dispatched, so the entries are taken right away and read afterwards.
+function dropEntries(dt) {
+  return [...(dt?.items || [])].filter(it => it.kind === 'file').map(it => it.webkitGetAsEntry?.()).filter(Boolean);
+}
+
+async function filesFromEntries(entries, depth = 0) {
+  const out = [];
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    if (entry.isFile) {
+      const file = await new Promise(resolve => entry.file(resolve, () => resolve(null)));
+      if (isPhotoFile(file)) out.push(file);
+    } else if (entry.isDirectory && depth < 4) {
+      const reader = entry.createReader();
+      const children = [];
+      for (;;) { // handed out in batches
+        const batch = await new Promise(resolve => reader.readEntries(resolve, () => resolve([])));
+        if (!batch.length) break;
+        children.push(...batch);
+      }
+      out.push(...await filesFromEntries(children.sort(byName), depth + 1));
+    }
+  }
+  return out;
+}
+
+async function filesFromDirHandle(dir, depth = 0) {
+  const handles = [];
+  for await (const h of dir.values()) handles.push(h);
+  const out = [];
+  for (const h of handles.sort(byName)) {
+    if (h.name.startsWith('.')) continue;
+    if (h.kind === 'file') {
+      const file = await h.getFile();
+      if (isPhotoFile(file)) out.push(file);
+    } else if (depth < 3) {
+      out.push(...await filesFromDirHandle(h, depth + 1));
+    }
+  }
+  return out;
+}
+
+// Files from the app window's dialogs come through the app, one by one.
+async function readAppFiles(handles) {
+  const out = [];
+  for (let i = 0; i < handles.length; i++) {
+    if (i % 5 === 0) setImpStatus(t('Reading photos… {i} of {n}', { i: i + 1, n: handles.length }));
+    const f = await handles[i].getFile();
+    const type = /\.png$/i.test(f.name) ? 'image/png' : /\.webp$/i.test(f.name) ? 'image/webp' : 'image/jpeg';
+    out.push(new File([f], f.name, { type }));
+  }
+  return out;
+}
+
+function setImpStatus(msg) { document.getElementById('imp-status').textContent = msg; }
+
+function openImport({ entries = null, files = null, point = null } = {}) {
+  closeMenus();
+  imp.gen++;
+  Object.assign(imp, { files: [], metas: new Map(), skipped: 0, point, busy: false });
+  let o = {};
+  try { o = JSON.parse(storageGet('importOptions') || '{}'); } catch {}
+  document.getElementById('imp-connect').checked = o.connect ?? true;
+  document.getElementById('imp-north').checked = o.north ?? true;
+  document.getElementById('imp-check').checked = o.check ?? true;
+  document.getElementById('imp-dist').value = o.dist ?? 25;
+  document.getElementById('imp-gpx').value = '';
+  setImpStatus('');
+  renderImport();
+  openModal('imp-back');
+  if (entries?.length) collectImport(() => filesFromEntries(entries));
+  else if (files?.length) addImportFiles(files);
+}
+
+async function collectImport(getFiles) {
+  const gen = imp.gen;
+  imp.busy = true;
+  renderImport();
+  setImpStatus(t('Looking for photos…'));
+  let files;
+  try {
+    files = await getFiles();
+  } catch (err) {
+    if (gen !== imp.gen) return;
+    imp.busy = false;
+    renderImport();
+    setImpStatus(t('Could not read the photos: {msg}', { msg: err.message || err }));
+    return;
+  }
+  if (gen !== imp.gen) return;
+  imp.busy = false;
+  await addImportFiles(files);
+}
+
+async function addImportFiles(files) {
+  const gen = imp.gen;
+  const known = new Set(imp.files.map(photoKey));
+  const inTour = new Set(S.nodes.filter(n => n.photoFile).map(n => `${n.photoName}|${n.photoFile.size}`));
+  const fresh = [];
+  for (const f of files) {
+    if (!isPhotoFile(f) || known.has(photoKey(f))) continue;
+    known.add(photoKey(f));
+    if (inTour.has(`${f.name}|${f.size}`)) imp.skipped++;
+    else fresh.push(f);
+  }
+  if (!fresh.length) {
+    renderImport();
+    setImpStatus(imp.files.length ? '' : t('No photos found.'));
+    return;
+  }
+  imp.busy = true;
+  renderImport();
+  for (let i = 0; i < fresh.length; i++) {
+    if (gen !== imp.gen || !impBack.classList.contains('show')) { imp.gen++; return; } // closed or started over
+    if (i % 5 === 0) setImpStatus(t('Reading photos… {i} of {n}', { i: i + 1, n: fresh.length }));
+    imp.metas.set(fresh[i], await readPhotoMeta(fresh[i]));
+    imp.files.push(fresh[i]);
+  }
+  imp.busy = false;
+  setImpStatus('');
+  renderImport();
+}
+
+function renderImport() {
+  const n = imp.files.length;
+  const metas = imp.files.map(f => imp.metas.get(f));
+  const gps = metas.filter(m => m.hasGps).length;
+  const heading = metas.filter(m => m.heading != null).length;
+  const sum = document.getElementById('imp-sum');
+  const parts = [`<b>${escapeHtml(t('{n} photo(s)', { n }))}</b>`];
+  if (n) parts.push(escapeHtml(t('{n} with GPS', { n: gps })), escapeHtml(t('{n} with capture time', { n: metas.filter(m => m.captureTime).length })));
+  if (heading) parts.push(escapeHtml(t('{n} with compass heading', { n: heading })));
+  if (imp.skipped) parts.push(escapeHtml(t('{n} already in the tour - skipped', { n: imp.skipped })));
+  sum.innerHTML = parts.join(' · ') + (n && !imp.busy ? ` <span class="x" id="imp-clear">${escapeHtml(t('Clear'))}</span>` : '');
+  sum.hidden = !n && !imp.skipped;
+  document.getElementById('imp-gpx-row').hidden = !n || gps === n;
+  const go = document.getElementById('imp-go');
+  go.disabled = !n || imp.busy;
+  go.textContent = n ? t('Import {n} photo(s)', { n }) : t('Import');
+  document.getElementById('imp-pick-files').disabled = document.getElementById('imp-pick-folder').disabled = imp.busy;
+}
+
+document.getElementById('imp-sum').addEventListener('click', e => {
+  if (e.target.id !== 'imp-clear') return;
+  imp.gen++;
+  Object.assign(imp, { files: [], metas: new Map(), skipped: 0, busy: false });
+  setImpStatus('');
+  renderImport();
+});
+
+document.getElementById('imp-pick-files').onclick = async () => {
+  if (!appHasWindow) { document.getElementById('imp-files-input').click(); return; }
+  let handles;
+  try {
+    handles = await window.showOpenFilePicker({ multiple: true, types: IMPORT_TYPES });
+  } catch (err) {
+    if (err?.name !== 'AbortError') setImpStatus(err.message || String(err));
+    return;
+  }
+  collectImport(() => readAppFiles(handles));
+};
+
+document.getElementById('imp-pick-folder').onclick = async () => {
+  if (appHasWindow) {
+    let j;
+    try {
+      j = await appPick('folder', { remember: false });
+    } catch (err) {
+      if (err?.name !== 'AbortError') setImpStatus(err.message || String(err));
+      return;
+    }
+    collectImport(async () => {
+      const r = await (await fetch('/api/files/photos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: j.token }),
+      })).json();
+      if (!r.ok) throw new Error(r.error || 'The folder could not be read.');
+      return readAppFiles(r.files.map(f => new AppFileHandle(f.token, f.name)));
+    });
+    return;
+  }
+  if (!window.showDirectoryPicker) { document.getElementById('imp-folder-input').click(); return; }
+  let dir;
+  try {
+    dir = await window.showDirectoryPicker({ mode: 'read' });
+  } catch (err) {
+    if (err?.name !== 'AbortError') setImpStatus(err.message || String(err));
+    return;
+  }
+  collectImport(() => filesFromDirHandle(dir));
+};
+
+document.getElementById('imp-files-input').addEventListener('change', e => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  addImportFiles(files);
+});
+document.getElementById('imp-folder-input').addEventListener('change', e => {
+  const files = [...e.target.files].sort((a, b) => a.webkitRelativePath.localeCompare(b.webkitRelativePath, undefined, { numeric: true }));
+  e.target.value = '';
+  addImportFiles(files);
+});
+
+impBack.addEventListener('dragover', e => { e.preventDefault(); impDrop.classList.add('over'); });
+impBack.addEventListener('dragleave', e => { if (!impBack.contains(e.relatedTarget)) impDrop.classList.remove('over'); });
+impBack.addEventListener('drop', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  impDrop.classList.remove('over');
+  if (imp.busy) return;
+  const entries = dropEntries(e.dataTransfer);
+  const files = [...e.dataTransfer.files];
+  if (entries.some(en => en.isDirectory)) collectImport(() => filesFromEntries(entries));
+  else addImportFiles(files);
+});
+
+// A file dropped anywhere else must not replace the editor with that file
+// (file inputs still take a dropped file).
+const strayFileDrag = e => e.dataTransfer?.types?.includes('Files') && !e.target.closest?.('input[type=file]');
+document.addEventListener('dragover', e => {
+  if (e.defaultPrevented || !strayFileDrag(e)) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'none';
+});
+document.addEventListener('drop', e => { if (strayFileDrag(e)) e.preventDefault(); });
+
+function offsetEast(p, meters) {
+  return { lat: p.lat, lng: p.lng + meters / (111320 * Math.cos(p.lat * Math.PI / 180)) };
+}
+
+document.getElementById('imp-go').onclick = async () => {
+  if (!imp.files.length || imp.busy) return;
+  const opts = {
+    connect: document.getElementById('imp-connect').checked,
+    north: document.getElementById('imp-north').checked,
+    check: document.getElementById('imp-check').checked,
+    dist: Math.max(1, Number(document.getElementById('imp-dist').value) || 25),
+  };
+  storageSet('importOptions', JSON.stringify(opts));
+
+  // Photos without GPS: from the GPX track, if there is one.
+  let track = null, offsetMs = 0;
+  const gpxFile = document.getElementById('imp-gpx-row').hidden ? null : document.getElementById('imp-gpx').files[0];
+  if (gpxFile) {
+    try { track = parseGpx(await gpxFile.text()); } catch (err) { setImpStatus(err.message); return; }
+    const withOffset = imp.files.map(f => imp.metas.get(f)).find(m => m.captureOffset);
+    offsetMs = (withOffset ? parseOffsetHours(withOffset.captureOffset) : -new Date().getTimezoneOffset() / 60) * 3600000;
+  }
+
+  // The walk: capture time, then file name (photos without a time come last).
+  const time = m => { const v = m.captureTime ? Date.parse(`${m.captureTime}Z`) : NaN; return Number.isFinite(v) ? v : Infinity; };
+  const walk = imp.files.map(f => ({ f, m: imp.metas.get(f) }))
+    .sort((a, b) => (time(a.m) - time(b.m)) || byName(a.f, b.f));
+
+  pushUndo();
+  const base = imp.point || map.getCenter();
+  const created = [];
+  let fromTrack = 0, unplaced = 0;
+  for (const { f, m } of walk) {
+    let pos = m.hasGps ? m : null;
+    if (!pos && track && m.captureTime) {
+      pos = positionAt(track, Date.parse(`${m.captureTime}Z`) - offsetMs);
+      if (pos) fromTrack++;
+    }
+    const node = pos ? newPhotoNode(f, m, pos, true) : newPhotoNode(f, m, offsetEast(base, 5 * unplaced++), false);
+    S.nodes.push(node);
+    created.push(node);
+  }
+
+  // Photos without a position sit in a makeshift row: they say nothing about the
+  // way walked, so the chain and the headings skip them (unless none has one).
+  const placed = created.filter(n => n.hasGps);
+  const before = S.conns.length;
+  if (opts.connect) {
+    const chain = placed.length ? placed : created;
+    for (let i = 0; i < chain.length - 1; i++) {
+      const a = chain[i], b = chain[i + 1];
+      if (distanceMeters(a, b) <= opts.dist) S.conns.push({ id: cuid(), from: a.id, to: b.id, poly: null, xMark: null });
+    }
+  }
+  let headings = 0;
+  if (opts.north) {
+    placed.forEach((n, i) => {
+      if (n.heading != null) return;
+      const wb = walkBearing(placed, i);
+      if (wb == null) return;
+      n.heading = normalizeHeading(wb);
+      n.headingSource = 'auto';
+      n.viewYaw = normalizeRad(-degToRad(n.heading));
+      headings++;
+    });
+  }
+
+  if (!S.startId) S.startId = created[0].id;
+  S.selId = created[0].id;
+  created.forEach(n => createMarker(n, { animate: false }));
+  S.conns.slice(before).forEach(c => drawConn(c, { animate: false }));
+  refreshAllMarkers();
+  updateSb();
+  updateStats();
+  if (S.nodes.length >= 2) fitAll(); else map.setView([created[0].lat, created[0].lng], 19);
+  scheduleAutosave();
+  closeModal('imp-back');
+
+  const notes = [t('Imported {n} photo(s): {l} link(s), {h} heading(s) from the walking direction.', { n: created.length, l: S.conns.length - before, h: headings })];
+  if (fromTrack) notes.push(t('{n} placed from the GPX track.', { n: fromTrack }));
+  if (unplaced) notes.push(t('{n} without a position, placed in a row - drag them to the right spot.', { n: unplaced }));
+  toast(notes.join(' '));
+  imp.gen++;
+  Object.assign(imp, { files: [], metas: new Map(), skipped: 0 });
+  if (opts.check) setTimeout(() => openTourCheck(), 400);
+};
+
+document.getElementById('bimport').onclick = () => openImport();
+document.getElementById('es-import').onclick = () => openImport();
+document.getElementById('es-open').onclick = () => pickAndOpenProject();
+
+// ── Recent projects ───────────────────────────────
+// In the app window the app keeps the list (the paths stay on its side). In
+// Chrome and Edge the file handles are kept in this browser's storage and need
+// the user's OK again to be read; other browsers can't reopen a file at all.
+const RECENT_MAX = 8;
+const CLOCK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>';
+
+async function recentDb(list) {
+  const db = await openSaveDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction('kv', list ? 'readwrite' : 'readonly');
+      const req = list ? tx.objectStore('kv').put(list, 'recentProjects') : tx.objectStore('kv').get('recentProjects');
+      tx.oncomplete = () => resolve(list || (Array.isArray(req.result) ? req.result : []));
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function rememberRecent(handle) {
+  try {
+    if (handle instanceof AppFileHandle) {
+      await fetch('/api/recent/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: handle.token }) });
+    } else if (typeof handle?.isSameEntry === 'function') {
+      const keep = [];
+      for (const r of await recentDb()) {
+        if (!(await r.handle.isSameEntry(handle).catch(() => false))) keep.push(r);
+      }
+      const id = crypto.randomUUID ? crypto.randomUUID() : `r${Date.now()}`;
+      await recentDb([{ id, name: handle.name, handle }, ...keep].slice(0, RECENT_MAX));
+    }
+  } catch (err) {
+    console.warn('recent projects', err);
+  }
+  renderRecent();
+}
+
+async function recentItems() {
+  if (appHasWindow) {
+    const j = await (await fetch('/api/recent', { cache: 'no-store' })).json();
+    return (j.items || []).map(it => ({ id: it.id, name: it.name, where: it.folder }));
+  }
+  if (!window.showOpenFilePicker) return [];
+  return (await recentDb()).map(r => ({ id: r.id, name: r.name, where: '' }));
+}
+
+async function renderRecent() {
+  let items = [];
+  try { items = await recentItems(); } catch {}
+  document.getElementById('menu-recent').hidden = !items.length;
+  document.getElementById('menu-recent-list').innerHTML = items.slice(0, 5).map(it =>
+    `<button data-recent="${escapeHtml(it.id)}" title="${escapeHtml(it.where || it.name)}">${CLOCK_ICON}<span class="rn">${escapeHtml(it.name)}</span></button>`).join('');
+  document.getElementById('es-recent').hidden = !items.length;
+  document.getElementById('es-recent-list').innerHTML = items.map(it =>
+    `<button class="recent-item" data-recent="${escapeHtml(it.id)}" title="${escapeHtml(it.where || it.name)}"><span class="rn">${escapeHtml(it.name)}</span>${it.where ? `<span class="rw">${escapeHtml(it.where)}</span>` : ''}</button>`).join('');
+}
+
+async function forgetRecent(id, name) {
+  try {
+    if (appHasWindow) {
+      await fetch('/api/recent/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+    } else {
+      await recentDb((await recentDb()).filter(r => r.id !== id));
+    }
+  } catch {}
+  toast(t('{name} is no longer there - removed from the list.', { name }));
+  renderRecent();
+}
+
+async function openRecent(id, name) {
+  try {
+    if (appHasWindow) {
+      const j = await (await fetch('/api/recent/open', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+      })).json();
+      if (!j.ok) { forgetRecent(id, name); return; }
+      const handle = new AppFileHandle(j.token, j.name);
+      await openProjectFile(await handle.getFile(), handle);
+      return;
+    }
+    const r = (await recentDb()).find(x => x.id === id);
+    if (!r) return;
+    const opts = { mode: 'read' };
+    if ((await r.handle.queryPermission(opts)) !== 'granted' && (await r.handle.requestPermission(opts)) !== 'granted') return;
+    let file;
+    try {
+      file = await r.handle.getFile();
+    } catch (err) {
+      if (err?.name === 'NotFoundError') { forgetRecent(id, name); return; }
+      throw err;
+    }
+    await openProjectFile(file, r.handle);
+  } catch (err) {
+    alert(`Could not open ${name}: ${err.message || err}`);
+  }
+}
+
+['menu-recent-list', 'es-recent-list'].forEach(id => document.getElementById(id).addEventListener('click', e => {
+  const b = e.target.closest('[data-recent]');
+  if (b) openRecent(b.dataset.recent, b.querySelector('.rn')?.textContent || '');
+}));
+document.getElementById('bproject').addEventListener('click', () => renderRecent());
+
 // ── Tour check ────────────────────────────────────
 const jpegInfoCache = new WeakMap();
 
@@ -5951,11 +6874,8 @@ document.getElementById('check-continue').onclick = () => {
 };
 
 // ── Face detection in the blur tool ───────────────
-const MEDIAPIPE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1';
-const FACE_MODELS = [
-  'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite',
-  'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
-];
+const MEDIAPIPE = new URL('vendor/mediapipe', location.href).href;
+const FACE_MODELS = [`${MEDIAPIPE}/blaze_face_full_range.tflite`, `${MEDIAPIPE}/blaze_face_short_range.tflite`];
 let faceDetectorPromise = null;
 
 function loadFaceDetector() {
@@ -6055,6 +6975,7 @@ let hsEditing = null; // { nodeId, id } of the point in the dialog
 function renderHotspots(n) {
   const list = document.getElementById('hs-list');
   const items = n.hotspots || [];
+  document.getElementById('hs-count').textContent = items.length || '';
   list.innerHTML = items.length ? '' : `<div class="mini" style="margin:0 0 6px">${t('No info points yet.')}</div>`;
   items.forEach(h => {
     const row = document.createElement('div');
@@ -6152,20 +7073,36 @@ function hotspotMarkers(n) {
 
 document.getElementById('bn-blur').onclick = () => openBlurTool(S.selId);
 
-function genViewer(startId, nodes, { editable = false } = {}) {
+// The tour viewer's libraries, as paths under editor/vendor/ and on the CDN.
+// libBase decides where a generated viewer loads them from: null = the CDN
+// (viewer files placed next to the photos on a web server), the app's own
+// copies (preview), or a folder of the exported website.
+const VIEWER_LIBS = {
+  'leaflet/leaflet.css': 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css',
+  'leaflet/leaflet.js': 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js',
+  'three/three.module.min.js': 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.min.js',
+  'psv/core/index.css': 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/index.css',
+  'psv/core/index.module.js': 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/index.module.js',
+  'psv/markers-plugin/index.css': 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.11.5/index.css',
+  'psv/markers-plugin/index.module.js': 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.11.5/index.module.js',
+  'psv/virtual-tour-plugin/index.css': 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/virtual-tour-plugin@5.11.5/index.css',
+  'psv/virtual-tour-plugin/index.module.js': 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/virtual-tour-plugin@5.11.5/index.module.js',
+};
+
+function genViewer(startId, nodes, { editable = false, libBase = null } = {}) {
   const sn = nodes.find(n => n.id === startId) || nodes[0];
   const closeScript = '<' + '/script>';
   const hasMap = nodes.filter(n => n.lat != null && n.lng != null).length > 1;
-  const PSV = 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer';
+  const lib = path => (libBase == null ? VIEWER_LIBS[path] : libBase + path);
   return `<!DOCTYPE html>
 <html lang="${currentLang}">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>${escapeHtml(sn.name)} - Tour</title>
-<link rel="stylesheet" href="${PSV}/core@5.11.5/index.css">
-<link rel="stylesheet" href="${PSV}/virtual-tour-plugin@5.11.5/index.css">
-<link rel="stylesheet" href="${PSV}/markers-plugin@5.11.5/index.css">
-${hasMap ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">' : ''}
+<link rel="stylesheet" href="${lib('psv/core/index.css')}">
+<link rel="stylesheet" href="${lib('psv/virtual-tour-plugin/index.css')}">
+<link rel="stylesheet" href="${lib('psv/markers-plugin/index.css')}">
+${hasMap ? `<link rel="stylesheet" href="${lib('leaflet/leaflet.css')}">` : ''}
 <style>
 *{margin:0;padding:0;box-sizing:border-box}html,body{height:100%;background:#000}#viewer{width:100vw;height:100vh}
 #badge{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);color:#fff;padding:5px 16px;border-radius:999px;font-family:system-ui,sans-serif;font-size:13px;backdrop-filter:blur(6px);pointer-events:none;z-index:10}
@@ -6181,8 +7118,13 @@ ${hasMap ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.
 <div id="viewer"></div>
 <div id="badge">${escapeHtml(sn.name)}</div>
 ${hasMap ? `<div id="mm"><button id="mm-t" title="${escapeHtml(t('Map'))}">✕</button></div>
-<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js">${closeScript}` : ''}
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","@photo-sphere-viewer/core":"${PSV}/core@5.11.5/index.module.js","@photo-sphere-viewer/virtual-tour-plugin":"${PSV}/virtual-tour-plugin@5.11.5/index.module.js","@photo-sphere-viewer/markers-plugin":"${PSV}/markers-plugin@5.11.5/index.module.js"}}${closeScript}
+<script src="${lib('leaflet/leaflet.js')}">${closeScript}` : ''}
+<script type="importmap">${JSON.stringify({ imports: {
+  three: lib('three/three.module.min.js'),
+  '@photo-sphere-viewer/core': lib('psv/core/index.module.js'),
+  '@photo-sphere-viewer/virtual-tour-plugin': lib('psv/virtual-tour-plugin/index.module.js'),
+  '@photo-sphere-viewer/markers-plugin': lib('psv/markers-plugin/index.module.js'),
+} })}${closeScript}
 <script type="module">
 import { Viewer } from '@photo-sphere-viewer/core';
 import { VirtualTourPlugin } from '@photo-sphere-viewer/virtual-tour-plugin';
@@ -6234,9 +7176,19 @@ i18nObserver.observe(document.body, { childList: true, subtree: true, characterD
 updateStats();
 updateTitle();
 checkSavedSession();
-initAppInfo();
+initAppInfo().then(renderRecent);
 openPendingProject();
 setTimeout(() => checkForUpdates(), 2500);
+// First start: the tour, once nothing else (restore prompt, a dialog) asks for
+// attention - unless an automated browser (tests, screenshots) drives the editor.
+if (!storageGet('tourDone') && !navigator.webdriver) {
+  const startWhenCalm = () => {
+    if (storageGet('tourDone')) return;
+    if (document.querySelector('.modal-back.show, .restore-banner.show, .update-banner.show')) setTimeout(startWhenCalm, 1000);
+    else startTour();
+  };
+  setTimeout(startWhenCalm, 900);
+}
 </script>
 </body>
 </html>

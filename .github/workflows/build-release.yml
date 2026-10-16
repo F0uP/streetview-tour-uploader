@@ -45,6 +45,12 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
     steps:
+      - uses: actions/checkout@v7
+
+      # Every build ships editor/vendor: it has to be exactly what the lock says.
+      - name: Check the bundled web libraries
+        run: python3 packaging/vendor.py --check
+
       - id: ver
         run: |
           if [ "${{ github.ref_type }}" = "tag" ]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-dev.${{ github.run_number }}"; fi

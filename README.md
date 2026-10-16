@@ -20,7 +20,7 @@ and publish everything to Google Maps with one click.
 [User guide](#user-guide) ·
 [FAQ](#faq--troubleshooting)
 
-<img src="docs/images/editor.jpg" alt="The tour editor: seven connected 360° photos on a satellite map, with the selected photo's panorama and heading controls in the side panel" width="900">
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/editor-dark.jpg"><img src="docs/images/editor-light.jpg" alt="The tour editor: seven connected 360° photos on a satellite map, with the selected photo's panorama and north controls in the side panel" width="900"></picture>
 
 </div>
 
@@ -42,20 +42,21 @@ them to Google.
 
 | | |
 |---|---|
-| 🗺️ **Plan on a map** | Drop your 360° JPEGs on a street or satellite map; photos with GPS land where they were taken. Link them by right-clicking, or let **auto-connect** chain them in the order you walked. |
+| 📥 **A whole walk in one go** | Drop a folder (or many photos) and the **import** places them by GPS, links them in the order you walked, turns them to north from the walking direction and checks the tour. One Ctrl+Z takes it all back. |
+| 🗺️ **Plan on a map** | Edit on a street or satellite map: link photos by right-clicking, or let **auto-connect** chain them in the order you walked. |
 | 🧭 **Get north right** | Align a photo by looking north and clicking once, fine-tune by ±1°/±10°/180°, or set every photo from the **walking direction**. The preview shows the result exactly as visitors will see it. |
 | 📍 **No GPS? No problem** | Place photos from a **GPX track** recorded on your phone, or type exact coordinates. |
 | 🙈 **Privacy built in** | **Blur faces and licence plates** before uploading, with automatic face detection as a starting point. The Street View Publish API does not blur anything itself. |
 | ✅ **Catch problems early** | A **tour check** finds what Google would reject (not 2:1, not a JPEG, over 75 MB) and what looks wrong (no north, unconnected photos, long links, duplicates). |
 | ☁️ **One-click publishing** | Upload with a live progress view, readable errors and automatic linking once Google has processed the photos. Later changes are **pushed without re-uploading**; the Google status shows on every marker. |
 | 🌐 **Share it anywhere** | Export a **ready-to-host website** of the tour (with info points and a minimap), or `tour-viewer.html` / `tour-config.json` / `tour.csv`. |
-| 💾 **Never lose work** | Autosave, a restore prompt after a crash, and `.vrtour` project files with all photos inside. **Ctrl+S** saves back into the open project. |
-| 🖥️ **A real desktop app** | For **Windows, macOS and Linux** (also ARM). Its own window, no browser needed; the system's own open and save dialogs, `.vrtour` file association, installers, and in-app updates on Windows. English and German user interface. |
+| 💾 **Never lose work** | Autosave, a restore prompt after a crash, and `.vrtour` project files with all photos inside. **Ctrl+S** saves back into the open project; **recent projects** are one click away. |
+| 🖥️ **A real desktop app** | For **Windows, macOS and Linux** (also ARM). Its own window, no browser needed, **works offline** (only the map and Google need the internet); a calm **light and dark design**, a short **introduction on first start**, the system's own open and save dialogs, `.vrtour` file association, installers, and in-app updates on Windows. English and German user interface. |
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/upload.jpg" alt="Upload dialog with three steps, a progress bar and one card per photo, all done"></td>
-    <td width="50%"><img src="docs/images/preview.jpg" alt="Tour preview: a street panorama with navigation arrows, an info point and a minimap of the route"></td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/upload-dark.jpg"><img src="docs/images/upload-light.jpg" alt="Upload dialog with three steps, a progress bar and one card per photo, all done"></picture></td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/preview-dark.jpg"><img src="docs/images/preview-light.jpg" alt="Tour preview: a street panorama with navigation arrows, an info point and a minimap of the route"></picture></td>
   </tr>
   <tr>
     <td align="center"><sub>Upload: progress, per-photo status, automatic linking</sub></td>
@@ -78,7 +79,7 @@ Get the file for your system from the
 | **Linux**: Debian 12+, Ubuntu 24.04+ and derivatives (amd64 and arm64) | `streetview-tour-editor_<version>_all.deb` | `sudo apt install ./streetview-tour-editor_*_all.deb` |
 
 Then start **Streetview Tour Editor** (Start menu, Launchpad or your app menu)
-and drop your 360° photos onto the map. The editor opens in its own window;
+and drop your 360° photos, or the whole folder, onto the map. The editor opens in its own window;
 closing the window quits the app.
 
 The window is the system's own web engine: Edge WebView2 on Windows (part of
@@ -149,7 +150,7 @@ from source. They are never part of a build or a project file.
 
 ```mermaid
 flowchart LR
-  A[📷 Drop photos] --> B[🔗 Link & place]
+  A[📷 Import photos] --> B[🔗 Link & place]
   B --> C[🧭 Align north]
   C --> D[🙈 Blur]
   D --> E[✅ Check & preview]
@@ -160,11 +161,21 @@ flowchart LR
 
 ### 1. Bring in your photos
 
-- **Drop 360° JPEGs** onto the map (or several at once). Photos with GPS in their
-  EXIF/XMP data land at their position; others where you drop them.
-- **No GPS?** Record a track with any GPS logger app while shooting, then use
-  **Tools → Place photos from GPX track…**. Set the camera clock's time zone
-  if the photos don't land on the track.
+- **Drop a folder or several photos** onto the map, or use **Project → Import
+  photos…** (<kbd>Ctrl</kbd>+<kbd>I</kbd>; subfolders such as `DCIM/100RICOH` are
+  included). The import does the groundwork in one step, each part optional:
+  - places every photo at its GPS position (EXIF/XMP),
+  - links them in the order they were taken (capture time, else file name),
+    skipping gaps longer than you set,
+  - sets north from the walking direction for photos without a compass heading
+    (this assumes the camera's front faced where you walked),
+  - then runs the tour check.
+
+  Photos already in the tour are skipped, and one <kbd>Ctrl</kbd>+<kbd>Z</kbd>
+  undoes the whole import. A single dropped photo lands where you drop it.
+- **No GPS?** Record a track with any GPS logger app while shooting and give it to
+  the import, or use **Tools → Place photos from GPX track…** later (there you
+  can also set the camera clock's time zone if the photos don't land on the track).
 - **Double-click** the map for an empty point; **Replace Photo** in the side
   panel swaps a node's photo.
 
@@ -182,8 +193,8 @@ flowchart LR
 Each photo needs to know which way its centre faces, or arrows point the wrong
 way and you look backwards after a jump.
 
-- Select a node, turn the small panorama until you face **north** (the
-  satellite map helps), and click **Set This Direction as North**.
+- Select a node, turn the panorama in the side panel until you face **north**
+  (the satellite map helps), and click **Current view is north**.
 - Fine-tune with **−10° / −1° / 180° / +1° / +10°**. **180°** fixes a photo taken
   facing backwards.
 - **Tools → Headings from walking direction…** sets all photos at once: align one
@@ -211,12 +222,12 @@ unblurred version on Google.
   a **Show** button.
 - **Preview** shows the tour exactly as it will look, including info points and the
   minimap.
-- **Info points:** in the side panel, **Add info point at current view** puts a
+- **Info points:** in the side panel, **Info points → Add at current view** puts a
   clickable "i" with a title, text and link into the panorama.
 
 ### 6. Upload to Google Street View
 
-Click **Upload to Google**, then **Start Upload**:
+Click **Upload**, then **Start Upload**:
 
 1. **Upload:** each photo is sent with its position and heading, with live progress, speed and time left.
 2. **Google processing:** new photos take a few minutes before Google accepts links. The dialog waits.
@@ -246,10 +257,14 @@ Good to know:
 
 | | |
 |---|---|
-| **Save project** (<kbd>Ctrl</kbd>+<kbd>S</kbd>) | A `.vrtour` file: one zip with the tour and all photos. Once saved or opened, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves straight back into it (in the browser: Chrome/Edge; Firefox downloads a copy). Double-click a `.vrtour` to open it in the app. |
-| **Export as website** | `Tools → Export tour as website (.zip)`: `index.html` + photos, ready for any web space. |
-| **Export** | `tour-viewer.html` + `tour-config.json`, to place next to your photos. |
-| **CSV** | `tour.csv` for the [command-line uploader](#command-line-tools). |
+| **Project → Save** (<kbd>Ctrl</kbd>+<kbd>S</kbd>) | A `.vrtour` file: one zip with the tour and all photos. Once saved or opened, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves straight back into it (in the browser: Chrome/Edge; Firefox downloads a copy). Double-click a `.vrtour` to open it in the app. |
+| **Project → Website with photos** | `index.html` + photos in a `.zip`, ready for any web space. |
+| **Project → Viewer files** | `tour-viewer.html` + `tour-config.json`, to place next to your photos. Also in the preview. |
+| **Project → CSV** | `tour.csv` for the [command-line uploader](#command-line-tools). |
+| **Project → Export folder** | Save every export straight into one folder instead of asking each time. |
+
+**Recent projects** are listed in the **Project** menu and on the start screen
+(in the browser only in Chrome and Edge, which ask once for access again).
 
 The editor also **autosaves** as you work. After a crash it offers to restore
 the last session.
@@ -259,7 +274,10 @@ the last session.
 | Action | Shortcut |
 |---|---|
 | Command palette (all actions) | <kbd>Ctrl</kbd>+<kbd>K</kbd> |
+| Light / dark design | the sun / moon button in the top bar |
+| Introduction again | **Tools → Introduction** |
 | Save / Save as / Open project | <kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>O</kbd> |
+| Import photos | <kbd>Ctrl</kbd>+<kbd>I</kbd> |
 | Undo / Redo | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> |
 | Add point | Double-click the map |
 | Connect two nodes | Right-click, right-click |
@@ -376,12 +394,12 @@ The window needs WebKitGTK and a desktop session. The package pulls in
 
 | What | Windows | macOS | Linux |
 |---|---|---|---|
-| Google sign-in, settings, `editor.log` | `%APPDATA%\StreetviewTourEditor\` | `~/Library/Application Support/StreetviewTourEditor/` | `~/.config/streetview-tour-editor/` |
+| Google sign-in, settings, recent projects, `editor.log` | `%APPDATA%\StreetviewTourEditor\` | `~/Library/Application Support/StreetviewTourEditor/` | `~/.config/streetview-tour-editor/` |
 | Autosaved session | `%LOCALAPPDATA%\StreetviewTourEditor\WebView2\` | WebKit's storage for the app | `~/.local/share/streetview-tour-editor/` |
 | Projects | wherever you save your `.vrtour` files | | |
 
 Running from source keeps everything in `uploader/` (`client_secrets.json`,
-`token.json`, `.editor_key`, `webview/`). In browser mode the autosave lives in
+`token.json`, `.editor_key`, `recent.json`, `webview/`). In browser mode the autosave lives in
 that browser's storage for `127.0.0.1:8420`.
 </details>
 
@@ -426,8 +444,10 @@ See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID fo
   directly to Google's Street View Publish API.
 - In-app updates download only from this repository's GitHub releases and are
   checked against the release's `SHA256SUMS.txt` before installing.
-- Libraries (map, panorama viewer, face detection) load from public CDNs, and map
-  tiles from OpenStreetMap and Esri, so an internet connection is needed.
+- All code ships with the app: the libraries (map, panorama viewer, face
+  detection, font) are in `editor/vendor/`, pinned and checked by SHA-256. The
+  editor works offline; only the map tiles (OpenStreetMap, Esri) and Google need
+  the internet. The exported website carries its libraries too.
 
 ## Development
 
@@ -436,6 +456,7 @@ See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID fo
 
 ```text
 editor/editor.html        the whole editor (single page, no build step)
+editor/vendor/            third-party libraries, fetched and checked by packaging/vendor.py
 run_editor.py             local server, Google API endpoints, desktop-app entry point
 app_window.py             the app window (WebView2 / WKWebView / WebKitGTK via pywebview)
 app_tray.py               tray icon (browser mode)
@@ -475,6 +496,10 @@ Linux (needs `dpkg-deb`; run it with the oldest supported Python, 3.11):
 ```bash
 python3 packaging/linux/build_deb.py --version 2.3.0
 ```
+
+The editor's libraries are pinned in `packaging/vendor.py`. After changing a
+version there, `python packaging/vendor.py --update` downloads them again and
+rewrites the lock file; CI runs `--check` before every build.
 
 Start the app with `--debug` for the developer tools in its window, with
 `--browser` to use the browser instead, or with `--smoke-test` to check that it

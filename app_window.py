@@ -32,8 +32,8 @@ import threading
 import time
 from pathlib import Path
 
-# Colours of the editor page, so neither the loading window nor the title bar flashes white.
-BACKGROUND = '#060608'
+# Background of the editor page per theme, so the window doesn't flash while it loads.
+BACKGROUND = {'dark': '#0e0d12', 'light': '#f5f5f8'}
 MIN_SIZE = (960, 600)
 DEFAULT_GEOMETRY = {'width': 1440, 'height': 900, 'maximized': True}
 # Tells the smoke test (run_editor.py --smoke-test) that the page really works.
@@ -82,10 +82,20 @@ class AppWindow:
         self._closing = False
         self._geometry = dict(DEFAULT_GEOMETRY)
         self._loaded_once = False
+        self.dark = True  # the editor's theme; the page reports changes (set_theme)
 
     # ── public, callable from any thread ──────────────
     def set_busy(self, question):
         self.busy_question = question or None
+
+    def set_theme(self, dark):
+        """The editor switched between light and dark: the window frame follows."""
+        self.dark = bool(dark)
+        self._geometry['theme'] = 'dark' if self.dark else 'light'
+        try:
+            self._apply_theme()
+        except Exception:
+            pass
 
     def set_title(self, title):
         if self.window:
@@ -102,8 +112,9 @@ class AppWindow:
         if self.window:
             threading.Thread(target=self.window.evaluate_js, args=(script,), daemon=True).start()
 
-    def pick(self, kind, suggested_name='', filters=(), all_files_label='All files'):
-        """The system's open / save / folder dialog; returns a path or None.
+    def pick(self, kind, suggested_name='', filters=(), all_files_label='All files', multiple=False):
+        """The system's open / save / folder dialog; returns a path or None
+        (with multiple=True: a list of paths, empty when cancelled).
 
         filters: [(description, ['*.vrtour', ...]), ...]. Blocks until the user is done.
         """
@@ -117,8 +128,10 @@ class AppWindow:
             types.append(f"{label} ({';'.join(pats)})")
         if kind == 'open' or not types:
             types.append(f'{all_files_label} (*.*)')
-        result = self.window.create_file_dialog(dialog, save_filename=suggested_name,
+        result = self.window.create_file_dialog(dialog, save_filename=suggested_name, allow_multiple=multiple,
                                                 file_types=tuple(types) if kind != 'folder' else ())
+        if multiple:
+            return [result] if isinstance(result, str) else list(result or ())
         if not result:
             return None
         return result if isinstance(result, str) else result[0]
@@ -141,11 +154,13 @@ class AppWindow:
 
         geo = self._load_geometry()
         self._geometry = dict(geo)
+        self.dark = geo.get('theme', 'dark' if self._system_prefers_dark() else 'light') == 'dark'
+        self._geometry['theme'] = 'dark' if self.dark else 'light'
         self.window = webview.create_window(
             self.title, self.url,
             width=geo['width'], height=geo['height'], x=geo.get('x'), y=geo.get('y'),
             maximized=geo['maximized'], min_size=MIN_SIZE,
-            background_color=BACKGROUND, text_select=True,
+            background_color=BACKGROUND['dark' if self.dark else 'light'], text_select=True,
         )
         events = self.window.events
         events.before_show += self._on_before_show
@@ -173,6 +188,14 @@ class AppWindow:
 
     def _on_shown(self):
         pass
+
+    def _apply_theme(self):
+        """Recolour the window frame for self.dark (any thread)."""
+
+    @staticmethod
+    def _system_prefers_dark():
+        """Before the page has said anything: the system's setting decides."""
+        return True
 
     def _ask_now(self):
         """Closing while busy: True/False if the platform asked right away, None to ask from a thread."""
@@ -259,8 +282,9 @@ class AppWindow:
     def _save_geometry(self):
         if not self._geometry:
             return
+        state = dict(self._geometry, theme='dark' if self.dark else 'light')
         try:
-            self.state_file.write_text(json.dumps(self._geometry), encoding='utf-8')
+            self.state_file.write_text(json.dumps(state), encoding='utf-8')
         except OSError:
             pass
 
@@ -271,6 +295,8 @@ class AppWindow:
         except (OSError, ValueError, KeyError, TypeError):
             return dict(DEFAULT_GEOMETRY)
         result = {'width': width, 'height': height, 'maximized': bool(geo.get('maximized'))}
+        if geo.get('theme') in ('dark', 'light'):
+            result['theme'] = geo['theme']
         try:
             x, y = int(geo['x']), int(geo['y'])
         except (KeyError, TypeError, ValueError):
@@ -282,8 +308,9 @@ class AppWindow:
 
 # ── Windows: Edge WebView2 ───────────────────────────
 WEBVIEW2_RUNTIME = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
-TITLE_BAR = 0x10070B  # COLORREF (0x00BBGGRR) of #0b0710, the top of the page background
-TITLE_TEXT = 0xF7F1F3
+# Title bar = the editor's top bar, as COLORREF (0x00BBGGRR): dark #141319 / light #ffffff,
+# with its text colour #ecebf1 / #17161c.
+TITLE_COLOURS = {True: (0x191314, 0xF1EBEC), False: (0xFFFFFF, 0x1C1617)}
 # Right-click menu: only what helps in text fields (paste a Place ID, copy a link).
 CONTEXT_MENU_ITEMS = {'cut', 'copy', 'paste', 'pasteAndMatchStyle', 'selectAll', 'undo', 'redo', 'emoji', 'copyLinkLocation'}
 
@@ -337,7 +364,7 @@ class WindowsAppWindow(AppWindow):
             info = FLASHWINFO(ctypes.sizeof(FLASHWINFO), hwnd, 0x3 | 0xC, 0, 0)  # FLASHW_ALL | FLASHW_TIMERNOFG
             user32.FlashWindowEx(ctypes.byref(info))
 
-    def pick(self, kind, suggested_name='', filters=(), all_files_label='All files'):
+    def pick(self, kind, suggested_name='', filters=(), all_files_label='All files', multiple=False):
         # pywebview would open the dialog on the calling (server) thread, which
         # Windows' dialogs refuse: they need the window's STA thread.
         from System import Func, Type
@@ -361,14 +388,19 @@ class WindowsAppWindow(AppWindow):
                     dialog.FileName = suggested_name
                     dialog.OverwritePrompt = True
                     dialog.AddExtension = True
+                elif multiple:
+                    dialog.Multiselect = True
                 if dialog.ShowDialog(form) == WinForms.DialogResult.OK:
                     result['path'] = dialog.FileName
+                    result['paths'] = list(dialog.FileNames) if multiple else None
             except Exception as e:
                 result['error'] = str(e)
 
         form.Invoke(Func[Type](show))
         if 'error' in result:
             raise RuntimeError(result['error'])
+        if multiple:
+            return result.get('paths') or ([result['path']] if result.get('path') else [])
         return result.get('path')
 
     def _prepare(self):
@@ -380,7 +412,8 @@ class WindowsAppWindow(AppWindow):
         try:
             # The editor is always dark; pywebview would follow the Windows light/dark setting.
             from webview.platforms import winforms
-            winforms.BrowserView.BrowserForm.is_dark_theme = lambda form: True
+            # The frame follows the editor's theme, not the Windows setting.
+            winforms.BrowserView.BrowserForm.is_dark_theme = lambda form: self.dark
         except Exception:
             pass
 
@@ -429,13 +462,29 @@ class WindowsAppWindow(AppWindow):
 
     def _on_shown(self):
         self.hwnd = int(self.window.native.Handle.ToInt64())
+        self._apply_theme()
+
+    def _apply_theme(self):
+        if not self.hwnd:
+            return
+        caption, text = TITLE_COLOURS[self.dark]
         try:
             dwm = ctypes.windll.dwmapi
-            for attr, value in ((20, 1), (35, TITLE_BAR), (36, TITLE_TEXT)):  # dark mode, caption colour, caption text
+            # dark mode (light or dark caption buttons), caption colour, caption text
+            for attr, value in ((20, int(self.dark)), (35, caption), (36, text)):
                 v = ctypes.c_int(value)
                 dwm.DwmSetWindowAttribute(self.hwnd, attr, ctypes.byref(v), ctypes.sizeof(v))
         except (AttributeError, OSError):
             pass  # older Windows: default title bar
+
+    @staticmethod
+    def _system_prefers_dark():
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize') as key:
+                return winreg.QueryValueEx(key, 'AppsUseLightTheme')[0] == 0
+        except OSError:
+            return True
 
     def _ask_now(self):
         # Already on the window's thread here: ask right away, with the window as owner.
@@ -489,12 +538,28 @@ class MacAppWindow(AppWindow):
         return all(importlib.util.find_spec(m) for m in ('AppKit', 'WebKit'))
 
     def _prepare(self):
+        self._set_appearance()
+
+    def _apply_theme(self):
+        from PyObjCTools import AppHelper
+        AppHelper.callAfter(self._set_appearance)
+
+    def _set_appearance(self):
         try:
-            # The editor is always dark: give the window chrome the dark look too.
+            # The window chrome follows the editor's theme.
             from AppKit import NSAppearance, NSApplication
-            NSApplication.sharedApplication().setAppearance_(NSAppearance.appearanceNamed_('NSAppearanceNameDarkAqua'))
+            name = 'NSAppearanceNameDarkAqua' if self.dark else 'NSAppearanceNameAqua'
+            NSApplication.sharedApplication().setAppearance_(NSAppearance.appearanceNamed_(name))
         except Exception:
             pass
+
+    @staticmethod
+    def _system_prefers_dark():
+        try:
+            from Foundation import NSUserDefaults
+            return NSUserDefaults.standardUserDefaults().stringForKey_('AppleInterfaceStyle') == 'Dark'
+        except Exception:
+            return True
 
 
 # ── Linux: WebKitGTK ─────────────────────────────────
@@ -528,10 +593,18 @@ class GtkAppWindow(AppWindow):
             pass
 
     def _on_before_show(self):
+        self._set_gtk_theme()
+
+    def _apply_theme(self):
+        from gi.repository import GLib
+        GLib.idle_add(self._set_gtk_theme)
+
+    def _set_gtk_theme(self):
         try:
             from gi.repository import Gtk
             settings = Gtk.Settings.get_default()
             if settings:
-                settings.set_property('gtk-application-prefer-dark-theme', True)
+                settings.set_property('gtk-application-prefer-dark-theme', self.dark)
         except Exception:
             pass
+        return False  # (as GLib idle callback: run once)

@@ -28,6 +28,7 @@ Usage:
 import argparse
 import base64
 import ctypes
+import hashlib
 import hmac
 import io
 import json
@@ -622,6 +623,69 @@ def _remember_folder(path):
     return grant
 
 
+PHOTO_SUFFIXES = {'.jpg', '.jpeg', '.png', '.webp'}
+
+
+def _folder_photos(folder, max_depth=3, limit=5000):
+    """The photos in a folder picked for import, also in subfolders (a camera's DCIM/100XXX)."""
+    found = []
+
+    def walk(path, depth):
+        try:
+            entries = sorted(os.scandir(path), key=lambda e: e.name.lower())
+        except OSError:
+            return
+        for e in entries:
+            if len(found) >= limit:
+                return
+            if e.name.startswith('.'):  # hidden files, macOS "._" resource forks
+                continue
+            try:
+                if e.is_dir(follow_symlinks=False):
+                    if depth < max_depth:
+                        walk(e.path, depth + 1)
+                elif e.is_file() and Path(e.name).suffix.lower() in PHOTO_SUFFIXES:
+                    found.append(Path(e.path))
+            except OSError:
+                continue
+
+    walk(folder, 0)
+    return found
+
+
+# Projects opened or saved in the app window, newest first ("Recent" in the
+# Project menu). The page names them by an id; it gets a file token to open one.
+RECENT_FILE = UPLOADER_DIR / "recent.json"
+RECENT_MAX = 8
+
+
+def _recent_paths():
+    try:
+        paths = json.loads(RECENT_FILE.read_text(encoding='utf-8'))
+        return [p for p in paths if isinstance(p, str)] if isinstance(paths, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _recent_id(path):
+    return hashlib.sha256(str(path).encode('utf-8')).hexdigest()[:16]
+
+
+def _save_recent(paths):
+    RECENT_FILE.write_text(json.dumps(paths[:RECENT_MAX * 2], indent=1), encoding='utf-8')
+
+
+def _recent_items():
+    items = []
+    for p in _recent_paths():
+        path = Path(p)
+        if path.is_file():  # a missing one may come back (USB drive), so it stays in the file
+            items.append({'id': _recent_id(p), 'name': path.name, 'folder': str(path.parent)})
+        if len(items) >= RECENT_MAX:
+            break
+    return items
+
+
 def _file_filters(types):
     """The page's picker types ({description, extensions}) as dialog filters."""
     filters = []
@@ -701,6 +765,16 @@ PAGES = PageTracker()
 
 
 class Handler(SimpleHTTPRequestHandler):
+    # Fixed types for the editor's own files: Python would otherwise ask the
+    # system (on Windows the registry, which some programs bend), and module
+    # scripts and WebAssembly refuse to load under a wrong type.
+    extensions_map = {
+        **SimpleHTTPRequestHandler.extensions_map,
+        '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
+        '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.wasm': 'application/wasm',
+        '.woff2': 'font/woff2', '.tflite': 'application/octet-stream',
+    }
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(EDITOR_DIR), **kwargs)
 
@@ -790,6 +864,8 @@ class Handler(SimpleHTTPRequestHandler):
             })
         if parsed.path == '/api/pending-project/data':
             return self._send_pending_project()
+        if parsed.path == '/api/recent':
+            return self._json(200, {'ok': True, 'items': _recent_items() if APP['window'] else []})
         if parsed.path == '/api/files/read':
             entry = FILES.get((parse_qs(parsed.query).get('token') or [''])[0])
             if not APP['window'] or not entry or entry['kind'] != 'file' or not entry['path'].is_file():
@@ -889,17 +965,53 @@ class Handler(SimpleHTTPRequestHandler):
                 kind = payload.get('kind')
                 if kind not in ('open', 'save', 'folder'):
                     raise RuntimeError(f"Unknown dialog: {kind}")
+                multiple = kind == 'open' and bool(payload.get('multiple'))
                 path = APP['window'].pick(
                     kind, suggested_name=Path(str(payload.get('suggestedName') or '')).name,
                     filters=_file_filters(payload.get('types')),
-                    all_files_label='Alle Dateien' if app_tray.GERMAN else 'All files')
+                    all_files_label='Alle Dateien' if app_tray.GERMAN else 'All files', multiple=multiple)
                 if not path:
                     return self._json(200, {'ok': True, 'cancelled': True})
+                if multiple:
+                    return self._json(200, {'ok': True, 'files': [
+                        {'token': _file_token(p, 'file'), 'name': Path(p).name} for p in path]})
                 path = Path(path)
                 if kind == 'folder':
+                    # Export folders are remembered (grant); a folder to import photos from isn't.
+                    grant = _remember_folder(path) if payload.get('remember', True) else None
                     return self._json(200, {'ok': True, 'token': _file_token(path, 'folder'),
-                                            'name': path.name or str(path), 'grant': _remember_folder(path)})
+                                            'name': path.name or str(path), 'grant': grant})
                 return self._json(200, {'ok': True, 'token': _file_token(path, 'file'), 'name': path.name})
+
+            if parsed.path == '/api/files/photos':
+                # The photos in a folder the user picked (import): a token for each.
+                payload = json.loads(raw_body.decode('utf-8') or '{}')
+                entry = FILES.get(str(payload.get('token') or ''))
+                if not APP['window'] or not entry or entry['kind'] != 'folder' or not entry['path'].is_dir():
+                    return self._json(404, {'ok': False, 'error': 'folder_not_found'})
+                root = entry['path']
+                return self._json(200, {'ok': True, 'files': [
+                    {'token': _file_token(p, 'file'), 'name': p.name, 'path': p.relative_to(root).as_posix()}
+                    for p in _folder_photos(root)]})
+
+            if parsed.path in ('/api/recent/add', '/api/recent/open', '/api/recent/remove'):
+                payload = json.loads(raw_body.decode('utf-8') or '{}')
+                if not APP['window']:
+                    return self._json(404, {'ok': False, 'error': 'not_found'})
+                if parsed.path == '/api/recent/add':  # a project was just opened or saved here
+                    entry = FILES.get(str(payload.get('token') or ''))
+                    if entry and entry['kind'] == 'file':
+                        path = str(entry['path'])
+                        _save_recent([path] + [p for p in _recent_paths() if p != path])
+                    return self._json(200, {'ok': True})
+                rid = str(payload.get('id') or '')
+                path = next((p for p in _recent_paths() if _recent_id(p) == rid), None)
+                if parsed.path == '/api/recent/remove':
+                    _save_recent([p for p in _recent_paths() if p != path])
+                    return self._json(200, {'ok': True})
+                if not path or not Path(path).is_file():
+                    return self._json(200, {'ok': False, 'error': 'file_gone'})
+                return self._json(200, {'ok': True, 'token': _file_token(path, 'file'), 'name': Path(path).name})
 
             if parsed.path == '/api/files/folder':
                 # The export folder picked in an earlier run (the page keeps only the grant id).
@@ -913,6 +1025,13 @@ class Handler(SimpleHTTPRequestHandler):
                 payload = json.loads(raw_body.decode('utf-8') or '{}')
                 if APP['window']:
                     APP['window'].set_title(str(payload.get('title') or '')[:200])
+                return self._json(200, {'ok': True})
+
+            if parsed.path == '/api/window-theme':
+                # The editor switched light / dark: the window frame follows.
+                payload = json.loads(raw_body.decode('utf-8') or '{}')
+                if APP['window']:
+                    APP['window'].set_theme(payload.get('theme') == 'dark')
                 return self._json(200, {'ok': True})
 
             if parsed.path == '/api/focus':
