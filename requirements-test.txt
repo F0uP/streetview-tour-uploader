@@ -1,0 +1,7 @@
+# The tests in tests/ (see tests/conftest.py):
+#   pip install -r requirements-test.txt
+#   python -m playwright install chromium
+#   pytest tests
+-r requirements.txt
+pytest>=8.4
+playwright>=1.55
