@@ -43,15 +43,17 @@ them to Google.
 | | |
 |---|---|
 | 📥 **A whole walk in one go** | Drop a folder (or many photos) and the **import** places them by GPS, links them in the order you walked, turns them to north from the walking direction and checks the tour. One Ctrl+Z takes it all back. |
-| 🗺️ **Plan on a map** | Edit on a street or satellite map: link photos by right-clicking, or let **auto-connect** chain them in the order you walked. |
-| 🧭 **Get north right** | Align a photo by looking north and clicking once, fine-tune by ±1°/±10°/180°, or set every photo from the **walking direction**. The preview shows the result exactly as visitors will see it. |
-| 📍 **No GPS? No problem** | Place photos from a **GPX track** recorded on your phone, or type exact coordinates. |
-| 🙈 **Privacy built in** | **Blur faces and licence plates** before uploading, with automatic face detection as a starting point. The Street View Publish API does not blur anything itself. |
-| ✅ **Catch problems early** | A **tour check** finds what Google would reject (not 2:1, not a JPEG, over 75 MB) and what looks wrong (no north, unconnected photos, long links, duplicates). |
-| ☁️ **One-click publishing** | Upload with a live progress view, readable errors and automatic linking once Google has processed the photos. Later changes are **pushed without re-uploading**; the Google status shows on every marker. |
+| 🗺️ **Plan on a map** | Edit on a street or satellite map: link photos by right-clicking, or let **auto-connect** chain them in the order you walked. **Several tours** on one map – add projects next to each other, export each tour on its own. |
+| 📍 **Places on Google Maps** | Optional, recommended: every photo tied to its building, house number or street, by a rule you can see and change before anything is uploaded. |
+| 🧭 **Get north right** | Align one photo by looking north and clicking once, and let the others follow – from the **walking direction**, or by **comparing the photos with each other**, whichever way you held the camera. Fine-tune by ±1°/±10°/180°; the preview shows the result exactly as visitors will see it. |
+| 📍 **No GPS? No problem** | Place photos from a **GPX track** recorded on your phone, or type exact coordinates. GPS a few metres off? **Move or turn the whole tour**, or **snap it to the paths** on OpenStreetMap. |
+| 🙈 **Privacy built in** | **Blur faces and licence plates** before uploading: the editor checks **all photos at once** for faces and vehicles – on your computer – and you go through the findings one by one. The Street View Publish API does not blur anything itself. |
+| ✅ **Catch problems early** | A **checklist** shows what is left for each tour, a **tour check** finds what Google would reject (not 2:1, not a JPEG, over 75 MB) and what looks wrong, and a **review before publishing** says exactly what goes public. |
+| ☁️ **One-click publishing** | Upload with a live progress view, readable errors and automatic linking once Google has processed the photos. Later changes are **pushed without re-uploading**; the Google status and **view counts** show on every point. **Floors** for tours inside buildings. |
+| 🎥 **360° videos** | Upload a 360° video with its GPS track and Google makes the Street View photos from it. The editor checks the video and the track first and shows how far Google got. |
 | 🌐 **Share it anywhere** | Export a **ready-to-host website** of the tour (with info points and a minimap), or `tour-viewer.html` / `tour-config.json` / `tour.csv`. |
 | 💾 **Never lose work** | Autosave, a restore prompt after a crash, and `.vrtour` project files with all photos inside. **Ctrl+S** saves back into the open project; **recent projects** are one click away. |
-| 🖥️ **A real desktop app** | For **Windows, macOS and Linux** (also ARM). Its own window, no browser needed, **works offline** (only the map and Google need the internet); a calm **light and dark design**, a short **introduction on first start**, the system's own open and save dialogs, `.vrtour` file association, installers, and in-app updates on Windows. English and German user interface. |
+| 🖥️ **A real desktop app** | For **Windows, macOS and Linux** (also ARM). Its own window, no browser needed, **works offline** (only the map and Google need the internet); a calm **light and dark design**, a short **introduction on first start** and a **sample tour** to try things, a **panorama focus mode**, the system's own open and save dialogs, `.vrtour` file association, installers, in-app updates on Windows and update hints on macOS and Linux (or updates through **apt**). English and German user interface. |
 
 <table>
   <tr>
@@ -78,9 +80,19 @@ Get the file for your system from the
 | macOS 11+ on Intel | `StreetviewTourEditor-<version>-macos-x64.dmg` | |
 | **Linux**: Debian 12+, Ubuntu 24.04+ and derivatives (amd64 and arm64) | `streetview-tour-editor_<version>_all.deb` | `sudo apt install ./streetview-tour-editor_*_all.deb` |
 
+On Linux you can also add the editor's apt repository, so updates come with the
+system's own:
+
+```bash
+curl -fsSL https://f0up.github.io/streetview-tour-uploader/apt/key.gpg | sudo tee /usr/share/keyrings/streetview-tour-editor.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/streetview-tour-editor.gpg] https://f0up.github.io/streetview-tour-uploader/apt stable main" | sudo tee /etc/apt/sources.list.d/streetview-tour-editor.list
+sudo apt update && sudo apt install streetview-tour-editor
+```
+
 Then start **Streetview Tour Editor** (Start menu, Launchpad or your app menu)
 and drop your 360° photos, or the whole folder, onto the map. The editor opens in its own window;
-closing the window quits the app.
+closing the window quits the app. Not sure yet? **Try the sample tour** on the
+start screen: a small tour with drawn photos, to try everything (it is never uploaded).
 
 The window is the system's own web engine: Edge WebView2 on Windows (part of
 Windows 10 and 11), WKWebView on macOS, WebKitGTK on Linux (installed with the
@@ -154,10 +166,16 @@ flowchart LR
   B --> C[🧭 Align north]
   C --> D[🙈 Blur]
   D --> E[✅ Check & preview]
-  E --> F[☁️ Upload]
+  E --> F[☁️ Review & upload]
   F --> G[⏳ Google processes]
   G --> H[🔗 Links set automatically]
 ```
+
+The **checklist** at the top of the side panel follows you through these steps:
+for the tour of the selected point it shows what is done (green) and what is left
+(yellow) – photos, north, faces & plates, places, Google. Click a chip to go where
+it gets done. Messages that pop up at the bottom are kept under the **bell** in the
+top bar, in case one vanished too fast.
 
 ### 1. Bring in your photos
 
@@ -178,6 +196,14 @@ flowchart LR
   can also set the camera clock's time zone if the photos don't land on the track).
 - **Double-click** the map for an empty point; **Replace Photo** in the side
   panel swaps a node's photo.
+- **GPS a few metres off?** **Tools → Move or turn a tour…** shifts the whole tour
+  in 1 or 5 m steps or turns it about its centre, watching the satellite map; it
+  all counts as one undo step. **Snap to paths** moves each point onto the nearest
+  street or footpath from OpenStreetMap (the tour's area is sent to the Overpass
+  API for this).
+- **Inside a building with several floors?** Give the points their **floor** in
+  the side panel (*Position*). Google shows the floor switcher for them, and the
+  map's floor buttons show one floor at a time.
 
 ### 2. Link the photos
 
@@ -199,6 +225,10 @@ way and you look backwards after a jump.
   facing backwards.
 - **Tools → Headings from walking direction…** sets all photos at once: align one
   by hand, pick it as reference, and the others follow your route.
+- **Tools → North from the photos…** works however you held the camera: it
+  compares each photo's horizon with its linked neighbours and turns them to match
+  the photo you aligned. Every result says how sure it is; only clear ones are
+  ticked, and nothing changes until you apply them.
 
 > [!TIP]
 > In the **Preview**, walk through the tour. If a photo looks turned after a jump,
@@ -206,10 +236,15 @@ way and you look backwards after a jump.
 
 ### 4. Protect privacy
 
-Select a node and click **Blur faces & plates…**:
+**Tools → Check all photos for faces & plates…** looks through every photo – on
+your computer, nothing is sent anywhere – and lists those with faces or vehicles.
+**Review** opens each in the blur tool with the suggestions marked; after applying
+you are back at the list. Or select a node and click **Blur faces & plates…**:
 
-- **Detect faces** suggests boxes (dashed); click a box to remove it.
-- Drag boxes over anything else, such as licence plates or house numbers.
+- **Detect faces** and **Detect plates** suggest boxes (dashed); click a box to
+  remove it. For plates the editor finds vehicles and suggests the lower middle of
+  each, where plates usually are – remove the boxes without one.
+- Drag boxes over anything else, such as house numbers.
 - **Apply to photo** pixelates them for good. The original EXIF block, which can
   hold an unblurred thumbnail, is dropped; the 360° metadata is kept.
 
@@ -222,12 +257,18 @@ unblurred version on Google.
   a **Show** button.
 - **Preview** shows the tour exactly as it will look, including info points and the
   minimap.
+- Press <kbd>F</kbd> (or the expand button under the panorama) to see the selected
+  photo over the **whole window**, and walk on to the linked points from there.
+  <kbd>Esc</kbd> goes back.
 - **Info points:** in the side panel, **Info points → Add at current view** puts a
   clickable "i" with a title, text and link into the panorama.
 
 ### 6. Upload to Google Street View
 
-Click **Upload**, then **Start Upload**:
+Click **Upload**, then **Start Upload**. First comes the **review before
+publishing**: how many photos go up or are updated, and per tour whether north,
+links, places and the privacy check are complete – each open point with a way to
+fix it first. **Publish** starts the upload:
 
 1. **Upload:** each photo is sent with its position and heading, with live progress, speed and time left.
 2. **Google processing:** new photos take a few minutes before Google accepts links. The dialog waits.
@@ -244,14 +285,69 @@ Good to know:
   shows whether each photo is *published*, *processing* or *rejected*, finds photos
   the editor lost track of and duplicates at the same spot. **Repair** sends
   whatever is missing, again without re-uploading.
-- A **Place ID** (optional) links the tour to a place's page on Google Maps. Find it
-  with Google's free [Place ID Finder](https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder);
-  pasting a Maps URL that contains one works too. If Google rejects the ID, the
-  photos are uploaded without it and you are told.
+- **Tools → Views on Google…** shows how often each photo has been viewed on
+  Google Maps, per tour.
+- **Places on Google Maps** (optional, recommended): see below. Without it you can
+  still type a **Place ID** by hand; Google's free
+  [Place ID Finder](https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder)
+  finds it, and pasting a Maps URL that contains one works too. If Google rejects
+  a place, the photos are uploaded without it and you are told.
+
+#### Places on Google Maps (optional, recommended)
+
+With an API key of your own (**Tools → Places on Google Maps…**, which walks you
+through it), every photo is tied to its place on Google Maps: the **building or
+business** it was taken at, its **house number** or its **street**. Nothing
+happens unseen: when you open the upload, each tour shows the rule that applied
+and why, and **Show the place of each photo** lists every photo with its place,
+kind and distance. Every choice can be changed per tour (automatic, each photo its
+house number or street, one place for the whole tour, no place) or per photo,
+also for photos already on Google (sent without uploading again). The side panel
+shows each point's place, the upload list each photo's.
+
+The automatic rule, in order:
+
+1. A tour that lies at one place (all points within 60 m of its centre) with a
+   building or business within 40 m of that centre: all photos get that place.
+2. Otherwise each photo gets its house number if that is within 25 m, else its street.
+3. Nothing found: the photo goes up with its position only.
+
+It decides for photos not on Google yet; photos already there keep their place
+unless you change it.
+
+Costs: the key needs the **Places API (New)** and the **Geocoding API**, and Google
+requires a billing account for them. Each has a free monthly usage (2026: 10,000
+address lookups and 5,000 place searches; above that about $5 and $32 per 1,000 –
+see [Google's prices](https://developers.google.com/maps/billing-and-pricing/pricing)).
+The editor looks up each photo once (again only after you move it) and searches
+for buildings only for tours that lie at one place; the upload dialog shows how
+many lookups it sent. Set a **daily limit** on each API's quota page (the guide
+suggests 300 and 150 a day) and Google stops at the free usage instead of
+charging. The key stays on your computer; only the positions of the photos you
+upload are sent to these APIs.
 
 > [!WARNING]
 > Uploaded photos are **public**, under your Google account. It can take from a
 > few minutes to several hours until they show on Google Maps.
+
+#### 360° videos
+
+**Tools → Upload a 360° video…** sends a 360° video to Google, which picks the
+frames, places them along the GPS track and links them – the photos then appear
+under your account like uploaded ones. The video does not become part of your tour.
+Before anything is sent, the editor reads the video and shows what Google needs:
+
+- a 360° video, 2:1 (equirectangular, as the camera's app exports it), with its 360°
+  metadata, recorded while walking or driving outdoors;
+- GPS for the whole video: in the video's motion track (CAMM, e.g. Insta360 with a
+  GPS remote) or as a **GPX file** recorded at the same time. The editor shows how
+  much of the video the track covers, fills gaps of up to 30 s along the track
+  (Google refuses gaps over 5 s) and notices when the camera wrote its local time
+  as UTC – **Shift by … h** fixes that.
+
+The video goes from your computer through the app straight to Google, also when it
+is several GB. Processing takes hours to days; **Your videos on Google** shows how
+far each got, or why Google refused it.
 
 ### 7. Save, share and export
 
@@ -262,6 +358,16 @@ Good to know:
 | **Project → Viewer files** | `tour-viewer.html` + `tour-config.json`, to place next to your photos. Also in the preview. |
 | **Project → CSV** | `tour.csv` for the [command-line uploader](#command-line-tools). |
 | **Project → Export folder** | Save every export straight into one folder instead of asking each time. |
+
+**Several tours on one map:** **Project → Add project…** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd>,
+several files at once; or drop `.vrtour` files on a map that has points) puts
+projects next to each other instead of replacing what is there. A tour is a group
+of linked points, or the points of one project or imported folder; with more
+than one, each gets its own colour, its own start point and a row in the side
+panel (click to show it, double-click to rename it). Every export then asks
+which tour – or everything – it is for, and **Project → Tour as project** saves a
+single tour as a `.vrtour` of its own. After adding projects, <kbd>Ctrl</kbd>+<kbd>S</kbd>
+asks for a new file, so the files you opened stay as they were.
 
 **Recent projects** are listed in the **Project** menu and on the start screen
 (in the browser only in Chrome and Edge, which ask once for access again).
@@ -278,11 +384,13 @@ the last session.
 | Introduction again | **Tools → Introduction** |
 | Save / Save as / Open project | <kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>O</kbd> |
 | Import photos | <kbd>Ctrl</kbd>+<kbd>I</kbd> |
+| Add project to the map | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> |
 | Undo / Redo | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> |
 | Add point | Double-click the map |
 | Connect two nodes | Right-click, right-click |
 | Select several | <kbd>Ctrl</kbd>+click, or <kbd>Shift</kbd>+drag on the map |
 | Delete selection | <kbd>Delete</kbd> |
+| Panorama over the whole window | <kbd>F</kbd> |
 | Cancel / deselect | <kbd>Esc</kbd> |
 | All shortcuts | <kbd>?</kbd> |
 
@@ -390,16 +498,35 @@ The window needs WebKitGTK and a desktop session. The package pulls in
 </details>
 
 <details>
+<summary><b>Something doesn't work - how do I report it?</b></summary>
+
+**Tools → Create a bug report…** saves a zip with the versions of the app and
+your system, the app's log and the editor's last messages and errors. It holds no
+photos, projects, sign-in or keys; anything in the log that looks like a key or
+token is blanked. Have a look inside, then attach it to a
+[new issue](https://github.com/F0uP/streetview-tour-uploader/issues/new).
+</details>
+
+<details>
+<summary><b>How do I update on macOS or Linux?</b></summary>
+
+The editor tells you when there is a new version. **Download** shows what to do on
+your system: the disk image for your Mac, the `.deb` with the command to install
+it – or, with the [apt repository](#quick-start), nothing beyond your system's
+updates (`sudo apt update && sudo apt upgrade`).
+</details>
+
+<details>
 <summary><b>Where are my files?</b></summary>
 
 | What | Windows | macOS | Linux |
 |---|---|---|---|
-| Google sign-in, settings, recent projects, `editor.log` | `%APPDATA%\StreetviewTourEditor\` | `~/Library/Application Support/StreetviewTourEditor/` | `~/.config/streetview-tour-editor/` |
+| Google sign-in, settings, recent projects, Places API key, `editor.log` | `%APPDATA%\StreetviewTourEditor\` | `~/Library/Application Support/StreetviewTourEditor/` | `~/.config/streetview-tour-editor/` |
 | Autosaved session | `%LOCALAPPDATA%\StreetviewTourEditor\WebView2\` | WebKit's storage for the app | `~/.local/share/streetview-tour-editor/` |
 | Projects | wherever you save your `.vrtour` files | | |
 
 Running from source keeps everything in `uploader/` (`client_secrets.json`,
-`token.json`, `.editor_key`, `recent.json`, `webview/`). In browser mode the autosave lives in
+`token.json`, `.editor_key`, `recent.json`, `places_api_key.txt`, `filerefs.json`, `webview/`). In browser mode the autosave lives in
 that browser's storage for `127.0.0.1:8420`.
 </details>
 
@@ -441,7 +568,13 @@ See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID fo
   browser mode the app quits about 15 seconds after the last editor tab is
   closed, and at the latest 5 minutes after no editor page has been heard from.
 - Photos and projects stay on your computer until you upload them; uploads go
-  directly to Google's Street View Publish API.
+  directly to Google's Street View Publish API. Face and vehicle detection runs on
+  your computer. **Snap to paths** sends the tour's area (not the photos) to the
+  OpenStreetMap Overpass API.
+- In the app window, the autosave keeps photos you opened from a file by
+  reference (path, size and time in `filerefs.json`) instead of a second copy; a
+  changed or moved file is reported, never silently replaced.
+- A bug report is only made when you ask for it, and only saved to your computer.
 - In-app updates download only from this repository's GitHub releases and are
   checked against the release's `SHA256SUMS.txt` before installing.
 - All code ships with the app: the libraries (map, panorama viewer, face
@@ -455,22 +588,47 @@ See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID fo
 <summary><b>Project layout</b></summary>
 
 ```text
-editor/editor.html        the whole editor (single page, no build step)
+editor/editor.html        the editor's page (markup); editor.css its styles
+editor/js/                the editor as native ES modules, no build step: editor.js (main),
+                          i18n-de.js (German), align.js (north from the photos), detect.js
+                          (faces, vehicles), video.js (360° videos), viewer.js, gpx.js, zip.js, util.js
+editor/sample/            the sample tour (made by packaging/make_sample.py)
 editor/vendor/            third-party libraries, fetched and checked by packaging/vendor.py
-run_editor.py             local server, Google API endpoints, desktop-app entry point
+run_editor.py             local server, its API endpoints, desktop-app entry point
+google_api.py             Street View Publish API: photos and 360° videos
+places.py                 Places API (New) and Geocoding API lookups
+bug_report.py             "Create a bug report", with secrets blanked
 app_window.py             the app window (WebView2 / WKWebView / WebKitGTK via pywebview)
 app_tray.py               tray icon (browser mode)
-app_update.py             in-app updates from GitHub Releases (Windows)
+app_update.py             in-app updates from GitHub Releases (Windows), update hints elsewhere
 uploader/                 command-line tools
 build_exe.py              builds the Windows app + installer, or the macOS app + .dmg
 installer/                Inno Setup script (Windows installer)
 packaging/icons/          the logo: icon.svg and make_icons.py, which renders every icon format
-packaging/linux/          build_deb.py: the Linux package
+packaging/linux/          build_deb.py: the Linux package; apt_repo.py: the apt repository
+packaging/signpath/       how to set up code signing with SignPath
 packaging/macos/          entitlements for signing the macOS app
 packaging/pyinstaller-hooks/  bundle only what the app needs
 packaging/winget/         winget manifest generator
-.github/workflows/        CI: build, smoke-test and release on every v* tag
+.github/workflows/        CI: tests on every push; build, smoke-test and release on every v* tag
+tests/                    pytest + Playwright tests of the editor and the app
 ```
+</details>
+
+<details>
+<summary><b>Tests</b></summary>
+
+The tests start the app on a free port with a profile of their own and drive the
+editor in headless Chromium; Google, OpenStreetMap and the Places APIs are faked.
+
+```bash
+pip install -r requirements-test.txt
+python -m playwright install chromium     # or: set SVT_BROWSER_CHANNEL=chrome
+pytest tests
+```
+
+CI runs them on every push and before every release build (`.github/workflows/tests.yml`).
+The tests also check that every text of the editor has its German translation.
 </details>
 
 <details>
@@ -501,6 +659,9 @@ The editor's libraries are pinned in `packaging/vendor.py`. After changing a
 version there, `python packaging/vendor.py --update` downloads them again and
 rewrites the lock file; CI runs `--check` before every build.
 
+The sample tour is made by `python packaging/make_sample.py` (drawn panoramas, no
+real place or person in them).
+
 Start the app with `--debug` for the developer tools in its window, with
 `--browser` to use the browser instead, or with `--smoke-test` to check that it
 starts and works (exit code 0), as CI does with every build.
@@ -526,12 +687,20 @@ git tag v2.3.0 && git push origin v2.3.0
   `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`,
   `TRUSTED_SIGNING_ENDPOINT`, `TRUSTED_SIGNING_ACCOUNT`, `TRUSTED_SIGNING_PROFILE`.
   Locally, set `SIGN_CMD` to any signing command with `{file}` as placeholder.
+  Or, free for open source, [SignPath](https://signpath.org): `SIGNPATH_API_TOKEN`
+  and the variables `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`; see
+  [packaging/signpath/README.md](packaging/signpath/README.md).
 - **macOS signing and notarization** (removes the Gatekeeper warning):
   `MACOS_CERTIFICATE` (base64 of a *Developer ID Application* `.p12`),
   `MACOS_CERTIFICATE_PASSWORD`, and for notarization `APPLE_ID`, `APPLE_TEAM_ID`,
   `APPLE_APP_PASSWORD`. Locally, set `MACOS_SIGN_IDENTITY` (and the three Apple values).
 - **winget**: `WINGET_TOKEN`; the first submission is manual, see
   [packaging/winget/README.md](packaging/winget/README.md).
+- **apt repository** on GitHub Pages: `APT_GPG_PRIVATE_KEY`, an armored private key
+  without passphrase made only for this (`gpg --quick-gen-key "Streetview Tour Editor
+  apt" ed25519 sign never`, then `gpg --armor --export-secret-keys …`). Each release
+  adds its `.deb` to the `gh-pages` branch; switch on GitHub Pages for that branch
+  once (*Settings → Pages*).
 </details>
 
 Contributions are welcome: open an [issue](https://github.com/F0uP/streetview-tour-uploader/issues)
