@@ -74,6 +74,11 @@
   "sha256": "b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f",
   "size": 229746
  },
+ "mediapipe/efficientdet_lite0.tflite": {
+  "url": "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
+  "sha256": "4b59100025bea1235a84c1038879a6cccc9f6c49f5e41144e91e74d99e780993",
+  "size": 7254339
+ },
  "mediapipe/vision_bundle.mjs": {
   "url": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/vision_bundle.mjs",
   "sha256": "d885630c297c0b20b1fe86096cb06291c4c8080876f27852e724f24ac603713f",

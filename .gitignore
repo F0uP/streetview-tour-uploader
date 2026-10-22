@@ -41,3 +41,5 @@ uploader/webview/
 uploader/window.json
 uploader/folders.json
 uploader/recent.json
+uploader/places_api_key.txt
+uploader/filerefs.json

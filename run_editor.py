@@ -26,11 +26,9 @@ Usage:
 """
 
 import argparse
-import base64
 import ctypes
 import hashlib
 import hmac
-import io
 import json
 import os
 import re
@@ -40,6 +38,7 @@ import sys
 import threading
 import time
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer, BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -53,7 +52,14 @@ if (SOURCE_DIR / "vendor").is_dir():
 
 import app_tray  # noqa: E402
 import app_update  # noqa: E402
+import bug_report  # noqa: E402
 import app_window  # noqa: E402
+from google_api import (  # noqa: E402
+    UPLOAD_PROGRESS, GoogleError, _connect_photos, _delete_photos, _google_libs,
+    _list_photos, _photo_status, _update_photos, _upload_photo,
+    _create_sequence, _delete_sequence, _list_sequences, _upload_video,
+)
+from places import PLACES_CACHE, _geocode, _places_nearby  # noqa: E402
 
 try:
     import _app_version  # written by build_exe.py / packaging/linux/build_deb.py
@@ -62,7 +68,8 @@ except ImportError:
     _app_version = None
     APP_VERSION = "dev"
 
-PORT = 8420
+# SVT_PORT and SVT_DATA_DIR give a second, separate copy of the app (the tests use them).
+PORT = int(os.environ.get('SVT_PORT') or 8420)
 APP_NAME = "StreetviewTourEditor"
 APP_MUTEX = "StreetviewTourEditor.Running"  # also named in installer/StreetviewTourEditor.iss
 
@@ -78,6 +85,9 @@ APP_ICON = ICONS_DIR / "app.ico"  # tray icon (Windows)
 
 def _data_dirs():
     """(settings and sign-in, website data of the app window) for this platform."""
+    if os.environ.get('SVT_DATA_DIR'):
+        data = Path(os.environ['SVT_DATA_DIR'])
+        return data, data / "webview"
     if not PACKAGED:
         return SOURCE_DIR / "uploader", SOURCE_DIR / "uploader" / "webview"
     home = Path.home()
@@ -106,24 +116,6 @@ if sys.stdout is None or sys.stderr is None or (PACKAGED and not sys.stdout.isat
 TOKEN_FILE = UPLOADER_DIR / "token.json"
 CREDENTIALS_FILE = UPLOADER_DIR / "client_secrets.json"
 SCOPES = ['https://www.googleapis.com/auth/streetviewpublish']
-BASE_URL = 'https://streetviewpublish.googleapis.com/v1'
-
-
-def _google_libs():
-    """Import the Google/requests libs on demand so plain editing (no upload) never needs them installed."""
-    try:
-        import requests
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request as GoogleRequest
-        from google_auth_oauthlib.flow import InstalledAppFlow
-        from googleapiclient.discovery import build as build_service
-        return requests, Credentials, GoogleRequest, InstalledAppFlow, build_service
-    except ImportError as e:
-        raise RuntimeError(
-            "Missing dependencies for uploading. Run: pip install -r requirements.txt"
-        ) from e
-
-
 def _load_credentials():
     """Return valid cached credentials, refreshing if needed. Raises RuntimeError if sign-in is required."""
     _, Credentials, GoogleRequest, _, _ = _google_libs()
@@ -272,274 +264,20 @@ def _clear_credentials():
     CREDENTIALS_FILE.unlink(missing_ok=True)
 
 
-class GoogleError(RuntimeError):
-    """An error answer from Google, with its readable message and a hint for the user."""
+# ── Google Places ─────────────────────────────────
+# Optional, recommended: ties photos to their place on Google Maps - a building
+# or business (Places API), a house number or a street (Geocoding API). Google
+# hands out Place IDs only through these APIs, which need an API key of the
+# user's own (and a billing account; the monthly free usage covers far more
+# than this app needs). The key stays in this file: the page never sees it.
+PLACES_KEY_FILE = UPLOADER_DIR / "places_api_key.txt"
 
-    def __init__(self, step, status, message, kind='other'):
-        super().__init__(f'{step}: {message}')
-        self.step, self.status, self.message, self.kind = step, status, message, kind
 
-
-def _google_message(r):
+def _places_key():
     try:
-        err = r.json().get('error', {})
-        return err.get('message') or r.text[:300]
-    except ValueError:
-        return r.text[:300] or r.reason
-
-
-# Upload progress per job id, polled by the editor (/api/upload-progress) while a
-# photo goes from this app to Google, which is the slow part of an upload.
-UPLOAD_PROGRESS = {}
-
-
-class _ProgressReader(io.BytesIO):
-    def __init__(self, data, job):
-        super().__init__(data)
-        self.total = len(data)
-        self.job = job
-
-    def __len__(self):
-        return self.total
-
-    def read(self, size=-1):
-        chunk = super().read(64 * 1024 if size is None or size < 0 else min(size, 64 * 1024))
-        if self.job:
-            UPLOAD_PROGRESS[self.job] = {'phase': 'uploading', 'sent': self.tell(), 'total': self.total}
-        return chunk
-
-
-def _upload_photo(creds, data, filename, lat, lng, heading=None, place_id=None, job=None):
-    requests, *_ = _google_libs()
-    session = requests.Session()
-    session.headers.update({'Authorization': f'Bearer {creds.token}'})
-    if job:
-        UPLOAD_PROGRESS[job] = {'phase': 'starting', 'sent': 0, 'total': len(data)}
-
-    r = session.post(f'{BASE_URL}/photo:startUpload', json={})
-    if not r.ok:
-        raise GoogleError('start', r.status_code, _google_message(r))
-    upload_url = r.json()['uploadUrl']
-
-    r = session.post(
-        upload_url,
-        data=_ProgressReader(data, job),
-        headers={
-            'Content-Type': 'image/jpeg',
-            'X-Goog-Upload-Protocol': 'raw',
-            'X-Goog-Upload-Content-Length': str(len(data)),
-        },
-    )
-    if not r.ok:
-        raise GoogleError('upload', r.status_code, _google_message(r))
-
-    if job:
-        UPLOAD_PROGRESS[job] = {'phase': 'creating', 'sent': len(data), 'total': len(data)}
-    pose = {'latLngPair': {'latitude': lat, 'longitude': lng}}
-    if heading is not None:
-        pose['heading'] = heading
-    body = {'uploadReference': {'uploadUrl': upload_url}, 'pose': pose}
-    if place_id:
-        body['places'] = [{'placeId': place_id}]
-
-    r = session.post(f'{BASE_URL}/photo', json=body)
-    if not r.ok:
-        message = _google_message(r)
-        # A wrong Place ID is by far the most common reason Google refuses an
-        # otherwise fine photo with "400 Bad Request".
-        kind = 'place' if place_id and r.status_code == 400 else 'other'
-        raise GoogleError('create', r.status_code, message, kind)
-    return r.json().get('photoId', {}).get('id')
-
-
-def _connect_photos(creds, name_to_id, connects):
-    """connects: {filename: [connected filename, ...]}"""
-    _, _, _, _, build_service = _google_libs()
-    sv_service = build_service('streetviewpublish', 'v1', credentials=creds)
-    results = []
-    for filename, targets in connects.items():
-        pid = name_to_id.get(filename)
-        if not pid:
-            results.append({'filename': filename, 'ok': False, 'error': 'not uploaded'})
-            continue
-        connections = [{'target': {'id': name_to_id[t]}} for t in targets if t in name_to_id]
-        if not connections:
-            continue
-        try:
-            sv_service.photo().update(
-                id=pid, updateMask='connections', body={'connections': connections}
-            ).execute()
-            results.append({'filename': filename, 'ok': True})
-        except Exception as e:
-            results.append({'filename': filename, 'ok': False, 'error': str(e)})
-        time.sleep(0.3)
-    return results
-
-
-def _id_candidates(pid):
-    """Forms a photo ID can be asked for.
-
-    photo.create answers with an ID like 'CAoSHENJQUJJaEMx...Wko.': web-safe base64
-    (with '.' as padding) around the photo's real ID ('CIABIhC1...'). Depending on the
-    endpoint Google only knows one of these forms, so try all of them.
-    """
-    out = [pid]
-    stripped = pid.rstrip('.=')
-    if stripped != pid:
-        out.append(stripped)
-    try:
-        raw = base64.urlsafe_b64decode(stripped + '=' * (-len(stripped) % 4))
-        i = 0
-        while i < len(raw):
-            tag = raw[i]; i += 1
-            field, wire = tag >> 3, tag & 7
-            if wire == 0:
-                while raw[i] & 0x80:
-                    i += 1
-                i += 1
-            elif wire == 2:
-                length = raw[i]; i += 1
-                value = raw[i:i + length]; i += length
-                if field == 2 and value.isascii() and value.decode().isprintable():
-                    out.append(value.decode())
-            else:
-                break
-    except Exception:
-        pass
-    return list(dict.fromkeys(out))
-
-
-def _photo_status(creds, ids):
-    """Ask Google how far each uploaded photo got.
-
-    Returns {id: {status, shareLink, resolvedId}} where status is 'published',
-    'processing' (known to Google, not on Maps yet), 'rejected', or 'notfound'
-    (not visible yet - normal for a while right after uploading - or deleted).
-    resolvedId is the form of the ID Google actually knows.
-    """
-    requests, *_ = _google_libs()
-    session = requests.Session()
-    session.headers.update({'Authorization': f'Bearer {creds.token}'})
-    cands = {pid: _id_candidates(pid) for pid in ids}
-    flat = list(dict.fromkeys(c for cs in cands.values() for c in cs))
-    found = {}
-    for start in range(0, len(flat), 20):  # batchGet takes at most 20 IDs
-        chunk = flat[start:start + 20]
-        params = [('photoIds', i) for i in chunk] + [('view', 'BASIC')]
-        r = session.get(f'{BASE_URL}/photos:batchGet', params=params)
-        if not r.ok:
-            raise GoogleError('status', r.status_code, _google_message(r))
-        for cid, res in zip(chunk, r.json().get('results', [])):
-            if (res.get('status') or {}).get('code', 0) == 0 and res.get('photo'):
-                found[cid] = res['photo']
-    out = {}
-    for pid, cs in cands.items():
-        hit = next((c for c in cs if c in found), None)
-        if not hit:
-            out[pid] = {'status': 'notfound', 'shareLink': None, 'resolvedId': None}
-            continue
-        photo = found[hit]
-        publish = photo.get('mapsPublishStatus')
-        status = 'published' if publish == 'PUBLISHED' else 'rejected' if publish == 'REJECTED_UNKNOWN' else 'processing'
-        real_id = (photo.get('photoId') or {}).get('id') or hit
-        out[pid] = {'status': status, 'shareLink': photo.get('shareLink'), 'resolvedId': real_id, **_photo_facts(photo)}
-    return out
-
-
-def _photo_facts(photo):
-    """What Google has stored for a photo: position, heading and its links."""
-    pose = photo.get('pose') or {}
-    ll = pose.get('latLngPair') or {}
-    return {
-        'lat': ll.get('latitude'),
-        'lng': ll.get('longitude'),
-        'heading': pose.get('heading'),
-        'connections': [((c.get('target') or {}).get('id')) for c in photo.get('connections') or [] if (c.get('target') or {}).get('id')],
-    }
-
-
-def _list_photos(creds):
-    """All of the signed-in user's Street View photos (ID, position, status)."""
-    requests, *_ = _google_libs()
-    session = requests.Session()
-    session.headers.update({'Authorization': f'Bearer {creds.token}'})
-    photos, token = [], None
-    for _ in range(50):  # 50 pages x 100 photos is plenty
-        params = {'view': 'BASIC', 'pageSize': 100}
-        if token:
-            params['pageToken'] = token
-        r = session.get(f'{BASE_URL}/photos', params=params)
-        if not r.ok:
-            raise GoogleError('list', r.status_code, _google_message(r))
-        data = r.json()
-        for p in data.get('photos', []):
-            publish = p.get('mapsPublishStatus')
-            photos.append({
-                'id': (p.get('photoId') or {}).get('id'),
-                'status': 'published' if publish == 'PUBLISHED' else 'rejected' if publish == 'REJECTED_UNKNOWN' else 'processing',
-                'shareLink': p.get('shareLink'),
-                'uploadTime': p.get('uploadTime'),
-                **_photo_facts(p),
-            })
-        token = data.get('nextPageToken')
-        if not token:
-            break
-    return photos
-
-
-def _delete_photos(creds, ids):
-    """Delete photos from Google (old versions of photos that were replaced)."""
-    requests, *_ = _google_libs()
-    session = requests.Session()
-    session.headers.update({'Authorization': f'Bearer {creds.token}'})
-    results = []
-    for pid in ids:
-        result = {'id': pid, 'ok': True, 'error': None}  # every form 404 = already gone, fine
-        for cid in _id_candidates(pid):
-            r = session.delete(f'{BASE_URL}/photo/{cid}')
-            if r.ok:
-                result = {'id': pid, 'ok': True, 'error': None}
-                break
-            if r.status_code in (400, 404):
-                # Wrong form of the ID (or already deleted) - try the next form.
-                if r.status_code == 400:
-                    result = {'id': pid, 'ok': False, 'error': _google_message(r)}
-                continue
-            result = {'id': pid, 'ok': False, 'error': _google_message(r)}
-            break
-        results.append(result)
-    return results
-
-
-def _update_photos(creds, items):
-    """Update position, heading and connections of already uploaded photos.
-
-    items: [{id, lat, lng, heading|None, connections: [photo id, ...]}]
-    """
-    _, _, _, _, build_service = _google_libs()
-    sv_service = build_service('streetviewpublish', 'v1', credentials=creds)
-    results = []
-    for it in items:
-        mask = ['pose.latLngPair', 'connections']
-        pose = {'latLngPair': {'latitude': it['lat'], 'longitude': it['lng']}}
-        if it.get('heading') is not None:
-            pose['heading'] = it['heading']
-            mask.append('pose.heading')
-        body = {
-            'photoId': {'id': it['id']},
-            'pose': pose,
-            'connections': [{'target': {'id': t}} for t in it.get('connections', [])],
-        }
-        try:
-            sv_service.photo().update(id=it['id'], updateMask=','.join(mask), body=body).execute()
-            results.append({'id': it['id'], 'ok': True})
-        except Exception as e:
-            # googleapiclient's HttpError carries Google's own message in .reason
-            status = getattr(getattr(e, 'resp', None), 'status', None)
-            results.append({'id': it['id'], 'ok': False, 'status': status,
-                            'error': getattr(e, 'reason', None) or str(e)})
-        time.sleep(0.3)
-    return results
+        return PLACES_KEY_FILE.read_text(encoding='utf-8').strip() or None
+    except OSError:
+        return None
 
 
 # A secret only this Windows user can read (it lives in their profile). The editor
@@ -621,6 +359,35 @@ def _remember_folder(path):
     grants = dict(list(grants.items())[-20:])
     FOLDER_GRANTS_FILE.write_text(json.dumps(grants, indent=1), encoding='utf-8')
     return grant
+
+
+# Photos the app window keeps by reference in its autosave instead of copying
+# them into the web engine's storage once more: a file the user picked, or the
+# project file a photo is in. The page only ever sees an opaque id; a file that
+# changed or vanished since is not handed out again.
+REFS_FILE = UPLOADER_DIR / "filerefs.json"
+REFS_MAX = 5000
+
+
+def _file_refs():
+    try:
+        refs = json.loads(REFS_FILE.read_text(encoding='utf-8'))
+        return refs if isinstance(refs, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _make_file_refs(paths):
+    refs = _file_refs()
+    out = []
+    for path in paths:
+        st = path.stat()
+        rid = hashlib.sha256(f'{path}|{st.st_size}|{st.st_mtime_ns}'.encode('utf-8')).hexdigest()[:24]
+        refs.pop(rid, None)
+        refs[rid] = {'path': str(path), 'size': st.st_size, 'mtime': st.st_mtime_ns}
+        out.append(rid)
+    REFS_FILE.write_text(json.dumps(dict(list(refs.items())[-REFS_MAX:])), encoding='utf-8')
+    return out
 
 
 PHOTO_SUFFIXES = {'.jpg', '.jpeg', '.png', '.webp'}
@@ -952,6 +719,24 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(500, {'ok': False, 'error': str(e)})
         return self._json(200, {'ok': True, 'size': length})
 
+    def _upload_video(self, parsed):
+        self.close_connection = True  # an unread body must not leak into a next request
+        job = parse_qs(parsed.query).get('job', [''])[0] or None
+        length = int(self.headers.get('Content-Length') or 0)
+        try:
+            creds = _load_credentials()
+        except RuntimeError:
+            return self._json(401, {'ok': False, 'error': 'not_signed_in'})
+        try:
+            url = _upload_video(creds, self.rfile, length, self.headers.get('Content-Type') or 'video/mp4', job)
+        except GoogleError as e:
+            return self._json(200, {'ok': False, 'error': e.message, 'status': e.status, 'step': e.step})
+        except Exception as e:
+            return self._json(200, {'ok': False, 'error': str(e)})
+        finally:
+            UPLOAD_PROGRESS.pop(job, None)
+        return self._json(200, {'ok': True, 'uploadUrl': url})
+
     def do_POST(self):
         if self._forbidden_origin():
             return self._json(403, {'ok': False, 'error': 'forbidden'})
@@ -960,6 +745,10 @@ class Handler(SimpleHTTPRequestHandler):
             if not self._key_ok():
                 return self._bad_key()
             return self._write_picked_file(parsed)
+        if parsed.path == '/api/video/upload':  # a 360° video, often GB: streamed on to Google
+            if not self._key_ok():
+                return self._bad_key()
+            return self._upload_video(parsed)
         length = int(self.headers.get('Content-Length') or 0)
         raw_body = self.rfile.read(length) if length else b''
 
@@ -1024,6 +813,25 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(200, {'ok': True, 'files': [
                     {'token': _file_token(p, 'file'), 'name': p.name, 'path': p.relative_to(root).as_posix()}
                     for p in _folder_photos(root)]})
+
+            if parsed.path in ('/api/files/ref', '/api/files/ref/open'):
+                payload = json.loads(raw_body.decode('utf-8') or '{}')
+                if not APP['window']:
+                    return self._json(404, {'ok': False, 'error': 'not_found'})
+                if parsed.path == '/api/files/ref':  # files the page holds tokens for -> ids for the autosave
+                    entries = [FILES.get(str(tok)) for tok in payload.get('tokens', [])]
+                    paths = [e['path'] for e in entries if e and e['kind'] == 'file' and e['path'].is_file()]
+                    if len(paths) != len(entries):
+                        return self._json(200, {'ok': False, 'error': 'unknown_file'})
+                    return self._json(200, {'ok': True, 'refs': _make_file_refs(paths)})
+                ref = _file_refs().get(str(payload.get('ref') or ''))
+                path = ref and Path(ref['path'])
+                if not path or not path.is_file():
+                    return self._json(200, {'ok': False, 'error': 'gone'})
+                st = path.stat()
+                if (st.st_size, st.st_mtime_ns) != (ref['size'], ref['mtime']):
+                    return self._json(200, {'ok': False, 'error': 'changed'})
+                return self._json(200, {'ok': True, 'token': _file_token(path, 'file'), 'name': path.name})
 
             if parsed.path in ('/api/recent/add', '/api/recent/open', '/api/recent/remove'):
                 payload = json.loads(raw_body.decode('utf-8') or '{}')
@@ -1094,12 +902,14 @@ class Handler(SimpleHTTPRequestHandler):
                 heading = float(qs['heading'][0]) if qs.get('heading', [''])[0] else None
                 place_id = qs.get('place_id', [''])[0] or None
                 job = qs.get('job', [''])[0] or None
+                level = ({'number': int(qs['level'][0]), 'name': qs.get('level_name', [''])[0][:3]}
+                         if qs.get('level', [''])[0] else None)
                 try:
                     creds = _load_credentials()
                 except RuntimeError:
                     return self._json(401, {'ok': False, 'error': 'not_signed_in'})
                 try:
-                    photo_id = _upload_photo(creds, raw_body, filename, lat, lng, heading, place_id, job)
+                    photo_id = _upload_photo(creds, raw_body, filename, lat, lng, heading, place_id, job, level)
                 except GoogleError as e:
                     return self._json(200, {'ok': False, 'error': e.message, 'status': e.status,
                                             'step': e.step, 'kind': e.kind})
@@ -1129,6 +939,90 @@ class Handler(SimpleHTTPRequestHandler):
                 if parsed.path == '/api/photo-status':
                     return self._json(200, {'ok': True, 'photos': _photo_status(creds, payload.get('ids', []))})
                 return self._json(200, {'ok': True, 'results': _update_photos(creds, payload.get('items', []))})
+
+            if parsed.path == '/api/report':
+                # "Create a bug report": a zip to save, without sign-in, keys or photos.
+                payload = json.loads(raw_body.decode('utf-8') or '{}')
+                data = bug_report.build(
+                    APP_VERSION, UPLOADER_DIR, payload, packaged=PACKAGED, window=bool(APP['window']),
+                    signed_in=TOKEN_FILE.exists(), places_key=bool(_places_key()),
+                    secrets=[EDITOR_KEY, _places_key()])
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/zip')
+                self.send_header('Content-Length', str(len(data)))
+                self.send_header('Cache-Control', 'no-store')
+                self.end_headers()
+                self.wfile.write(data)
+                return
+
+            if parsed.path in ('/api/video/create', '/api/video/list', '/api/video/delete'):
+                payload = json.loads(raw_body.decode('utf-8') or '{}')
+                try:
+                    creds = _load_credentials()
+                except RuntimeError:
+                    return self._json(401, {'ok': False, 'error': 'not_signed_in'})
+                try:
+                    if parsed.path == '/api/video/list':
+                        return self._json(200, {'ok': True, 'sequences': _list_sequences(creds)})
+                    if parsed.path == '/api/video/delete':
+                        _delete_sequence(creds, str(payload.get('id') or ''))
+                        return self._json(200, {'ok': True})
+                    gps = [{'lat': float(p['lat']), 'lng': float(p['lng']), 'time': str(p['time'])}
+                           for p in payload.get('gps') or []]
+                    sid = _create_sequence(creds, str(payload.get('uploadUrl') or ''), gps,
+                                           str(payload.get('captureTime') or '') or None)
+                    return self._json(200, {'ok': True, 'id': sid})
+                except GoogleError as e:
+                    return self._json(200, {'ok': False, 'error': e.message, 'status': e.status, 'step': e.step})
+
+            if parsed.path in ('/api/places', '/api/places/key', '/api/places/nearby', '/api/places/geocode'):
+                payload = json.loads(raw_body.decode('utf-8') or '{}')
+                lang = 'de' if payload.get('lang') == 'de' else 'en'
+                if parsed.path == '/api/places':
+                    return self._json(200, {'ok': True, 'configured': bool(_places_key())})
+                if parsed.path == '/api/places/key':
+                    key = str(payload.get('key') or '').strip()
+                    if not key:
+                        PLACES_KEY_FILE.unlink(missing_ok=True)
+                        return self._json(200, {'ok': True, 'configured': False})
+                    if not re.fullmatch(r'[A-Za-z0-9_\-]{20,80}', key):
+                        return self._json(200, {'ok': False, 'error': 'That does not look like an API key (AIza…).'})
+                    # One lookup with each API, to tell which of them the key works for.
+                    lat, lng = float(payload.get('lat', 48.8584)), float(payload.get('lng', 2.2945))
+                    errors = {}
+                    try:
+                        _places_nearby(key, lat, lng, 50, lang)
+                    except GoogleError as e:
+                        errors['places'] = e.message
+                    try:
+                        _geocode(key, lat, lng, lang)
+                    except GoogleError as e:
+                        errors['geocoding'] = e.message
+                    if len(errors) == 2:
+                        return self._json(200, {'ok': False, 'error': errors['places'], 'errors': errors})
+                    PLACES_KEY_FILE.write_text(key, encoding='utf-8')
+                    return self._json(200, {'ok': True, 'configured': True, 'places': 'places' not in errors,
+                                            'geocoding': 'geocoding' not in errors, 'errors': errors})
+                key = _places_key()
+                if not key:
+                    return self._json(200, {'ok': False, 'error': 'no_key'})
+                # 'fetched': how many lookups really went to Google (the rest came from the cache),
+                # so the editor can show what was used of the free monthly usage.
+                try:
+                    if parsed.path == '/api/places/geocode':
+                        points = [(float(p['lat']), float(p['lng'])) for p in payload.get('points', [])][:500]
+                        fetched = len({(round(a, 5), round(b, 5)) for a, b in points
+                                       if ('geo', key, round(a, 5), round(b, 5), lang) not in PLACES_CACHE})
+                        with ThreadPoolExecutor(max_workers=6) as pool:
+                            found = list(pool.map(lambda ll: _geocode(key, ll[0], ll[1], lang), points))
+                        return self._json(200, {'ok': True, 'results': found, 'fetched': fetched})
+                    lat, lng = float(payload['lat']), float(payload['lng'])
+                    radius = min(max(float(payload.get('radius', 50)), 5.0), 500.0)
+                    fetched = int((key, round(lat, 5), round(lng, 5), round(radius), lang) not in PLACES_CACHE)
+                    places = _places_nearby(key, lat, lng, radius, lang)
+                except GoogleError as e:
+                    return self._json(200, {'ok': False, 'error': e.message, 'status': e.status, 'step': e.step})
+                return self._json(200, {'ok': True, 'places': places, 'fetched': fetched})
 
             if parsed.path == '/api/open-file':
                 payload = json.loads(raw_body.decode('utf-8'))

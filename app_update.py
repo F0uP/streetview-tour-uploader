@@ -9,8 +9,9 @@ installer can replace its files; the installer starts the new version again
 afterwards (see the [Run] section of installer/StreetviewTourEditor.iss).
 
 Portable and source (python run_editor.py) installs, and the macOS and Linux
-packages, can't replace themselves this way, so for them the editor only links
-to the release page.
+packages, can't replace themselves this way. For them the editor says how to
+update (how_to_update): the right download for this computer, or for the
+Linux package from the apt repository, the command that brings it.
 
 Release assets per Windows architecture: the x64 installer keeps the name
 "StreetviewTourEditor-<version>-Setup.exe" (it is what every older version's
@@ -20,6 +21,7 @@ updater looks for, and it also serves Windows on ARM through emulation); the
 
 import hashlib
 import json
+import platform
 import re
 import struct
 import subprocess
@@ -38,6 +40,8 @@ SETUP_RE = (re.compile(r"^StreetviewTourEditor-(.+)-Setup-x86\.exe$") if struct.
             else re.compile(r"^StreetviewTourEditor-(.+)-Setup\.exe$"))
 SUMS_NAME = "SHA256SUMS.txt"
 CHECK_TTL = 3600  # GitHub allows 60 unauthenticated API calls per hour
+# Written by the README's "apt repository" setup: then apt brings the updates.
+APT_SOURCE = Path("/etc/apt/sources.list.d/streetview-tour-editor.list")
 
 _cache = {'at': 0.0, 'info': None}
 _lock = threading.Lock()
@@ -89,12 +93,33 @@ def check(current, force=False):
                 'setupName': setup,
                 'setupUrl': assets.get(setup) if setup else None,
                 'sumsUrl': assets.get(SUMS_NAME),
+                'assets': assets,
             }
             _cache.update(at=time.time(), info=dict(info))
     info['current'] = current
     info['newer'] = is_newer(info['latest'], current)
     info['canInstall'] = bool(is_installed() and info['setupUrl'] and info['sumsUrl'])
+    info['howTo'] = None if info['canInstall'] else how_to_update(info.pop('assets'), info['latest'])
+    info.pop('assets', None)
     return info
+
+
+def how_to_update(assets, latest):
+    """How this copy gets a new version when it can't install it itself:
+    {'kind': 'macos' | 'deb' | 'apt' | 'portable' | 'page', 'name', 'url'} (name and url: the download)."""
+    if sys.platform == 'darwin':
+        kind, name = 'macos', f"StreetviewTourEditor-{latest}-macos-{'arm64' if platform.machine() == 'arm64' else 'x64'}.dmg"
+    elif sys.platform.startswith('linux'):
+        if APT_SOURCE.exists():
+            return {'kind': 'apt', 'name': None, 'url': None}
+        kind, name = 'deb', next((n for n in assets if n.endswith('_all.deb')), None)
+    elif sys.platform == 'win32':
+        kind, name = 'portable', f"StreetviewTourEditor-{latest}-windows-{'x86' if struct.calcsize('P') == 4 else 'x64'}-portable.zip"
+    else:
+        kind, name = 'page', None
+    if not name or name not in assets:
+        return {'kind': 'page', 'name': None, 'url': None}
+    return {'kind': kind, 'name': name, 'url': assets[name]}
 
 
 def _download(url, dest, progress=None):

@@ -44,7 +44,7 @@ NOT_BUNDLED = {"pystray", "pillow", "piexif"}
 FROM_SYSTEM = {"cryptography", "cffi", "pycparser"}
 DEPENDS = ("python3 (>= 3.11), python3-gi, gir1.2-gtk-3.0, gir1.2-webkit2-4.1 | gir1.2-webkit2-4.0, "
            "python3-cryptography (>= 38.0.3), xdg-utils")
-APP_FILES = ["run_editor.py", "app_window.py", "app_update.py", "app_tray.py"]
+APP_FILES = ["run_editor.py", "google_api.py", "places.py", "bug_report.py", "app_window.py", "app_update.py", "app_tray.py"]
 ICON_SIZES = [16, 24, 32, 48, 64, 128, 256, 512]
 
 
