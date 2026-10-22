@@ -31,6 +31,9 @@ Code signing (optional):
       set SIGN_CMD=signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a "{file}"
     The app .exe is signed before packaging, and Inno Setup signs the
     Setup.exe and its uninstaller with the same command.
+    A signing service that takes the files instead (SignPath): build with
+    --stage app, have StreetviewTourEditor.exe signed, then --stage package,
+    and have the Setup.exe signed (.github/workflows/build-release.yml does so).
   macOS: set MACOS_SIGN_IDENTITY to a "Developer ID Application: ..." identity
     in the keychain; with APPLE_ID, APPLE_TEAM_ID and APPLE_APP_PASSWORD also
     set, the disk image is notarized by Apple too. Without an identity the app
@@ -153,16 +156,21 @@ def windows_arch():
 def build_windows(version, args):
     arch = windows_arch()
     app_dir = DIST_DIR / APP_NAME
-    pyinstaller(APP_NAME, ICONS / "app.ico", [
-        "--console" if args.console else "--windowed",
-        "--add-data", f"{ICONS / 'app.ico'}{os.pathsep}.",  # tray icon in browser mode
-        # pywebview and pystray pick their platform backend at runtime, invisible to PyInstaller.
-        "--hidden-import", "webview.platforms.winforms",
-        "--hidden-import", "webview.platforms.edgechromium",
-        "--hidden-import", "pystray._win32",
-        "--exclude-module", "webview.platforms.cocoa",
-    ])
-    sign(app_dir / f"{APP_NAME}.exe")
+    if args.stage in ("all", "app"):
+        pyinstaller(APP_NAME, ICONS / "app.ico", [
+            "--console" if args.console else "--windowed",
+            "--add-data", f"{ICONS / 'app.ico'}{os.pathsep}.",  # tray icon in browser mode
+            # pywebview and pystray pick their platform backend at runtime, invisible to PyInstaller.
+            "--hidden-import", "webview.platforms.winforms",
+            "--hidden-import", "webview.platforms.edgechromium",
+            "--hidden-import", "pystray._win32",
+            "--exclude-module", "webview.platforms.cocoa",
+        ])
+        sign(app_dir / f"{APP_NAME}.exe")
+    if args.stage == "app":
+        return app_dir / f"{APP_NAME}.exe", []
+    if not (app_dir / f"{APP_NAME}.exe").exists():
+        sys.exit(f"No app in {app_dir} to package - build it first (--stage app).")
 
     outputs = []
     portable = DIST_DIR / f"{APP_NAME}-{version}-windows-{arch}-portable"
@@ -296,11 +304,16 @@ def main():
     parser.add_argument("--version", help="version string, e.g. 1.2.0 (default: git describe)")
     parser.add_argument("--no-installer", action="store_true", help="Windows: skip the Inno Setup step")
     parser.add_argument("--console", action="store_true", help="Windows: build with a console window (debugging)")
+    parser.add_argument("--stage", choices=("all", "app", "package"), default="all",
+                        help="Windows: only the app folder, or only zip and installer from it - for signing in "
+                             "between with a service that signs outside this script (SignPath, see the workflow)")
     args = parser.parse_args()
     version = (args.version or detect_version()).lstrip("v")
 
     if sys.platform not in ("win32", "darwin"):
         sys.exit("On Linux, build the .deb package instead: python packaging/linux/build_deb.py")
+    if args.stage != "all" and sys.platform != "win32":
+        sys.exit("--stage is for Windows builds.")
     if importlib_missing("PyInstaller"):
         sys.exit("PyInstaller not found. Install the build requirements first:\n  pip install -r requirements-build.txt")
 

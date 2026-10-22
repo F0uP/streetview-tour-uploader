@@ -19,11 +19,19 @@ name: Build and Release
 #     AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET,
 #     TRUSTED_SIGNING_ENDPOINT (e.g. https://weu.codesigning.azure.net),
 #     TRUSTED_SIGNING_ACCOUNT, TRUSTED_SIGNING_PROFILE
+#   or Windows code signing with SignPath (free for open source, see
+#     packaging/signpath/README.md): the secret SIGNPATH_API_TOKEN and the
+#     repository variables SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG
+#     (and SIGNPATH_SIGNING_POLICY_SLUG, default "release-signing").
+#     Azure is used when both are set.
 #   macOS signing: MACOS_CERTIFICATE (base64 of a "Developer ID Application"
 #     .p12), MACOS_CERTIFICATE_PASSWORD; plus notarization: APPLE_ID,
 #     APPLE_TEAM_ID, APPLE_APP_PASSWORD (an app-specific password)
 #   winget: WINGET_TOKEN (classic PAT with public_repo scope) - opens the
 #     update PR against microsoft/winget-pkgs after each release.
+#   apt repository on GitHub Pages: APT_GPG_PRIVATE_KEY (an armored private
+#     key without passphrase, only for this) - each release's .deb is added to
+#     the repository in the gh-pages branch (see packaging/linux/apt_repo.py).
 on:
   push:
     tags:
@@ -56,16 +64,24 @@ jobs:
           if [ "${{ github.ref_type }}" = "tag" ]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-dev.${{ github.run_number }}"; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
+  # Nothing is built unless the tests pass (tests.yml).
+  tests:
+    uses: ./.github/workflows/tests.yml
+
   windows:
-    needs: version
+    needs: [version, tests]
     strategy:
       fail-fast: false
       matrix:
         arch: [x64, x86]
     name: Windows ${{ matrix.arch }}
     runs-on: windows-latest
+    permissions:
+      contents: read
+      actions: read  # SignPath fetches the files to sign from this run
     env:
       SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' && secrets.TRUSTED_SIGNING_ACCOUNT != '' }}
+      SIGNPATH: ${{ secrets.SIGNPATH_API_TOKEN != '' && vars.SIGNPATH_ORGANIZATION_ID != '' && !(secrets.AZURE_CLIENT_ID != '' && secrets.TRUSTED_SIGNING_ACCOUNT != '') }}
     steps:
       - uses: actions/checkout@v7
 
@@ -99,11 +115,64 @@ jobs:
           "SIGN_CMD=`"$($signtool.FullName)`" sign /v /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 /dlib `"$($dlib.FullName)`" /dmdf `"$meta`" `"{file}`"" >> $env:GITHUB_ENV
 
       - name: Build app, portable zip and installer
+        if: env.SIGNPATH != 'true'
         env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: python build_exe.py --version ${{ needs.version.outputs.version }}
+
+      # SignPath signs files it fetches from this run: first the app, then the
+      # installer built around the signed app.
+      - name: Build the app (signed next)
+        if: env.SIGNPATH == 'true'
+        run: python build_exe.py --version ${{ needs.version.outputs.version }} --stage app
+
+      - id: unsigned-app
+        if: env.SIGNPATH == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-app-${{ matrix.arch }}
+          path: dist/StreetviewTourEditor/StreetviewTourEditor.exe
+          if-no-files-found: error
+
+      - name: Sign the app with SignPath
+        if: env.SIGNPATH == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ steps.unsigned-app.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist/StreetviewTourEditor
+
+      - name: Portable zip and installer around the signed app
+        if: env.SIGNPATH == 'true'
+        run: python build_exe.py --version ${{ needs.version.outputs.version }} --stage package
+
+      - id: unsigned-setup
+        if: env.SIGNPATH == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-setup-${{ matrix.arch }}
+          path: dist/*-Setup*.exe
+          if-no-files-found: error
+
+      - name: Sign the installer with SignPath
+        if: env.SIGNPATH == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: setup
+          github-artifact-id: ${{ steps.unsigned-setup.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist
 
       - name: Smoke test
         shell: pwsh
@@ -139,7 +208,7 @@ jobs:
         run: ./.github/scripts/smoke-test-windows.ps1 -Exe app\StreetviewTourEditor\StreetviewTourEditor.exe
 
   macos:
-    needs: version
+    needs: [version, tests]
     strategy:
       fail-fast: false
       matrix:
@@ -204,7 +273,7 @@ jobs:
           if-no-files-found: error
 
   linux:
-    needs: version
+    needs: [version, tests]
     name: Linux package
     runs-on: ubuntu-24.04
     steps:
@@ -216,7 +285,7 @@ jobs:
           python-version: '3.11'
 
       - name: Check the app compiles on Python 3.11
-        run: python -m py_compile run_editor.py app_window.py app_update.py app_tray.py
+        run: python -m py_compile run_editor.py google_api.py places.py bug_report.py app_window.py app_update.py app_tray.py
 
       - name: Build .deb
         run: python packaging/linux/build_deb.py --version ${{ needs.version.outputs.version }}
@@ -285,6 +354,54 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+
+  apt-repo:
+    # Adds the release's .deb to the apt repository in the gh-pages branch (folder
+    # apt/, served by GitHub Pages), so "apt upgrade" brings it. Without the
+    # APT_GPG_PRIVATE_KEY secret this is skipped. GitHub Pages has to be switched
+    # on once for the gh-pages branch (Settings -> Pages).
+    needs: [version, release]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      APT_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+    steps:
+      - name: Without a signing key
+        if: env.APT_KEY == ''
+        run: echo 'No APT_GPG_PRIVATE_KEY secret - skipped.'
+
+      - uses: actions/checkout@v7
+        if: env.APT_KEY != ''
+
+      - uses: actions/download-artifact@v8
+        if: env.APT_KEY != ''
+        with:
+          name: linux
+          path: debs
+
+      - name: Update the repository
+        if: env.APT_KEY != ''
+        env:
+          REMOTE: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads "$REMOTE" gh-pages > /dev/null; then
+            git clone --depth 1 --branch gh-pages "$REMOTE" site
+          else
+            git init -b gh-pages site
+            git -C site remote add origin "$REMOTE"
+          fi
+          echo "$APT_KEY" | gpg --batch --import
+          python3 packaging/linux/apt_repo.py site/apt debs/*.deb
+          gpg --batch --yes --export > site/apt/key.gpg
+          gpg --batch --yes --clearsign -o site/apt/dists/stable/InRelease site/apt/dists/stable/Release
+          gpg --batch --yes --armor --detach-sign -o site/apt/dists/stable/Release.gpg site/apt/dists/stable/Release
+          touch site/.nojekyll
+          git -C site add -A
+          git -C site commit -m "apt repository: ${{ needs.version.outputs.version }}"
+          git -C site push origin gh-pages
 
   winget:
     # Keeps the winget package current, with Microsoft's own wingetcreate (the
