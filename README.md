@@ -49,9 +49,9 @@ them to Google.
 | 📍 **No GPS? No problem** | Place photos from a **GPX track** recorded on your phone, or type exact coordinates. GPS a few metres off? **Move or turn the whole tour**, or **snap it to the paths** on OpenStreetMap. |
 | 🙈 **Privacy built in** | **Blur faces and licence plates** before uploading: the editor checks **all photos at once** for faces and vehicles – on your computer – and you go through the findings one by one. The Street View Publish API does not blur anything itself. |
 | ✅ **Catch problems early** | A **checklist** shows what is left for each tour, a **tour check** finds what Google would reject (not 2:1, not a JPEG, over 75 MB) and what looks wrong, and a **review before publishing** says exactly what goes public. |
-| ☁️ **One-click publishing** | Upload with a live progress view, readable errors and automatic linking once Google has processed the photos. Later changes are **pushed without re-uploading**; the Google status and **view counts** show on every point. **Floors** for tours inside buildings. |
-| 🎥 **360° videos** | Upload a 360° video with its GPS track and Google makes the Street View photos from it. The editor checks the video and the track first and shows how far Google got. |
-| 🌐 **Share it anywhere** | Export a **ready-to-host website** of the tour (with info points and a minimap), or `tour-viewer.html` / `tour-config.json` / `tour.csv`. |
+| ☁️ **One-click publishing** | Upload with a live progress view, readable errors and automatic linking once Google has processed the photos. Later changes are **pushed without re-uploading**; the Google status and **view counts** show on every point. **Floors** for tours inside buildings. **Photos already on Google** can be loaded into the editor to fix their links, position or direction. |
+| 🎥 **360° videos** | Upload a 360° video with its GPS track and Google makes the Street View photos from it. The editor checks the video and the track first, goes on after a broken connection – even after a restart – and shows how far Google got. |
+| 🌐 **Share it anywhere** | Export a **ready-to-host website** of the tour (with info points and a minimap) and get the **code to embed it** in another page, a **QR code** for the website or the tour on Google Maps, **KML** for Google Earth or **GPX** for GPS apps. |
 | 💾 **Never lose work** | Autosave, a restore prompt after a crash, and `.vrtour` project files with all photos inside. **Ctrl+S** saves back into the open project; **recent projects** are one click away. |
 | 🖥️ **A real desktop app** | For **Windows, macOS and Linux** (also ARM). Its own window, no browser needed, **works offline** (only the map and Google need the internet); a calm **light and dark design**, a short **introduction on first start** and a **sample tour** to try things, a **panorama focus mode**, the system's own open and save dialogs, `.vrtour` file association, installers, in-app updates on Windows and update hints on macOS and Linux (or updates through **apt**). English and German user interface. |
 
@@ -174,8 +174,11 @@ flowchart LR
 The **checklist** at the top of the side panel follows you through these steps:
 for the tour of the selected point it shows what is done (green) and what is left
 (yellow) – photos, north, faces & plates, places, Google. Click a chip to go where
-it gets done. Messages that pop up at the bottom are kept under the **bell** in the
-top bar, in case one vanished too fast.
+it gets done. With several tours, each row of the tour list shows how much of its
+checklist is done (e.g. *4/5*). Messages that pop up at the bottom are kept under
+the **bell** in the top bar, in case one vanished too fast: it counts the ones that
+need attention and lights a dot for the rest. Every dialog works with the keyboard
+alone (<kbd>Tab</kbd> goes round inside it, <kbd>Esc</kbd> closes it).
 
 ### 1. Bring in your photos
 
@@ -201,6 +204,10 @@ top bar, in case one vanished too fast.
   all counts as one undo step. **Snap to paths** moves each point onto the nearest
   street or footpath from OpenStreetMap (the tour's area is sent to the Overpass
   API for this).
+- **Many names at once:** **Tools → Rename points…** names the selected points, a
+  tour or all points by a pattern – numbered in walking order, with the tour's name
+  or with each point's place on Google Maps (*Names from places*) – with a preview,
+  and one undo.
 - **Inside a building with several floors?** Give the points their **floor** in
   the side panel (*Position*). Google shows the floor switcher for them, and the
   map's floor buttons show one floor at a time.
@@ -239,7 +246,10 @@ way and you look backwards after a jump.
 **Tools → Check all photos for faces & plates…** looks through every photo – on
 your computer, nothing is sent anywhere – and lists those with faces or vehicles.
 **Review** opens each in the blur tool with the suggestions marked; after applying
-you are back at the list. Or select a node and click **Blur faces & plates…**:
+you are back at the list. Photos that were checked stay checked – they are kept as
+checked in the project, and the next check skips them. A face or car on the seam
+of the panorama (where its right edge meets the left one) is found whole and
+blurred on both sides. Or select a node and click **Blur faces & plates…**:
 
 - **Detect faces** and **Detect plates** suggest boxes (dashed); click a box to
   remove it. For plates the editor finds vehicles and suggests the lower middle of
@@ -258,7 +268,8 @@ unblurred version on Google.
 - **Preview** shows the tour exactly as it will look, including info points and the
   minimap.
 - Press <kbd>F</kbd> (or the expand button under the panorama) to see the selected
-  photo over the **whole window**, and walk on to the linked points from there.
+  photo over the **whole window**, with a small map of the tour. <kbd>↑</kbd> walks
+  to the linked point you look at, <kbd>↓</kbd> back, <kbd>←</kbd> <kbd>→</kbd> turn;
   <kbd>Esc</kbd> goes back.
 - **Info points:** in the side panel, **Info points → Add at current view** puts a
   clickable "i" with a title, text and link into the panorama.
@@ -285,6 +296,12 @@ Good to know:
   shows whether each photo is *published*, *processing* or *rejected*, finds photos
   the editor lost track of and duplicates at the same spot. **Repair** sends
   whatever is missing, again without re-uploading.
+- **Tools → Photos from Google…** loads photos that are on Street View already –
+  from earlier uploads, also from other tools – with their position, direction,
+  floor, place and links (and, if you like, the photos themselves). Change them
+  like any other point; the next upload sends only the changes, nothing is uploaded
+  again. A point without its photo (when Google offers no download) can still be
+  moved, turned and linked.
 - **Tools → Views on Google…** shows how often each photo has been viewed on
   Google Maps, per tour.
 - **Places on Google Maps** (optional, recommended): see below. Without it you can
@@ -345,9 +362,12 @@ Before anything is sent, the editor reads the video and shows what Google needs:
   (Google refuses gaps over 5 s) and notices when the camera wrote its local time
   as UTC – **Shift by … h** fixes that.
 
-The video goes from your computer through the app straight to Google, also when it
-is several GB. Processing takes hours to days; **Your videos on Google** shows how
-far each got, or why Google refused it.
+Choose the video, or drop it on the map or the dialog. It goes from your
+computer through the app straight to Google, in pieces with Google's resumable
+upload: if the connection breaks, the editor asks Google how much arrived and goes
+on from there. Stopped, or the app closed? Choose the same video again within 7
+days and it goes on where it stopped. Processing takes hours to days; **Your videos
+on Google** shows how far each got, or why Google refused it.
 
 ### 7. Save, share and export
 
@@ -357,6 +377,8 @@ far each got, or why Google refused it.
 | **Project → Website with photos** | `index.html` + photos in a `.zip`, ready for any web space. |
 | **Project → Viewer files** | `tour-viewer.html` + `tour-config.json`, to place next to your photos. Also in the preview. |
 | **Project → CSV** | `tour.csv` for the [command-line uploader](#command-line-tools). |
+| **Project → KML / GPX** | The points (with their Street View links once published) and the links between them, for Google Earth and My Maps, or as waypoints and a track for GPS apps. |
+| **Project → Share the tour…** | The link to the tour's start on Google Maps, and for your exported website the code to embed it in another page – each with a QR code to save as PNG or SVG (for a sign at the place, a flyer, …). |
 | **Project → Export folder** | Save every export straight into one folder instead of asking each time. |
 
 **Several tours on one map:** **Project → Add project…** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd>,
@@ -390,7 +412,7 @@ the last session.
 | Connect two nodes | Right-click, right-click |
 | Select several | <kbd>Ctrl</kbd>+click, or <kbd>Shift</kbd>+drag on the map |
 | Delete selection | <kbd>Delete</kbd> |
-| Panorama over the whole window | <kbd>F</kbd> |
+| Panorama over the whole window | <kbd>F</kbd>; in it <kbd>↑</kbd> <kbd>↓</kbd> walk, <kbd>←</kbd> <kbd>→</kbd> turn |
 | Cancel / deselect | <kbd>Esc</kbd> |
 | All shortcuts | <kbd>?</kbd> |
 
@@ -575,6 +597,9 @@ See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID fo
   reference (path, size and time in `filerefs.json`) instead of a second copy; a
   changed or moved file is reported, never silently replaced.
 - A bug report is only made when you ask for it, and only saved to your computer.
+- The Places API key never appears in a message, also not when Google can't be
+  reached. The app sends your Google sign-in only to Google's own addresses, also
+  for the upload addresses of a video the editor hands it.
 - In-app updates download only from this repository's GitHub releases and are
   checked against the release's `SHA256SUMS.txt` before installing.
 - All code ships with the app: the libraries (map, panorama viewer, face
@@ -591,7 +616,9 @@ See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID fo
 editor/editor.html        the editor's page (markup); editor.css its styles
 editor/js/                the editor as native ES modules, no build step: editor.js (main),
                           i18n-de.js (German), align.js (north from the photos), detect.js
-                          (faces, vehicles), video.js (360° videos), viewer.js, gpx.js, zip.js, util.js
+                          (faces, vehicles), video.js and video-dialog.js (360° videos), share.js
+                          (QR codes, embed code), notices.js (messages), report.js (bug report),
+                          a11y.js (dialogs for the keyboard), viewer.js, gpx.js, zip.js, util.js
 editor/sample/            the sample tour (made by packaging/make_sample.py)
 editor/vendor/            third-party libraries, fetched and checked by packaging/vendor.py
 run_editor.py             local server, its API endpoints, desktop-app entry point
@@ -712,8 +739,9 @@ Originally created by [Koji Takada](https://github.com/takadakoji-jp/streetview-
 extended by [F0uP](https://github.com/F0uP). Built with
 [Leaflet](https://leafletjs.com/),
 [Photo Sphere Viewer](https://photo-sphere-viewer.js.org/),
-[exifr](https://github.com/MikeKovarik/exifr) and
-[MediaPipe](https://ai.google.dev/edge/mediapipe); maps ©
+[exifr](https://github.com/MikeKovarik/exifr),
+[MediaPipe](https://ai.google.dev/edge/mediapipe) and
+[QR Code Generator](https://github.com/kazuhikoarase/qrcode-generator); maps ©
 [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors and
 imagery © Esri. Not affiliated with Google.
 
