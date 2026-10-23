@@ -147,7 +147,15 @@ jobs:
           artifact-configuration-slug: app
           github-artifact-id: ${{ steps.unsigned-app.outputs.artifact-id }}
           wait-for-completion: true
-          output-artifact-directory: dist/StreetviewTourEditor
+          output-artifact-directory: signed/app
+
+      - name: Put the signed app in place
+        if: env.SIGNPATH == 'true'
+        shell: pwsh
+        run: |
+          $signed = Get-ChildItem signed/app -Recurse -Filter StreetviewTourEditor.exe | Select-Object -First 1
+          if (-not $signed) { throw 'SignPath returned no StreetviewTourEditor.exe' }
+          Copy-Item $signed.FullName dist/StreetviewTourEditor/StreetviewTourEditor.exe -Force
 
       - name: Portable zip and installer around the signed app
         if: env.SIGNPATH == 'true'
@@ -172,7 +180,15 @@ jobs:
           artifact-configuration-slug: setup
           github-artifact-id: ${{ steps.unsigned-setup.outputs.artifact-id }}
           wait-for-completion: true
-          output-artifact-directory: dist
+          output-artifact-directory: signed/setup
+
+      - name: Put the signed installer in place
+        if: env.SIGNPATH == 'true'
+        shell: pwsh
+        run: |
+          $signed = @(Get-ChildItem signed/setup -Recurse -Filter '*-Setup*.exe')
+          if (-not $signed) { throw 'SignPath returned no Setup.exe' }
+          $signed | ForEach-Object { Copy-Item $_.FullName (Join-Path dist $_.Name) -Force }
 
       - name: Smoke test
         shell: pwsh
@@ -390,8 +406,7 @@ jobs:
           if git ls-remote --exit-code --heads "$REMOTE" gh-pages > /dev/null; then
             git clone --depth 1 --branch gh-pages "$REMOTE" site
           else
-            git init -b gh-pages site
-            git -C site remote add origin "$REMOTE"
+            mkdir site
           fi
           echo "$APT_KEY" | gpg --batch --import
           python3 packaging/linux/apt_repo.py site/apt debs/*.deb
@@ -399,9 +414,13 @@ jobs:
           gpg --batch --yes --clearsign -o site/apt/dists/stable/InRelease site/apt/dists/stable/Release
           gpg --batch --yes --armor --detach-sign -o site/apt/dists/stable/Release.gpg site/apt/dists/stable/Release
           touch site/.nojekyll
+          # One commit without history, replacing the branch: old packages don't
+          # pile up in it (each .deb is tens of MB).
+          rm -rf site/.git
+          git -C site init -q -b gh-pages
           git -C site add -A
-          git -C site commit -m "apt repository: ${{ needs.version.outputs.version }}"
-          git -C site push origin gh-pages
+          git -C site commit -q -m "apt repository: ${{ needs.version.outputs.version }}"
+          git -C site push --force "$REMOTE" gh-pages
 
   winget:
     # Keeps the winget package current, with Microsoft's own wingetcreate (the
