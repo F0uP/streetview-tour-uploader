@@ -8,7 +8,7 @@ from helpers import drop, file_item, vrtour
 def test_an_older_project_gets_its_tour_and_saves_as_version_2(editor, tmp_path):
     page = editor.page
     drop(page, [file_item(vrtour(tmp_path / 'Altstadt.vrtour', 'Altstadt', 54.3233, 10.1228, start='n2'))], confirm=None)
-    assert page.inner_text('#st') == 'Nodes 3 · Links 2'
+    assert page.inner_text('#st').startswith('Nodes 3 · Links 2')
     page.evaluate("window.showSaveFilePicker = undefined")
     page.click('#bproject')
     with page.expect_download() as dl:

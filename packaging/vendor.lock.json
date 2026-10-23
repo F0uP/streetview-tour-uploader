@@ -139,6 +139,11 @@
   "sha256": "224b3818ceee7e203d6d5646092ae885d429fce018c0980681695d2997a89248",
   "size": 47990
  },
+ "qrcode/qrcode.mjs": {
+  "url": "https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.mjs",
+  "sha256": "ea91d7118a5395289170da848b7c6758b996163bfbccf312591ab65a4911b7c0",
+  "size": 51907
+ },
  "three/LICENSE": {
   "url": "https://cdn.jsdelivr.net/npm/three@0.169.0/LICENSE",
   "sha256": "4c40a1ef62450b857c3b2aaf294936304cd552d965fbcd9d32d4c5bcf4ba4454",

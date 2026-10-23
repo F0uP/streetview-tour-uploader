@@ -14,13 +14,23 @@ ADDRESS_TYPES = {'street_address', 'premise', 'subpremise'}
 PLACES_CACHE = {}
 
 
+def _request(step, method, url, **kwargs):
+    """A request to Google Maps. Without a connection, the error must not name the URL:
+    for the Geocoding API it carries the API key (requests puts it in its messages)."""
+    requests, *_ = _google_libs()
+    try:
+        return requests.request(method, url, timeout=20, **kwargs)
+    except requests.RequestException as e:
+        reason = 'timed out' if isinstance(e, requests.Timeout) else 'no connection'
+        raise GoogleError(step, 0, f'Google Maps could not be reached ({reason}).') from None
+
+
 def _geocode(key, lat, lng, lang='en'):
     """The house number and the street at a spot: {'address': {...} | None, 'street': {...} | None}."""
     cache_key = ('geo', key, round(lat, 5), round(lng, 5), lang)
     if cache_key in PLACES_CACHE:
         return PLACES_CACHE[cache_key]
-    requests, *_ = _google_libs()
-    r = requests.get(GEOCODE_URL, timeout=20, params={
+    r = _request('geocode', 'GET', GEOCODE_URL, params={
         'latlng': f'{lat},{lng}', 'key': key, 'language': lang,
         'result_type': 'street_address|premise|subpremise|route',
     })
@@ -53,8 +63,7 @@ def _places_nearby(key, lat, lng, radius=50.0, lang='en'):
     cache_key = (key, round(lat, 5), round(lng, 5), round(radius), lang)
     if cache_key in PLACES_CACHE:
         return PLACES_CACHE[cache_key]
-    requests, *_ = _google_libs()
-    r = requests.post(PLACES_URL, timeout=20, headers={
+    r = _request('places', 'POST', PLACES_URL, headers={
         'X-Goog-Api-Key': key,
         'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName',
     }, json={

@@ -68,6 +68,9 @@
       <button data-run="viewer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Viewer files (HTML + JSON)</button>
       <button id="bcsv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>CSV for the command-line uploader</button>
       <button data-run="exportproject"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><line x1="12" y1="13" x2="12" y2="21"/></svg>Tour as project (.vrtour)</button>
+      <button data-run="kml"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>KML for Google Earth…</button>
+      <button data-run="gpx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>GPX for GPS apps…</button>
+      <button data-run="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>Share the tour…</button>
       <hr>
       <button id="bdir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Export folder…<span class="h" id="savehint" data-no-i18n>Downloads</span></button>
     </div>
@@ -82,6 +85,7 @@
       <button data-run="shift"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>Move or turn a tour…</button>
       <button data-run="walkheadings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>Headings from walking direction…</button>
       <button data-run="northmatch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="3"/></svg>North from the photos…</button>
+      <button data-run="rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>Rename points…</button>
       <button data-run="blur"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/><line x1="3" y1="3" x2="21" y2="21"/></svg>Blur faces &amp; plates…<span class="h">selected node</span></button>
       <button data-run="privacy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Check all photos for faces &amp; plates…</button>
       <button data-run="video"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>Upload a 360° video…</button>
@@ -89,6 +93,7 @@
       <button data-run="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Check tour…</button>
       <button data-run="gstatus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>Compare with Google…</button>
       <button data-run="views"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Views on Google…</button>
+      <button data-run="fromgoogle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>Photos from Google…</button>
       <button data-run="places"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Places on Google Maps…</button>
       <hr>
       <button id="bcmdk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/></svg>Command palette<span class="h">Ctrl K</span></button>
@@ -189,6 +194,10 @@
       <div><b>CSV for the command-line uploader</b><span>Positions, headings and links as a table.</span></div></label>
     <label class="opt"><input type="radio" name="exp-format" value="project">
       <div><b>Project file (.vrtour)</b><span>The tour with its photos, to open or add on its own.</span></div></label>
+    <label class="opt"><input type="radio" name="exp-format" value="kml">
+      <div><b>KML for Google Earth and My Maps</b><span>The points with their Street View links, the links as lines.</span></div></label>
+    <label class="opt"><input type="radio" name="exp-format" value="gpx">
+      <div><b>GPX for GPS apps</b><span>The points as waypoints, the walk as a track.</span></div></label>
     <button class="btn g" id="exp-go" style="width:100%;margin-top:6px">Export now</button>
   </div>
 </div>
@@ -328,7 +337,7 @@
 
       <div class="np-photo">
         <label class="pb" id="ph-b" for="ni-p"><span>Choose a 360° photo…</span></label>
-        <div class="pvw" id="pano-wrap" style="display:none"><div id="pano-view"></div><div class="pano-focus-bar" id="pano-focus-bar" data-no-i18n hidden></div></div>
+        <div class="pvw" id="pano-wrap" style="display:none"><div id="pano-view"></div><div class="pano-focus-bar" id="pano-focus-bar" data-no-i18n hidden></div><div class="focus-map" id="focus-map"></div></div>
         <div class="np-photo-bar">
           <span id="gps-b"></span>
           <span class="fn" id="ph-n"></span>
@@ -608,7 +617,7 @@
     <div class="rowbtn" style="justify-content:flex-start;gap:14px;margin-bottom:10px">
       <label class="cb2"><input type="checkbox" id="pv-faces" checked> Faces</label>
       <label class="cb2"><input type="checkbox" id="pv-plates" checked> Licence plates</label>
-      <label class="cb2"><input type="checkbox" id="pv-skip" checked> Skip photos already blurred</label>
+      <label class="cb2"><input type="checkbox" id="pv-skip" checked> Skip photos already checked or blurred</label>
     </div>
     <div class="rowbtn"><button class="btn g" id="pv-go">Check photos</button><button class="btn" id="pv-cancel" hidden>Stop</button></div>
     <div class="progress" id="pv-progress" hidden><div></div></div>
@@ -621,7 +630,8 @@
   <div class="modal wide">
     <h2>360° video to Street View <span class="close" data-close="video-back">Close</span></h2>
     <div class="mini" style="margin:0 0 10px">Google turns a 360° video into Street View photos itself: it picks the frames, places them along the GPS track and links them. It needs a 360° video (MP4, 2:1, as the camera's app exports it) recorded while walking or driving outdoors, and GPS for all of it - in the video's motion track (CAMM) or as a GPX file recorded at the same time. Processing at Google takes hours to days. The video does not become part of this tour.</div>
-    <div class="vd-step"><span class="vd-num">1</span><button class="btn" id="vd-pick">Choose video…</button><span class="mini" id="vd-name" data-no-i18n></span></div>
+    <div class="vd-resume" id="vd-resume" data-no-i18n hidden></div>
+    <div class="vd-step"><span class="vd-num">1</span><button class="btn" id="vd-pick">Choose video…</button><span class="mini">or drop it here</span><span class="mini" id="vd-name" data-no-i18n></span></div>
     <input type="file" id="vd-file" accept="video/mp4,video/quicktime,.mp4,.mov" hidden>
     <div class="check-list" id="vd-facts" data-no-i18n></div>
     <div class="vd-step"><span class="vd-num">2</span><b>GPS</b>
@@ -648,6 +658,73 @@
     <div class="mini" style="margin:0 0 12px;font-size:12px;line-height:1.55">A bug report helps to find out what went wrong. It is a zip file with the versions of the app and of your system, the app's log and the editor's last messages and errors (they can contain the names of your points). It holds no photos, no projects, no Google sign-in and no keys - whatever in the log looks like a key or a token is blanked. Have a look inside before you send it.</div>
     <div class="rowbtn"><button class="btn" id="report-issue">Report the problem on GitHub</button><button class="btn g" id="report-save">Save the report…</button></div>
     <div class="mini" id="report-status" data-no-i18n></div>
+  </div>
+</div>
+
+<div class="modal-back" id="fromg-back">
+  <div class="modal">
+    <h2>Photos from Google <span class="close" data-close="fromg-back">Close</span></h2>
+    <div class="mini" style="margin:0 0 10px">Loads your photos that are on Street View into the editor, with what Google keeps of them: position, direction, floor, place and links. Change them here - move, turn, link - and the next upload sends only the changes; the photos are not uploaded again. Photos already in this project are left out.</div>
+    <div class="mini" id="fg-sum" data-no-i18n></div>
+    <div class="rowbtn" style="justify-content:flex-start;gap:14px;margin:8px 0">
+      <label class="cb2"><input type="radio" name="fg-scope" id="fg-view" value="view" checked> In the current map view <span id="fg-n-view" data-no-i18n></span></label>
+      <label class="cb2"><input type="radio" name="fg-scope" id="fg-all" value="all"> All of them <span id="fg-n-all" data-no-i18n></span></label>
+    </div>
+    <label class="cb2"><input type="checkbox" id="fg-download" checked> Download the photos too - for the panorama, north and blurring</label>
+    <div class="rowbtn"><button class="btn" id="fg-stop" hidden>Stop</button><button class="btn g" id="fg-go" disabled>Load</button></div>
+    <div class="progress" id="fg-progress" hidden><div></div></div>
+    <div class="mini" id="fg-status" data-no-i18n></div>
+  </div>
+</div>
+
+<div class="modal-back" id="rename-back">
+  <div class="modal">
+    <h2>Rename points <span class="close" data-close="rename-back">Close</span></h2>
+    <div class="rowbtn" style="justify-content:flex-start;gap:14px;margin:0 0 10px">
+      <label class="cb2" id="rn-sel-label"><input type="radio" name="rn-scope" value="sel"> Selected</label>
+      <label class="cb2"><input type="radio" name="rn-scope" value="tour"> Tour of the selected point</label>
+      <label class="cb2"><input type="radio" name="rn-scope" value="all" checked> All points</label>
+    </div>
+    <div class="pg"><p class="pl">Names</p><input class="pi" id="rn-pattern" value="{tour} {n}" spellcheck="false"></div>
+    <div class="mini" style="margin:-4px 0 8px">{n} number · {place} place on Google Maps · {tour} tour name · {name} the name it has</div>
+    <div class="rowbtn" style="justify-content:flex-start;gap:6px;margin:0 0 10px">
+      <button class="btn" data-rn-pattern="{tour} {n}">Tour and number</button>
+      <button class="btn" data-rn-pattern="{place}">Names from places</button>
+      <button class="btn" data-rn-pattern="{n} {place}">Number and place</button>
+    </div>
+    <div class="inline-num">Numbers from <input class="pi" id="rn-start" type="number" min="0" value="1">
+      <select class="pi" id="rn-order"><option value="walk">in walking order from the start</option><option value="list">as in the list</option></select></div>
+    <div class="rn-preview" id="rn-preview" data-no-i18n></div>
+    <div class="rowbtn"><button class="btn g" id="rn-go">Rename</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="share-back">
+  <div class="modal wide">
+    <h2>Share the tour <span class="close" data-close="share-back">Close</span></h2>
+    <div class="pg" id="share-tour-row"><p class="pl">Tour</p><select class="pi" id="share-tour" data-no-i18n></select></div>
+    <p class="pl">On Google Maps</p>
+    <div class="mini" id="share-maps-none">Not on Google Maps yet - upload the tour first. Then its link and QR code are here.</div>
+    <div class="share-row" id="share-maps" hidden>
+      <div class="share-qr" id="share-maps-qr"></div>
+      <div class="share-main">
+        <div class="mini">The link opens the tour's start photo in Google Maps, where visitors walk on from there.</div>
+        <div class="share-copy"><input class="pi" id="share-maps-link" readonly><button class="btn" id="share-maps-copy">Copy</button></div>
+        <div class="share-dl">QR code: <button class="btn" data-qr="maps:png">PNG</button><button class="btn" data-qr="maps:svg">SVG</button></div>
+      </div>
+    </div>
+    <p class="pl" style="margin-top:16px">Your own website</p>
+    <div class="mini">Export the tour as a website (Project → Website with photos), put its folder on your web space and enter its address here - then you get the code to embed it in another page, and a QR code.</div>
+    <div class="pg" style="margin-top:8px"><input class="pi" id="share-site-url" placeholder="https://example.com/tour/" spellcheck="false"></div>
+    <div class="share-row" id="share-site" hidden>
+      <div class="share-qr" id="share-site-qr"></div>
+      <div class="share-main">
+        <div class="mini">Code to embed the tour in a web page:</div>
+        <textarea class="pi share-embed" id="share-site-embed" readonly rows="4" data-no-i18n></textarea>
+        <div class="share-copy"><button class="btn" id="share-site-copy">Copy code</button></div>
+        <div class="share-dl">QR code: <button class="btn" data-qr="site:png">PNG</button><button class="btn" data-qr="site:svg">SVG</button></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -711,6 +788,7 @@
     <h2>Review before publishing <span class="close" data-close="review-back">Close</span></h2>
     <div class="mini" style="margin:0 0 10px">This is what goes to Google now. Once Google has processed them, the photos are public on Google Maps, shown with the name of your Google account. They can be deleted again later (Compare with Google), but by then others may have seen them.</div>
     <div class="review-sum" id="review-sum" data-no-i18n></div>
+    <div class="review-thumbs" id="review-thumbs" data-no-i18n hidden></div>
     <div class="check-list" id="review-list" data-no-i18n></div>
     <div class="rowbtn"><button class="btn" id="review-cancel">Back</button><button class="btn g" id="review-go">Publish</button></div>
   </div>
@@ -785,6 +863,7 @@
     <div class="cheat-grid">
       <div class="cheat-row"><span>Command palette</span><kbd>Ctrl K</kbd></div>
       <div class="cheat-row"><span>Panorama over the whole window</span><kbd>F</kbd></div>
+      <div class="cheat-row"><span>In it: walk on or back, turn</span><kbd>↑ ↓ ← →</kbd></div>
       <div class="cheat-row"><span>Show this cheatsheet</span><kbd>?</kbd></div>
       <div class="cheat-row"><span>Undo</span><kbd>Ctrl Z</kbd></div>
       <div class="cheat-row"><span>Redo</span><kbd>Ctrl Y</kbd></div>

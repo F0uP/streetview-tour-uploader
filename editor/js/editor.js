@@ -11,6 +11,11 @@ import { VIEWER_LIBS, VIEWER_LICENSES, genViewer as viewerPage } from './viewer.
 import { bestShift, headingFromShift, isClearMatch, photoFeatures, walkWeights } from './align.js';
 import { findFaces, findPlates, overlap } from './detect.js';
 import { gpsTimeline, hourShift, readVideoInfo } from './video.js';
+import { embedCode, isWebAddress, qrPng, qrSvg } from './share.js';
+import { initVideoDialog, isVideoFile, openVideo, setVideoFile } from './video-dialog.js';
+import { initReport, openReport } from './report.js';
+import { initNotices, logNotice, notices } from './notices.js';
+import { initDialogs } from './a11y.js';
 
 // ── Connection to the local app ───────────────────
 // The app opens this page with its secret key in the URL fragment (#k=…). The
@@ -558,6 +563,8 @@ mw.addEventListener('drop', async e => {
     await openOrAddProjects(items);
     return;
   }
+  const clip = [...e.dataTransfer.files].find(isVideoFile);
+  if (clip) { openVideo(); setVideoFile(clip); return; }
   const files = [...e.dataTransfer.files].filter(isPhotoFile);
   const rect = document.getElementById('map').getBoundingClientRect();
   const fallback = map.containerPointToLatLng(L.point(e.clientX - rect.left, e.clientY - rect.top));
@@ -595,6 +602,7 @@ niP.addEventListener('change', async e => {
   n.captureOffset = meta.captureOffset;
   retireGooglePhoto(n);
   n.blurred = false;
+  n.privacyChecked = false; // a new photo: not checked yet
   panoNodeId = null; // otherwise the panorama view keeps showing the old photo
   if (meta.hasGps) {
     n.lat = meta.lat;
@@ -839,6 +847,7 @@ function projectData(nodes = S.nodes) {
       captureTime: n.captureTime ?? null,
       captureOffset: n.captureOffset ?? null,
       blurred: !!n.blurred,
+      privacyChecked: !!n.privacyChecked,
       gsvPhotoId: n.gsvPhotoId ?? null,
       gsvStatus: n.gsvStatus ?? null,
       gsvShareLink: n.gsvShareLink ?? null,
@@ -1072,6 +1081,7 @@ async function readProjectFile(file, handle = null) {
           captureTime: nd.captureTime ?? undefined,
           captureOffset: nd.captureOffset ?? null,
           blurred: !!nd.blurred,
+          privacyChecked: !!nd.privacyChecked,
           gsvPhotoId: nd.gsvPhotoId ?? null,
           gsvStatus: nd.gsvStatus ?? null,
           gsvShareLink: nd.gsvShareLink ?? null,
@@ -1524,8 +1534,12 @@ uplSignin.onclick = async () => {
 };
 
 function uploadCandidates() {
-  return S.nodes.filter(n => n.photoFile && n.lat != null && n.lng != null && !isSamplePhoto(n));
+  // Points loaded from Google without their photo are in it too: their changes are sent.
+  return S.nodes.filter(n => (n.photoFile || n.gsvPhotoId) && n.lat != null && n.lng != null && !isSamplePhoto(n));
 }
+
+// This one goes up as a photo (else at most its changes are sent).
+const goesUp = (n, reupload = false) => !!n.photoFile && needsUpload(n, reupload);
 
 // Not on Google yet, or Google lost it: these get uploaded.
 function needsUpload(n, reupload = false) {
@@ -1535,8 +1549,8 @@ function needsUpload(n, reupload = false) {
 function refreshUploadSummary() {
   const ready = uploadCandidates();
   const reupload = document.getElementById('upl-reupload').checked;
-  const fresh = ready.filter(n => needsUpload(n, reupload)).length;
-  const onGoogle = ready.filter(n => !needsUpload(n, reupload));
+  const fresh = ready.filter(n => goesUp(n, reupload)).length;
+  const onGoogle = ready.filter(n => !goesUp(n, reupload) && n.gsvPhotoId);
   const changed = onGoogle.filter(n => gsvChanged(n) || !n.gsvConfirmed).length;
   const samples = S.nodes.filter(isSamplePhoto).length;
   const missing = S.nodes.length - ready.length - samples;
@@ -2233,7 +2247,7 @@ async function runUpload() {
     }
   }
   if (!uplReviewed) {
-    uplSkipCheck = true; // checked already: "Publish" goes straight on
+    uplSkipCheck = false; // "Back" and Start again checks again; "Publish" goes straight on
     openReview(nodes);
     return;
   }
@@ -2268,7 +2282,7 @@ async function runUpload() {
   // 1) Pick up photos that are already on Google, then upload the rest.
   setUploadStep('upload');
   setOverall({ title: t('Checking your photos on Google…'), mode: 'indet' });
-  let todo = nodes.filter(n => needsUpload(n, reupload));
+  let todo = nodes.filter(n => goesUp(n, reupload));
   // Only photos the editor had uploaded before but lost track of are matched
   // to photos on Google; a new photo at a known spot must really be uploaded.
   const lost = todo.filter(n => n.gsvStatus === 'missing');
@@ -2708,8 +2722,24 @@ function renderTours() {
   if (box.hidden) return;
   document.getElementById('tour-list').innerHTML = tours.map(g => `<div class="tour-row" data-tour="${g.index}" style="--tc:${g.color}">`
     + `<span class="dot"></span><span class="tn" title="${escapeHtml(t('Double-click to rename'))}">${escapeHtml(tourName(g))}</span>`
-    + `<span class="tc">${g.nodes.length}</span>`
+    + `<span class="tprog" data-tprog></span>`
+    + `<span class="tc" title="${escapeHtml(t('{n} point(s), {d} of links', { n: g.nodes.length, d: formatDistance(tourLength(g.nodes)) }))}">${g.nodes.length}</span>`
     + `<button class="iconbtn sm" data-export title="${escapeHtml(t('Export this tour…'))}">${ICONS.download}</button></div>`).join('');
+}
+
+// How much of a tour's checklist is done, in its row of the tour list.
+function updateTourProgress() {
+  const tours = getTours();
+  document.querySelectorAll('#tour-list .tour-row').forEach(row => {
+    const g = tours[Number(row.dataset.tour)];
+    const el = row.querySelector('[data-tprog]');
+    if (!g || !el) return;
+    const chips = checklistChips(tourFacts(g.nodes));
+    const open = chips.filter(c => c.level === 'todo');
+    el.textContent = `${chips.length - open.length}/${chips.length}`;
+    el.classList.toggle('done', !open.length);
+    el.title = open.length ? `${t('Still to do:')} ${open.map(c => c.label).join(', ')}` : t('Everything on the checklist is done');
+  });
 }
 
 const tourListEl = document.getElementById('tour-list');
@@ -3080,7 +3110,8 @@ function refreshHeadingUi(n) {
   headingMeta.textContent = n.heading == null ? t('not set')
     : n.headingSource === 'exif' ? t('from the photo (EXIF)')
     : n.headingSource === 'auto' ? t('from the walking direction')
-    : n.headingSource === 'match' ? t('matched to the neighbouring photos') : t('set by hand');
+    : n.headingSource === 'match' ? t('matched to the neighbouring photos')
+    : n.headingSource === 'google' ? t('as on Google') : t('set by hand');
 }
 
 async function ensurePanoViewer(n) {
@@ -3122,7 +3153,7 @@ async function ensurePanoViewer(n) {
     panoViewer.rotate({ yaw: getNodeEditorYaw(n), pitch: 0 });
   }
   if (S.selId === n.id) refreshPanoMarkers(n);
-  if (panoFocus) renderFocusBar(n);
+  if (panoFocus) { renderFocusBar(n); updateFocusMap(n); }
 }
 
 function renderConnList() {
@@ -3290,12 +3321,15 @@ function tourChanged() {
 function updateStats() {
   tidyStarts();
   const tourCount = getTours().length;
+  const length = tourLength(S.nodes);
   document.getElementById('st').innerHTML = `Nodes <b>${S.nodes.length}</b> &middot; Links <b>${S.conns.length}</b>`
-    + (tourCount > 1 ? ` &middot; Tours <b>${tourCount}</b>` : '');
+    + (tourCount > 1 ? ` &middot; Tours <b>${tourCount}</b>` : '')
+    + (length ? ` &middot; <b>${formatDistance(length)}</b>` : '');
   renderTours();
   paintTourColors();
   renderFloors();
   renderChecklist();
+  updateTourProgress();
   document.getElementById('no-sel').classList.toggle('has-nodes', S.nodes.length > 0);
   // No list without nodes; a search box only once the list gets long.
   document.getElementById('node-list-panel').hidden = !S.nodes.length;
@@ -3324,7 +3358,7 @@ function snapshotState() {
       headingSource: n.headingSource, hasGps: n.hasGps,
       photoName: n.photoName, photoFile: n.photoFile || null,
       captureTime: n.captureTime, captureOffset: n.captureOffset ?? null,
-      blurred: !!n.blurred, gsvPhotoId: n.gsvPhotoId ?? null,
+      blurred: !!n.blurred, privacyChecked: !!n.privacyChecked, gsvPhotoId: n.gsvPhotoId ?? null,
       gsvStatus: n.gsvStatus ?? null, gsvShareLink: n.gsvShareLink ?? null, gsvSig: n.gsvSig ?? null,
       gsvConfirmed: !!n.gsvConfirmed, gsvUploadedAt: n.gsvUploadedAt ?? null, gsvObsolete: [...(n.gsvObsolete || [])],
       hotspots: (n.hotspots || []).map(h => ({ ...h })), tourId: n.tourId ?? null,
@@ -3483,6 +3517,12 @@ document.addEventListener('keydown', e => {
     if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); doRedo(); return; }
   }
   if (typing) return;
+
+  if (panoFocus && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+    e.preventDefault();
+    focusKey(e.key);
+    return;
+  }
 
   if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
     setPanoFocus(!panoFocus);
@@ -3827,15 +3867,6 @@ async function checkSavedSession() {
   };
 }
 
-const notices = []; // the messages so far, newest first (see "Messages")
-let noticesUnread = 0;
-function logNotice(msg, kind = 'info') {
-  notices.unshift({ msg: String(msg), kind, at: new Date() });
-  notices.length = Math.min(notices.length, 100);
-  noticesUnread++;
-  renderNotices();
-}
-
 function toast(msg) {
   logNotice(msg);
   const t = document.createElement('div');
@@ -4134,6 +4165,11 @@ const TOOL_ACTIONS = {
   privacy: () => openPrivacy(),
   video: () => openVideo(),
   sample: () => openSample(),
+  fromgoogle: () => openFromGoogle(),
+  rename: () => openRename(),
+  kml: () => runExport('kml'),
+  gpx: () => runExport('gpx'),
+  share: () => openShare(),
   report: () => openReport(),
   website: () => runExport('website'),
   viewer: () => runExport('viewer'),
@@ -4607,6 +4643,7 @@ document.getElementById('blur-apply').onclick = async () => {
     n.photoUrl = URL.createObjectURL(n.photoFile);
     retireGooglePhoto(n);
     n.blurred = true;
+    n.privacyChecked = true;
     panoNodeId = null;
     updateSb();
     refreshMarker(n);
@@ -5278,6 +5315,8 @@ const EXPORTERS = {
   viewer: scope => exportViewerFiles(scope),
   csv: scope => exportCsv(scope),
   project: scope => exportTourProject(scope),
+  kml: scope => exportKml(scope),
+  gpx: scope => exportGpx(scope),
 };
 let expScopes = [];
 
@@ -6117,7 +6156,8 @@ async function checkTour() {
   const add = (n, level, msg) => issues.push({ id: n.id, level, msg });
   for (const n of S.nodes) {
     if (!n.photoFile) {
-      add(n, 'warn', t('No photo loaded - this node is not uploaded'));
+      // Loaded from Google without the photo: only its changes are sent - nothing to check.
+      if (!n.gsvPhotoId) add(n, 'warn', t('No photo loaded - this node is not uploaded'));
     } else {
       let info;
       try {
@@ -6199,9 +6239,10 @@ async function suggestIn(kind) {
     const fresh = boxes.filter(b => !blur.rects.some(r => overlap(r, b) > 0.3));
     fresh.forEach(b => blur.rects.push({ ...b, auto: true }));
     drawBlur();
+    const count = fresh.filter(b => !b.seam).length; // one across the seam is two boxes
     label.textContent = face
-      ? (fresh.length ? t('{n} face(s) suggested (dashed) - click a box to remove it, drag to add more.', { n: fresh.length }) : t('No faces found - mark them by hand if there are any.'))
-      : (fresh.length ? t('{n} vehicle(s) found - the lower middle of each, where plates usually are, is suggested (blue). Remove boxes without a plate.', { n: fresh.length }) : t('No vehicles found - mark plates by hand if there are any.'));
+      ? (fresh.length ? t('{n} face(s) suggested (dashed) - click a box to remove it, drag to add more.', { n: count }) : t('No faces found - mark them by hand if there are any.'))
+      : (fresh.length ? t('{n} vehicle(s) found - the lower middle of each, where plates usually are, is suggested (blue). Remove boxes without a plate.', { n: count }) : t('No vehicles found - mark plates by hand if there are any.'));
   } catch (err) {
     label.textContent = t(face ? 'Face detection failed: {msg}' : 'Vehicle detection failed: {msg}', { msg: t(err.message || String(err)) });
   } finally {
@@ -6229,9 +6270,11 @@ function renderPrivacy() {
     const r = privacy.results.get(n.id);
     if (!r || !r.boxes.length) return;
     const row = document.createElement('div');
-    row.className = `check-row ${r.done ? 'ok' : 'warn'}`;
+    const seen = r.done || n.privacyChecked;
+    row.className = `check-row ${seen ? 'ok' : 'warn'}`;
     const what = [r.faces && t('{n} face(s)', { n: r.faces }), r.plates && t('{n} vehicle(s)', { n: r.plates })].filter(Boolean).join(', ');
-    row.innerHTML = `<span class="lv"></span><span class="nm">${escapeHtml(n.name)}</span><span class="msg">${escapeHtml(r.done ? `${what} · ${t('blurred')}` : what)}</span><button class="btn">${escapeHtml(t(r.done ? 'Again' : 'Review'))}</button>`;
+    const state = r.done ? ` · ${t('blurred')}` : seen ? ` · ${t('reviewed')}` : '';
+    row.innerHTML = `<span class="lv"></span><span class="nm">${escapeHtml(n.name)}</span><span class="msg">${escapeHtml(what + state)}</span><button class="btn">${escapeHtml(t(seen ? 'Again' : 'Review'))}</button>`;
     row.querySelector('button').onclick = () => {
       closeModal('privacy-back');
       openBlurTool(n.id, { presets: r.boxes, batch: true });
@@ -6244,6 +6287,8 @@ function renderPrivacy() {
 new MutationObserver(() => {
   if (!document.getElementById('blur-back').classList.contains('show') && blur.batch) {
     blur.batch = false;
+    // Looked at: blurred, or nothing that needed it.
+    if (blur.node && !blur.node.privacyChecked) { blur.node.privacyChecked = true; scheduleAutosave(); }
     renderPrivacy();
     openModal('privacy-back');
   }
@@ -6256,7 +6301,7 @@ document.getElementById('pv-go').onclick = async () => {
   const skip = document.getElementById('pv-skip').checked;
   const status = document.getElementById('pv-status');
   const bar = document.getElementById('pv-progress');
-  const nodes = S.nodes.filter(n => n.photoFile && !(skip && n.blurred));
+  const nodes = S.nodes.filter(n => n.photoFile && !(skip && (n.blurred || n.privacyChecked)));
   if (!nodes.length || (!faces && !plates)) { status.textContent = t('Nothing to check.'); return; }
   privacy.results.clear();
   privacy.stop = false;
@@ -6273,13 +6318,15 @@ document.getElementById('pv-go').onclick = async () => {
       const bmp = await createImageBitmap(n.photoFile);
       try {
         const found = [...(faces ? await findFaces(bmp, p => part(0, p)) : []), ...(plates ? await findPlates(bmp, p => part(faces ? 1 : 0, p)) : [])];
-        privacy.results.set(n.id, { boxes: found, faces: found.filter(b => b.kind === 'face').length, plates: found.filter(b => b.kind === 'plate').length, done: false });
+        privacy.results.set(n.id, { boxes: found, faces: found.filter(b => b.kind === 'face' && !b.seam).length, plates: found.filter(b => b.kind === 'plate' && !b.seam).length, done: false });
+        // Nothing found: checked. Findings: checked once they were looked at in the blur tool.
+        n.privacyChecked = !found.length;
       } finally {
         bmp.close?.();
       }
       checked++;
       renderPrivacy();
-      renderChecklist();
+      scheduleAutosave();
     }
     const withFindings = [...privacy.results.values()].filter(r => r.boxes.length);
     status.textContent = t('Checked {a} of {b} photo(s): {c} with faces or vehicles ({f} face(s), {v} vehicle(s)). Go through them with "Review".', {
@@ -6294,6 +6341,387 @@ document.getElementById('pv-go').onclick = async () => {
     bar.hidden = true;
   }
 };
+
+// ── Photos from Google ────────────────────────────
+// Photos already on Street View come into the editor with what Google keeps of
+// them - position, direction, floor, place and links - to be changed here; the next
+// upload sends only the changes, the photos are not uploaded again. The photos
+// themselves can be downloaded too (for the panorama, north and blurring).
+const fromGoogle = { photos: [], running: false, stop: false };
+
+async function postJson(path, body = {}) {
+  try {
+    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.status === 401) return { ok: false, error: 'not_signed_in' };
+    return await r.json();
+  } catch {
+    return { ok: false, error: t('The editor app is not reachable.') };
+  }
+}
+
+async function openFromGoogle() {
+  closeMenus();
+  fromGoogle.photos = [];
+  document.getElementById('fg-status').textContent = '';
+  openModal('fromg-back');
+  renderFromGoogle(t('Asking Google…'));
+  const j = await postJson('/api/list-photos');
+  if (!j.ok) {
+    renderFromGoogle(j.error === 'not_signed_in' ? t('Sign in with Google first (in the upload dialog).') : `${t('Google error')}: ${j.error}`);
+    return;
+  }
+  const known = new Set(S.nodes.map(n => n.gsvPhotoId).filter(Boolean));
+  fromGoogle.photos = j.photos.filter(p => p.id && p.lat != null && p.lng != null && !known.has(p.id));
+  renderFromGoogle();
+}
+
+function fromGoogleSelection() {
+  if (!document.getElementById('fg-view').checked) return fromGoogle.photos;
+  const b = map.getBounds();
+  return fromGoogle.photos.filter(p => b.contains([p.lat, p.lng]));
+}
+
+function renderFromGoogle(message = null) {
+  const all = fromGoogle.photos;
+  const b = map.getBounds();
+  document.getElementById('fg-n-view').textContent = `(${all.filter(p => b.contains([p.lat, p.lng])).length})`;
+  document.getElementById('fg-n-all').textContent = `(${all.length})`;
+  document.getElementById('fg-sum').textContent = message
+    ?? (all.length ? t('{n} photo(s) on Google that are not in this project yet.', { n: all.length }) : t('All your photos on Google are in this project already.'));
+  document.getElementById('fg-go').disabled = fromGoogle.running || !fromGoogleSelection().length;
+}
+document.querySelectorAll('input[name=fg-scope]').forEach(r => { r.onchange = () => renderFromGoogle(); });
+document.getElementById('fg-stop').onclick = () => { fromGoogle.stop = true; };
+
+async function downloadGooglePhoto(p) {
+  try {
+    const r = await fetch('/api/google-photo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }) });
+    if (!r.ok || !(r.headers.get('Content-Type') || '').startsWith('image/')) return null;
+    return new File([await r.blob()], `google-${p.id.replace(/[^\w-]/g, '').slice(-12)}.jpg`, { type: 'image/jpeg' });
+  } catch {
+    return null;
+  }
+}
+
+document.getElementById('fg-go').onclick = async () => {
+  const photos = fromGoogleSelection().slice().sort((a, b) => String(a.uploadTime || '').localeCompare(String(b.uploadTime || '')));
+  if (!photos.length || fromGoogle.running) return;
+  const download = document.getElementById('fg-download').checked;
+  const status = document.getElementById('fg-status');
+  const bar = document.getElementById('fg-progress');
+  fromGoogle.running = true;
+  fromGoogle.stop = false;
+  document.getElementById('fg-stop').hidden = false;
+  bar.hidden = false;
+  renderFromGoogle();
+  pushUndo();
+  const tourId = makeTourId();
+  S.tourNames[tourId] = t('Photos from Google');
+  const byGoogleId = new Map(S.nodes.filter(n => n.gsvPhotoId).map(n => [n.gsvPhotoId, n]));
+  const added = [];
+  let withoutPhoto = 0;
+  try {
+    for (const [i, p] of photos.entries()) {
+      if (fromGoogle.stop) break;
+      status.textContent = t('Loading photo {a} of {b}…', { a: i + 1, b: photos.length });
+      bar.firstElementChild.style.width = `${(i / photos.length) * 100}%`;
+      const file = download ? await downloadGooglePhoto(p) : null;
+      if (download && !file) withoutPhoto++;
+      const heading = p.heading ?? null;
+      const yaw = heading != null ? normalizeRad(-degToRad(heading)) : 0;
+      const n = {
+        id: uid(), name: t('Google photo {n}', { n: i + 1 }), lat: p.lat, lng: p.lng,
+        heading, origHeading: heading, viewYaw: yaw, origViewYaw: yaw,
+        headingSource: heading != null ? 'google' : 'manual', hasGps: true,
+        photoUrl: file ? URL.createObjectURL(file) : null, photoName: file?.name ?? null, photoFile: file,
+        marker: null, tourId, hotspots: [],
+        gsvPhotoId: p.id, gsvConfirmed: true, gsvStatus: p.status, gsvShareLink: p.shareLink || null,
+        gsvUploadedAt: Date.parse(p.uploadTime) || null, gsvViews: p.viewCount ?? null, gsvObsolete: [],
+        ...(p.level ? { level: { number: Number(p.level.number) || 0, name: p.level.name || '' } } : {}),
+        ...(p.placeId ? { placeId: p.placeId, placeName: p.placeName || p.placeId, placeAuto: false } : {}),
+      };
+      S.nodes.push(n);
+      createMarker(n);
+      byGoogleId.set(p.id, n);
+      added.push([n, p]);
+    }
+    // The links as Google has them - also to photos that were in the project before.
+    const have = new Set(S.conns.map(c => [c.from, c.to].sort().join('|')));
+    added.forEach(([n, p]) => (p.connections || []).forEach(gid => {
+      const o = byGoogleId.get(gid);
+      const key = o && [n.id, o.id].sort().join('|');
+      if (!o || o === n || have.has(key)) return;
+      have.add(key);
+      const c = { id: cuid(), from: n.id, to: o.id, poly: null, xMark: null };
+      S.conns.push(c);
+      drawConn(c, { animate: false });
+    }));
+    // What Google has now is what later changes are compared with.
+    added.forEach(([n]) => { n.gsvSig = gsvSignature(n); });
+    toursVersion++;
+    tourChanged();
+    if (added.length) map.fitBounds(L.latLngBounds(added.map(([n]) => [n.lat, n.lng])), { padding: [60, 60], maxZoom: 19 });
+    status.textContent = [
+      t('{n} photo(s) loaded from Google.', { n: added.length }),
+      withoutPhoto ? t('{n} of them without the photo itself (Google offered no download) - their position, direction and links can still be changed.', { n: withoutPhoto }) : '',
+      fromGoogle.stop ? t('Stopped.') : '',
+    ].filter(Boolean).join(' ');
+    toast(t('{n} photo(s) loaded from Google', { n: added.length }));
+  } finally {
+    fromGoogle.running = false;
+    document.getElementById('fg-stop').hidden = true;
+    bar.hidden = true;
+    const known = new Set(S.nodes.map(n => n.gsvPhotoId).filter(Boolean));
+    fromGoogle.photos = fromGoogle.photos.filter(p => !known.has(p.id));
+    renderFromGoogle();
+  }
+};
+
+// ── Rename points ─────────────────────────────────
+// Many points at once, by a pattern: {n} the number, {place} the point's place on
+// Google Maps (else its name), {tour} the tour's name, {name} the name it has.
+// Numbered in walking order from the tour's start, or as in the list.
+function renameScopeNodes() {
+  const scope = document.querySelector('input[name=rn-scope]:checked')?.value;
+  if (scope === 'sel') return S.nodes.filter(n => S.multiSel.has(n.id) || (!S.multiSel.size && n.id === S.selId));
+  if (scope === 'tour') {
+    const g = S.selId && tourOf(S.selId);
+    return g ? g.nodes.slice() : S.nodes.slice();
+  }
+  return S.nodes.slice();
+}
+
+// The points in walking order: from each tour's start along the links, nearest first.
+function walkingOrder(nodes) {
+  const ids = new Set(nodes.map(n => n.id));
+  const seen = new Set();
+  const out = [];
+  const visit = first => {
+    const queue = [first];
+    seen.add(first.id);
+    while (queue.length) {
+      const n = queue.shift();
+      out.push(n);
+      getLinkedNodes(n.id).filter(o => ids.has(o.id) && !seen.has(o.id))
+        .sort((a, b) => distanceMeters(n, a) - distanceMeters(n, b))
+        .forEach(o => { seen.add(o.id); queue.push(o); });
+    }
+  };
+  nodes.filter(n => S.starts.has(n.id)).forEach(n => { if (!seen.has(n.id)) visit(n); });
+  nodes.forEach(n => { if (!seen.has(n.id)) visit(n); });
+  return out;
+}
+
+function renamePlan() {
+  let nodes = renameScopeNodes();
+  if (document.getElementById('rn-order').value === 'walk') nodes = walkingOrder(nodes);
+  else nodes = S.nodes.filter(n => nodes.includes(n));
+  const pattern = document.getElementById('rn-pattern').value.trim() || '{name}';
+  const first = Number(document.getElementById('rn-start').value) || 1;
+  const digits = String(first + nodes.length - 1).length;
+  const names = nodes.map((n, i) => pattern
+    .replace(/\{n\}/g, String(first + i).padStart(pattern.includes('{n}') && nodes.length >= 10 ? digits : 1, '0'))
+    .replace(/\{place\}/g, n.placeName ? String(n.placeName).split(',')[0] : n.name)
+    .replace(/\{tour\}/g, tourOf(n.id) ? tourName(tourOf(n.id)) : '')
+    .replace(/\{name\}/g, n.name)
+    .replace(/\s+/g, ' ').trim() || n.name);
+  // The same name twice (e.g. several photos at one place): numbered.
+  const count = new Map();
+  names.forEach(x => count.set(x, (count.get(x) || 0) + 1));
+  const used = new Map();
+  return nodes.map((n, i) => {
+    const base = names[i];
+    if (count.get(base) < 2) return [n, base];
+    used.set(base, (used.get(base) || 0) + 1);
+    return [n, `${base} ${used.get(base)}`];
+  });
+}
+
+function renderRename() {
+  const plan = renamePlan();
+  const list = document.getElementById('rn-preview');
+  list.innerHTML = '';
+  plan.slice(0, 8).forEach(([n, name]) => {
+    const row = document.createElement('div');
+    row.className = 'rn-row';
+    row.innerHTML = `<span>${escapeHtml(n.name)}</span><span>→</span><b>${escapeHtml(name)}</b>`;
+    list.appendChild(row);
+  });
+  if (plan.length > 8) list.insertAdjacentHTML('beforeend', `<div class="mini">${escapeHtml(t('… and {n} more', { n: plan.length - 8 }))}</div>`);
+  document.getElementById('rn-go').disabled = !plan.length;
+  document.getElementById('rn-go').textContent = t('Rename {n} point(s)', { n: plan.length });
+}
+
+function openRename() {
+  closeMenus();
+  if (!S.nodes.length) return;
+  const many = S.multiSel.size >= 2;
+  document.getElementById('rn-sel-label').hidden = !many && !S.selId;
+  document.querySelector(`input[name=rn-scope][value="${many ? 'sel' : manyTours() && S.selId ? 'tour' : 'all'}"]`).checked = true;
+  openModal('rename-back');
+  renderRename();
+}
+['rn-pattern', 'rn-start', 'rn-order'].forEach(id => document.getElementById(id).addEventListener('input', renderRename));
+document.querySelectorAll('input[name=rn-scope]').forEach(r => { r.onchange = renderRename; });
+document.querySelectorAll('[data-rn-pattern]').forEach(b => {
+  b.onclick = () => { document.getElementById('rn-pattern').value = b.dataset.rnPattern; renderRename(); };
+});
+document.getElementById('rn-go').onclick = () => {
+  const plan = renamePlan().filter(([n, name]) => n.name !== name);
+  closeModal('rename-back');
+  if (!plan.length) return;
+  pushUndo();
+  plan.forEach(([n, name]) => { n.name = name; refreshMarker(n); });
+  tourChanged();
+  toast(t('{n} point(s) renamed', { n: plan.length }));
+};
+
+// ── Tour as KML / GPX, tour length ────────────────
+// For Google Earth, My Maps or a GPS app: the points (with their Street View link
+// once published) and the links between them as lines.
+function tourLength(nodes) {
+  const ids = new Set(nodes.map(n => n.id));
+  return S.conns.filter(c => ids.has(c.from) && ids.has(c.to))
+    .reduce((sum, c) => sum + distanceMeters(gn(c.from), gn(c.to)), 0);
+}
+
+const xmlText = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function scopeLinks(nodes) {
+  const ids = new Set(nodes.map(n => n.id));
+  return S.conns.filter(c => ids.has(c.from) && ids.has(c.to)).map(c => [gn(c.from), gn(c.to)]);
+}
+
+async function exportKml(scope) {
+  const nodes = (scope?.nodes || S.nodes).filter(n => n.lat != null);
+  const name = scope?.name || projectName?.replace(/\.vrtour$/i, '') || t('Tour');
+  const place = n => [
+    `<Placemark><name>${xmlText(n.name)}</name>`,
+    n.gsvShareLink ? `<description>${xmlText(n.gsvShareLink)}</description>` : '',
+    `<styleUrl>#${S.starts.has(n.id) ? 'start' : 'point'}</styleUrl>`,
+    `<Point><coordinates>${n.lng.toFixed(7)},${n.lat.toFixed(7)},0</coordinates></Point></Placemark>`,
+  ].join('');
+  const line = ([a, b]) => `<Placemark><styleUrl>#link</styleUrl><LineString><tessellate>1</tessellate><coordinates>${a.lng.toFixed(7)},${a.lat.toFixed(7)},0 ${b.lng.toFixed(7)},${b.lat.toFixed(7)},0</coordinates></LineString></Placemark>`;
+  const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${xmlText(name)}</name>
+<Style id="point"><IconStyle><color>fff65c8b</color><scale>0.8</scale></IconStyle></Style>
+<Style id="start"><IconStyle><color>ff3bb9f6</color><scale>1.1</scale></IconStyle></Style>
+<Style id="link"><LineStyle><color>fff65c8b</color><width>3</width></LineStyle></Style>
+<Folder><name>${xmlText(t('Points'))}</name>${nodes.map(place).join('\n')}</Folder>
+<Folder><name>${xmlText(t('Links'))}</name>${scopeLinks(nodes).map(line).join('\n')}</Folder>
+</Document></kml>
+`;
+  await saveTextFile(`${fileBase(name)}.kml`, kml);
+}
+
+async function exportGpx(scope) {
+  const nodes = (scope?.nodes || S.nodes).filter(n => n.lat != null);
+  const name = scope?.name || projectName?.replace(/\.vrtour$/i, '') || t('Tour');
+  const wpt = n => `<wpt lat="${n.lat.toFixed(7)}" lon="${n.lng.toFixed(7)}"><name>${xmlText(n.name)}</name>${n.gsvShareLink ? `<link href="${xmlText(n.gsvShareLink)}"/>` : ''}</wpt>`;
+  // The walk itself: in walking order from the start, a new segment where it jumps.
+  const order = walkingOrder(nodes);
+  const segs = [];
+  order.forEach((n, i) => {
+    const prev = order[i - 1];
+    if (!prev || !getLinkedNodes(n.id).includes(prev)) segs.push([]);
+    segs[segs.length - 1].push(n);
+  });
+  const trk = segs.filter(sg => sg.length > 1)
+    .map(sg => `<trkseg>${sg.map(n => `<trkpt lat="${n.lat.toFixed(7)}" lon="${n.lng.toFixed(7)}"/>`).join('')}</trkseg>`).join('\n');
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Streetview Tour Editor" xmlns="http://www.topografix.com/GPX/1/1">
+<metadata><name>${xmlText(name)}</name></metadata>
+${nodes.map(wpt).join('\n')}
+<trk><name>${xmlText(name)}</name>
+${trk}
+</trk>
+</gpx>
+`;
+  await saveTextFile(`${fileBase(name)}.gpx`, gpx);
+}
+
+// ── Share the tour ────────────────────────────────
+// The tour's start on Google Maps, and the exported website: as a link, a QR code
+// (share.js) and, for the website, the code to embed it in another page.
+let shareKey = null; // which tour
+
+function shareScopes() {
+  const tours = getTours();
+  return tours.length ? tours.map(g => ({ key: `t${g.index}`, name: tourName(g), nodes: g.nodes, start: tourStart(g) }))
+    : [{ key: 'all', name: projectName?.replace(/\.vrtour$/i, '') || t('Tour'), nodes: S.nodes, start: S.nodes.find(n => S.starts.has(n.id)) || S.nodes[0] }];
+}
+
+function openShare() {
+  closeMenus();
+  if (!S.nodes.length) return;
+  const scopes = shareScopes();
+  const cur = tourOf(S.selId);
+  shareKey = cur?.index != null ? `t${cur.index}` : scopes[0].key;
+  const select = document.getElementById('share-tour');
+  select.innerHTML = scopes.map(sc => `<option value="${sc.key}">${escapeHtml(sc.name)}</option>`).join('');
+  select.value = shareKey;
+  document.getElementById('share-tour-row').hidden = scopes.length < 2;
+  openModal('share-back');
+  renderShare();
+}
+
+function shareSiteKey(scope) { return `shareUrl:${projectName || ''}:${scope.name}`; }
+
+function renderShare() {
+  const scope = shareScopes().find(sc => sc.key === shareKey) || shareScopes()[0];
+  // On Google Maps: the start photo's link (any photo of the tour, if the start isn't there yet)
+  const onMaps = [scope.start, ...scope.nodes].find(n => n?.gsvShareLink);
+  const maps = document.getElementById('share-maps');
+  maps.hidden = !onMaps;
+  document.getElementById('share-maps-none').hidden = !!onMaps;
+  if (onMaps) {
+    document.getElementById('share-maps-link').value = onMaps.gsvShareLink;
+    document.getElementById('share-maps-qr').innerHTML = qrSvg(onMaps.gsvShareLink, scope.name);
+  }
+  // The website: its address once it is online
+  const input = document.getElementById('share-site-url');
+  if (document.activeElement !== input) input.value = storageGet(shareSiteKey(scope)) || '';
+  const url = input.value.trim();
+  const ok = isWebAddress(url);
+  document.getElementById('share-site').hidden = !ok;
+  input.classList.toggle('bad', !!url && !ok);
+  if (ok) {
+    document.getElementById('share-site-embed').value = embedCode(url, scope.name);
+    document.getElementById('share-site-qr').innerHTML = qrSvg(url, scope.name);
+  }
+}
+
+document.getElementById('share-tour').onchange = e => { shareKey = e.target.value; renderShare(); };
+document.getElementById('share-site-url').addEventListener('input', e => {
+  const scope = shareScopes().find(sc => sc.key === shareKey) || shareScopes()[0];
+  storageSet(shareSiteKey(scope), e.target.value.trim());
+  renderShare();
+});
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(t('Copied'));
+  } catch {
+    prompt(t('Copy this:'), text);
+  }
+}
+document.getElementById('share-maps-copy').onclick = () => copyText(document.getElementById('share-maps-link').value);
+document.getElementById('share-site-copy').onclick = () => copyText(document.getElementById('share-site-embed').value);
+
+async function saveQr(text, kind, format) {
+  const scope = shareScopes().find(sc => sc.key === shareKey) || shareScopes()[0];
+  const name = `${fileBase(scope.name)}-${kind}-qr.${format}`;
+  if (format === 'svg') await saveTextFile(name, new Blob([qrSvg(text, scope.name)], { type: 'image/svg+xml' }));
+  else await saveTextFile(name, await qrPng(text));
+}
+document.querySelectorAll('[data-qr]').forEach(b => {
+  b.onclick = () => {
+    const [kind, format] = b.dataset.qr.split(':');
+    const text = kind === 'maps' ? document.getElementById('share-maps-link').value : document.getElementById('share-site-url').value.trim();
+    saveQr(text, kind, format);
+  };
+});
 
 // ── Sample tour ───────────────────────────────────
 // A small tour with drawn photos to try the editor with (packaging/make_sample.py).
@@ -6330,18 +6758,20 @@ document.getElementById('es-sample').onclick = openSample;
 // for the tour of the selected point (or the only one). A chip that is not done yet
 // leads to where it gets done. The review before publishing spells the same out.
 function tourFacts(nodes) {
+  const ids = new Set(nodes.map(n => n.id));
   const withPhoto = nodes.filter(n => n.photoFile);
   return {
     nodes,
     withPhoto,
-    noPhoto: nodes.filter(n => !n.photoFile),
+    noPhoto: nodes.filter(n => !n.photoFile && !n.gsvPhotoId),
     noNorth: withPhoto.filter(n => n.heading == null),
-    unchecked: withPhoto.filter(n => !n.blurred && !privacy.results.has(n.id)),
+    unchecked: withPhoto.filter(n => !n.blurred && !n.privacyChecked),
     withPlace: nodes.filter(n => n.placeId),
     levels: nodes.filter(n => n.level).length,
-    links: S.conns.filter(c => nodes.some(n => n.id === c.from)).length,
+    links: S.conns.filter(c => ids.has(c.from)).length,
     onGoogle: nodes.filter(n => n.gsvPhotoId && n.gsvStatus !== 'missing'),
-    toUpload: withPhoto.filter(n => !isSamplePhoto(n) && (needsUpload(n) || gsvChanged(n) || !n.gsvConfirmed)),
+    processing: nodes.filter(n => n.gsvPhotoId && !n.gsvConfirmed && n.gsvStatus !== 'missing'),
+    toUpload: nodes.filter(n => !isSamplePhoto(n) && ((n.photoFile && needsUpload(n)) || gsvChanged(n))),
     sample: nodes.some(isSamplePhoto),
   };
 }
@@ -6371,7 +6801,11 @@ function checklistChips(f) {
       ? { level: 'info', label: t('Sample - never uploaded') }
       : f.toUpload.length
         ? { level: 'todo', label: f.onGoogle.length ? t('{n} change(s) for Google', { n: f.toUpload.length }) : t('Not on Google yet'), tip: t('Upload to Google Street View'), act: upload }
-        : { level: 'ok', label: t('On Google'), act: upload },
+        : f.processing.length
+          ? { level: 'info', label: t('Google is processing {n}', { n: f.processing.length }), tip: t('Links and positions follow by themselves once Google is ready.'), act: upload }
+          : f.onGoogle.length
+            ? { level: 'ok', label: t('On Google'), act: upload }
+            : { level: 'todo', label: t('Not on Google yet'), tip: t('Upload to Google Street View'), act: upload },
   ];
 }
 
@@ -6379,7 +6813,7 @@ let checklistQueued = false;
 function queueChecklist() {
   if (checklistQueued) return;
   checklistQueued = true;
-  requestAnimationFrame(() => { checklistQueued = false; renderChecklist(); });
+  requestAnimationFrame(() => { checklistQueued = false; renderChecklist(); updateTourProgress(); });
 }
 
 function renderChecklist() {
@@ -6422,12 +6856,19 @@ function reviewRow(level, text, button) {
 
 async function openReview(nodes) {
   const reupload = document.getElementById('upl-reupload').checked;
-  const fresh = nodes.filter(n => needsUpload(n, reupload)).length;
-  const changed = nodes.filter(n => !needsUpload(n, reupload) && (gsvChanged(n) || !n.gsvConfirmed)).length;
+  const fresh = nodes.filter(n => goesUp(n, reupload)).length;
+  const changed = nodes.filter(n => !goesUp(n, reupload) && n.gsvPhotoId && (gsvChanged(n) || !n.gsvConfirmed)).length;
   const old = document.getElementById('upl-delete-old').checked ? S.nodes.reduce((sum, n) => sum + (n.gsvObsolete?.length || 0), 0) : 0;
   const parts = [t('{n} new photo(s)', { n: fresh }), t('{n} update(s) of photos on Google', { n: changed })];
   if (old) parts.push(t('{n} old version(s) deleted', { n: old }));
   document.getElementById('review-sum').textContent = parts.join(' · ');
+  const strip = document.getElementById('review-thumbs');
+  const going = nodes.filter(n => goesUp(n, reupload));
+  strip.innerHTML = going.slice(0, 14).map(n => {
+    const src = requestThumb(n);
+    return `<img class="rv-thumb" data-thumb="${escapeHtml(n.id)}" alt="" title="${escapeHtml(n.name)}"${src ? ` src="${src}"` : ''}>`;
+  }).join('') + (going.length > 14 ? `<span class="rv-more">+${going.length - 14}</span>` : '');
+  strip.hidden = !going.length;
 
   const list = document.getElementById('review-list');
   list.innerHTML = '';
@@ -6469,30 +6910,10 @@ async function openReview(nodes) {
 document.getElementById('review-cancel').onclick = () => closeModal('review-back');
 document.getElementById('review-go').onclick = () => {
   closeModal('review-back');
+  uplSkipCheck = true; // the check ran before the review
   uplReviewed = true;
   uplStart.click();
 };
-
-// ── Messages ──────────────────────────────────────
-// Every message (toast) and every alert is kept (logNotice, next to toast()), so
-// one that vanished too fast can be read again. The bell counts the unread ones.
-function renderNotices() {
-  const badge = document.getElementById('notes-badge');
-  badge.hidden = !noticesUnread;
-  badge.textContent = noticesUnread > 9 ? '9+' : String(noticesUnread);
-  const list = document.getElementById('notes-list');
-  list.innerHTML = notices.length ? '' : `<div class="notes-empty">${escapeHtml(t('No messages yet.'))}</div>`;
-  notices.forEach(m => {
-    const row = document.createElement('div');
-    row.className = `note ${m.kind}`;
-    row.innerHTML = `<span class="note-time">${m.at.toLocaleTimeString(currentLang === 'de' ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit' })}</span><span class="note-msg">${escapeHtml(t(m.msg))}</span>`;
-    list.appendChild(row);
-  });
-}
-
-document.getElementById('bnotes').addEventListener('click', () => { noticesUnread = 0; renderNotices(); });
-document.getElementById('notes-clear').onclick = () => { notices.length = 0; noticesUnread = 0; renderNotices(); };
-renderNotices();
 
 // ── Panorama focus mode ───────────────────────────
 // The panorama over the whole window, to look at a photo closely or walk the
@@ -6504,14 +6925,59 @@ function setPanoFocus(on) {
   document.body.classList.toggle('pano-focus', on);
   document.getElementById('pano-focus-bar').hidden = !on;
   if (on) renderFocusBar(gn(S.selId));
-  requestAnimationFrame(() => panoViewer?.autoSize?.());
+  requestAnimationFrame(() => { panoViewer?.autoSize?.(); if (on) updateFocusMap(gn(S.selId)); });
+}
+
+// Up walks to the linked point closest to where you look, down to the one behind
+// you; left and right turn the view.
+function focusKey(key) {
+  const n = gn(S.selId);
+  if (!n || !panoViewer) return;
+  const pos = panoViewer.getPosition();
+  if (key === 'ArrowLeft' || key === 'ArrowRight') {
+    panoViewer.rotate({ yaw: pos.yaw + (key === 'ArrowLeft' ? -1 : 1) * Math.PI / 6, pitch: pos.pitch });
+    return;
+  }
+  if (n.heading == null) { toast(t("Set this photo's north first - then the arrows know where you look.")); return; }
+  const look = normalizeHeading(n.heading + radToDeg(pos.yaw) + (key === 'ArrowDown' ? 180 : 0));
+  let best = null, bestDiff = 70;
+  getLinkedNodes(n.id).forEach(o => {
+    const diff = Math.abs(((bearingDeg(n, o) - look + 540) % 360) - 180);
+    if (diff < bestDiff) { best = o; bestDiff = diff; }
+  });
+  if (best) jumpToNode(best.id, true);
+  else toast(t('No linked point in that direction'));
+}
+
+let focusMap = null, focusLayer = null;
+function updateFocusMap(n) {
+  if (!n || !panoFocus) return;
+  if (!focusMap) {
+    focusMap = L.map('focus-map', { zoomControl: false, attributionControl: false, keyboard: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { subdomains: 'abc', maxZoom: 20, maxNativeZoom: 19, className: 'osm-dark' }).addTo(focusMap);
+    focusLayer = L.layerGroup().addTo(focusMap);
+  }
+  focusMap.invalidateSize();
+  focusLayer.clearLayers();
+  const nodes = tourOf(n.id)?.nodes || [n];
+  const ids = new Set(nodes.map(x => x.id));
+  S.conns.filter(c => ids.has(c.from) && ids.has(c.to)).forEach(c => {
+    const a = gn(c.from), b = gn(c.to);
+    L.polyline([[a.lat, a.lng], [b.lat, b.lng]], { color: '#8b5cf6', weight: 3, opacity: 0.85 }).addTo(focusLayer);
+  });
+  nodes.forEach(x => {
+    L.circleMarker([x.lat, x.lng], { radius: x === n ? 7 : 5, color: '#fff', weight: 1.5, fillColor: x === n ? '#f6b93b' : '#8b5cf6', fillOpacity: 1 })
+      .bindTooltip(escapeHtml(x.name)).on('click', () => jumpToNode(x.id, true)).addTo(focusLayer);
+  });
+  focusMap.setView([n.lat, n.lng], focusMap.getZoom() || 18);
 }
 
 function renderFocusBar(n) {
   const bar = document.getElementById('pano-focus-bar');
   bar.innerHTML = `<b>${escapeHtml(n.name)}</b>`
     + getLinkedNodes(n.id).map(o => `<button class="btn" data-go="${escapeHtml(o.id)}" title="${escapeHtml(t('Walk there'))}">→ ${escapeHtml(o.name)}</button>`).join('')
-    + `<button class="btn" data-close title="Esc">${escapeHtml(t('Close'))}</button>`;
+    + `<button class="btn" data-close title="Esc">${escapeHtml(t('Close'))}</button>`
+    + `<span class="pano-focus-keys">${escapeHtml(t('↑ ↓ walk · ← → turn'))}</span>`;
 }
 
 document.getElementById('pano-focus-bar').addEventListener('click', e => {
@@ -6522,18 +6988,7 @@ document.getElementById('pano-focus-bar').addEventListener('click', e => {
 });
 document.getElementById('bn-focus').onclick = () => setPanoFocus(!panoFocus);
 
-// ── Bug report ────────────────────────────────────
-// A zip to attach to an issue: the app adds versions and its log (without sign-in,
-// keys or anything that looks like a token), the page its last messages and errors
-// and a few counts - no names of files, no photos, no projects.
-const ISSUES_URL = 'https://github.com/F0uP/streetview-tour-uploader/issues/new';
-
-function openReport() {
-  closeMenus();
-  document.getElementById('report-status').textContent = '';
-  openModal('report-back');
-}
-
+// What the page adds to a bug report (report.js).
 function reportPageInfo() {
   const tours = getTours();
   return {
@@ -6547,295 +7002,14 @@ function reportPageInfo() {
   };
 }
 
-document.getElementById('report-save').onclick = async () => {
-  const status = document.getElementById('report-status');
-  status.textContent = t('Putting the report together…');
-  try {
-    const r = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reportPageInfo()) });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
-    await saveTextFile(`streetview-tour-editor-report-${stamp}.zip`, await r.blob());
-    status.textContent = t('Saved. Attach the zip file to your report on GitHub and describe what you did.');
-  } catch (err) {
-    status.textContent = t('The report could not be made: {msg}', { msg: err.message || err });
-  }
-};
-document.getElementById('report-issue').onclick = () => window.open(ISSUES_URL, '_blank', 'noopener');
-
-// ── 360° video to Street View ─────────────────────
-// Google makes the photos of a 360° video itself (a "photo sequence"): it picks the
-// frames, places them along the GPS track and links them. Here the video is checked
-// first (video.js reads what the file says), then streamed through the app to Google.
-const VIDEO_FAILURES = {
-  LOW_RESOLUTION: 'the resolution is too low',
-  DUPLICATE: 'this video was uploaded before',
-  INSUFFICIENT_GPS: 'too few GPS points',
-  NO_OVERLAP_GPS: 'the GPS track and the video do not overlap in time',
-  INVALID_GPS: 'the GPS data is invalid',
-  FAILED_TO_REFINE_POSITIONS: 'Google could not place the photos exactly',
-  TAKEDOWN: 'removed for a policy reason',
-  CORRUPT_VIDEO: 'the video file is damaged',
-  INVALID_VIDEO_FORMAT: 'the video format is not supported',
-  INVALID_VIDEO_DIMENSIONS: 'the video is not 2:1 (equirectangular)',
-  INVALID_CAPTURE_TIME: 'the capture time is in the future',
-  GPS_DATA_GAP: 'the GPS track has a gap of over 5 s',
-  JUMPY_GPS: 'the GPS track jumps around too much',
-  INSUFFICIENT_MOVEMENT: 'the camera hardly moved',
-  NOT_OUTDOORS: 'parts were recorded indoors',
-  UNSUPPORTED_CAMERA: 'the camera is not supported',
-  CAMERA_COVERED: 'the camera was covered',
-  INSUFFICIENT_VIDEO_FRAMES: 'too few video frames',
-};
-const video = { file: null, info: null, gpx: null, gpxName: '', xhr: null, running: false, stopped: false };
-const vdEl = id => document.getElementById(id);
-
-function localInput(ms) { return new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString().slice(0, 19); }
-function fromLocalInput(v) { const ms = new Date(v).getTime(); return Number.isFinite(ms) ? ms : null; }
-function formatWhen(ms) { return new Date(ms).toLocaleString(currentLang === 'de' ? 'de-DE' : 'en-GB'); }
-function formatDuration(s) { return s >= 60 ? t('{m} min {s} s', { m: Math.floor(s / 60), s: Math.round(s % 60) }) : t('{s} s', { s: Math.round(s) }); }
-function videoGpsMode() { return vdEl('vd-gps-gpx').checked ? 'gpx' : 'camm'; }
-
-function openVideo() {
-  closeMenus();
-  openModal('video-back');
-  renderVideo();
-  listVideos();
-}
-
-function factRow(level, text, button) {
-  const row = document.createElement('div');
-  row.className = `check-row ${level}`;
-  row.innerHTML = `<span class="lv"></span><span class="msg">${escapeHtml(text)}</span>`;
-  if (button) {
-    const b = document.createElement('button');
-    b.className = 'btn';
-    b.textContent = button.label;
-    b.onclick = button.run;
-    row.appendChild(b);
-  }
-  return row;
-}
-
-// The GPS points for the upload, or null (no GPX, or no start time).
-function videoTimeline() {
-  const start = fromLocalInput(vdEl('vd-start').value);
-  if (videoGpsMode() !== 'gpx' || !video.gpx || start == null || !video.info?.duration) return null;
-  return gpsTimeline(video.gpx, start, video.info.duration);
-}
-
-function renderVideo() {
-  const { file, info } = video;
-  const facts = vdEl('vd-facts');
-  facts.innerHTML = '';
-  vdEl('vd-name').textContent = file ? `${file.name} · ${formatBytes(file.size)}` : '';
-  if (file && !info) facts.appendChild(factRow('error', t('This is not an MP4 or MOV video that can be read.')));
-  if (info) {
-    if (info.duration) facts.appendChild(factRow('ok', t('Length: {d}', { d: formatDuration(info.duration) })));
-    if (info.width && info.height) {
-      const twoToOne = Math.abs(info.width / info.height - 2) < 0.02;
-      facts.appendChild(twoToOne
-        ? factRow('ok', t('{w} × {h} pixels (2:1, as a 360° video should be)', { w: info.width, h: info.height }))
-        : factRow('error', t('{w} × {h} pixels - not 2:1: Google needs the equirectangular 360° video, as the camera\'s app exports it.', { w: info.width, h: info.height })));
-    }
-    facts.appendChild(info.spherical
-      ? factRow('ok', t('360° metadata found'))
-      : factRow('warn', t('No 360° metadata found - export the video as a 360° video from the camera\'s app (or add it with Google\'s "Spatial Media Metadata Injector").')));
-    facts.appendChild(info.camm
-      ? factRow('ok', t('Camera motion track (CAMM) found - Google reads the GPS from it, if the camera recorded GPS.'))
-      : info.gpmd
-        ? factRow('warn', t('GPS in GoPro\'s own format (GPMF) - Google does not read it. Use a GPX file of the same walk instead.'))
-        : factRow('warn', t('No GPS track in the video - choose a GPX file recorded at the same time.')));
-    facts.appendChild(info.created
-      ? factRow('ok', t('Recording started {when} (as the file says)', { when: formatWhen(info.created) }))
-      : factRow('warn', t('The file does not say when the recording started - set it under GPS.')));
-  }
-  const gpxMode = videoGpsMode() === 'gpx';
-  vdEl('vd-gpx-pick').hidden = !gpxMode;
-  vdEl('vd-gpx-box').hidden = !gpxMode;
-  vdEl('vd-gpx-name').textContent = gpxMode && video.gpx ? video.gpxName : '';
-  if (!vdEl('vd-start').value && info?.created) vdEl('vd-start').value = localInput(info.created);
-
-  const gf = vdEl('vd-gpx-facts');
-  gf.innerHTML = '';
-  const tl = videoTimeline();
-  if (gpxMode && video.gpx) {
-    const pts = video.gpx;
-    gf.appendChild(factRow('ok', t('{n} track points, {a} to {b}', { n: pts.length, a: formatWhen(pts[0].t), b: formatWhen(pts[pts.length - 1].t) })));
-    if (tl) {
-      const start = fromLocalInput(vdEl('vd-start').value);
-      if (tl.coverage >= 0.95) gf.appendChild(factRow('ok', t('The track covers the whole video ({n} points).', { n: tl.recorded })));
-      else if (tl.coverage > 0) gf.appendChild(factRow('warn', t('The track covers only {p}% of the video - Google needs GPS for all of it.', { p: Math.round(tl.coverage * 100) })));
-      else gf.appendChild(factRow('error', t('The track and the video do not overlap in time - check the start time.')));
-      if (tl.coverage < 0.95) {
-        const shift = hourShift(video.gpx, start, video.info.duration);
-        if (shift.hours) {
-          const h = shift.hours > 0 ? `+${shift.hours}` : `${shift.hours}`;
-          gf.appendChild(factRow('warn', t('Shifted by {h} h they match: the camera probably wrote its local time.', { h }),
-            { label: t('Shift by {h} h', { h }), run: () => { vdEl('vd-start').value = localInput(start + shift.hours * 3600000); renderVideo(); } }));
-        }
-      }
-      if (tl.filled) gf.appendChild(factRow('ok', t('{n} point(s) filled in along the track where it had gaps of 5 to 30 s (Google refuses gaps over 5 s).', { n: tl.filled })));
-      if (tl.gapS) gf.appendChild(factRow('error', t('The track has a gap of {s} s during the video - Google refuses gaps over 5 s.', { s: tl.gapS })));
-    }
-  }
-  vdEl('vd-go').disabled = video.running || !file || !info || (gpxMode && !(tl && tl.coverage > 0));
-}
-
-vdEl('vd-pick').onclick = () => vdEl('vd-file').click();
-vdEl('vd-file').onchange = async e => {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
-  video.file = file;
-  video.info = null;
-  vdEl('vd-start').value = '';
-  vdEl('vd-status').textContent = t('Reading the video…');
-  try { video.info = await readVideoInfo(file); } catch { video.info = null; }
-  vdEl('vd-status').textContent = '';
-  // Without a motion track in the video, the GPS has to come from a GPX file.
-  if (video.info && !video.info.camm) vdEl('vd-gps-gpx').checked = true;
-  renderVideo();
-};
-document.querySelectorAll('input[name=vd-gps]').forEach(r => { r.onchange = renderVideo; });
-vdEl('vd-start').oninput = renderVideo;
-vdEl('vd-gpx-pick').onclick = () => vdEl('vd-gpx-file').click();
-vdEl('vd-gpx-file').onchange = async e => {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
-  try {
-    video.gpx = parseGpx(await file.text());
-    video.gpxName = file.name;
-  } catch (err) {
-    alert(t(err.message || String(err)));
-  }
-  renderVideo();
-};
-
-// Browser -> app with progress; the app streams it on to Google at the same time.
-function sendVideo(file, onProgress) {
-  return new Promise(resolve => {
-    const job = `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
-    let finished = false;
-    const poll = setInterval(async () => {
-      try {
-        const p = await (await fetch(`/api/upload-progress?job=${job}`, { cache: 'no-store' })).json();
-        if (p.total && !finished) onProgress(p.sent, p.total);
-      } catch {}
-    }, 500);
-    const xhr = new XMLHttpRequest();
-    video.xhr = xhr;
-    xhr.open('POST', `/api/video/upload?job=${job}`);
-    xhr.setRequestHeader('X-Editor-Key', EDITOR_KEY);
-    xhr.onload = () => {
-      finished = true;
-      clearInterval(poll);
-      let j = {};
-      try { j = JSON.parse(xhr.responseText); } catch {}
-      if (xhr.status === 401) j = { ok: false, error: 'not_signed_in' };
-      resolve(j);
-    };
-    xhr.onerror = xhr.onabort = () => {
-      finished = true;
-      clearInterval(poll);
-      resolve({ ok: false, error: video.stopped ? 'stopped' : t('The editor app is not reachable.') });
-    };
-    xhr.send(file);
-  });
-}
-
-function videoError(j) {
-  if (j.error === 'not_signed_in') return t('Not signed in (or the sign-in expired) - click "Sign in with Google".');
-  if (j.error === 'stopped') return t('Stopped - nothing was handed to Google.');
-  return j.status ? `${t('Google error')} ${j.status}: ${j.error}` : j.error;
-}
-
-vdEl('vd-stop').onclick = () => { video.stopped = true; video.xhr?.abort(); };
-vdEl('vd-go').onclick = async () => {
-  const { file, info } = video;
-  const tl = videoGpsMode() === 'gpx' ? videoTimeline() : null;
-  const start = fromLocalInput(vdEl('vd-start').value);
-  const status = vdEl('vd-status');
-  const bar = vdEl('vd-progress');
-  video.running = true;
-  video.stopped = false;
-  vdEl('vd-stop').hidden = false;
-  bar.hidden = false;
-  bar.firstElementChild.style.width = '0%';
-  renderVideo();
-  setAppBusy(true, t('A video is still being uploaded to Google. Quit anyway? The upload is then cancelled.'));
-  const began = Date.now();
-  try {
-    status.textContent = t('Uploading the video to Google…');
-    const up = await sendVideo(file, (sent, total) => {
-      bar.firstElementChild.style.width = `${(sent / total) * 100}%`;
-      const rate = sent / Math.max(1, (Date.now() - began) / 1000);
-      status.textContent = `${t('Uploading the video to Google…')} ${formatBytes(sent)} / ${formatBytes(total)} · ${formatEta((total - sent) / rate)}`;
-    });
-    if (!up.ok) throw new Error(videoError(up));
-    status.textContent = t('Asking Google to make photos of it…');
-    const body = { uploadUrl: up.uploadUrl };
-    if (tl) {
-      body.gps = tl.points.map(p => ({ lat: p.lat, lng: p.lng, time: new Date(p.t).toISOString() }));
-      // The start set here only goes along when it differs from what the file says.
-      if (start != null && (!info.created || Math.abs(start - info.created) > 1000)) body.captureTime = new Date(start).toISOString();
-    }
-    const j = await (await fetch('/api/video/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
-    if (!j.ok) throw new Error(videoError(j));
-    status.textContent = t('Uploaded. Google now makes photos of the video - that takes hours to days. The list below shows how far it got.');
-    toast(t('Video uploaded to Google'));
-    listVideos();
-  } catch (err) {
-    status.textContent = t('The video was not uploaded: {msg}', { msg: err.message || err });
-  } finally {
-    video.running = false;
-    video.xhr = null;
-    vdEl('vd-stop').hidden = true;
-    bar.hidden = true;
-    setAppBusy(false);
-    renderVideo();
-  }
-};
-
-function videoStateText(s) {
-  if (s.state === 'PROCESSED') {
-    const views = s.views ? ` · ${t('{n} views', { n: s.views.toLocaleString(currentLang) })}` : '';
-    return t('Done: {n} photo(s) over {d}', { n: s.photos, d: formatDistance(s.distance || 0) }) + views;
-  }
-  if (s.state === 'FAILED') return t('Failed: {why}', { why: VIDEO_FAILURES[s.failure] ? t(VIDEO_FAILURES[s.failure]) : (s.failure || s.error || '?') });
-  if (s.state === 'PENDING') return t('Waiting to be processed');
-  return t('Being processed by Google');
-}
-
-async function listVideos() {
-  const list = vdEl('vd-list');
-  list.innerHTML = `<div class="mini">${escapeHtml(t('Asking Google…'))}</div>`;
-  let j;
-  try {
-    j = await (await fetch('/api/video/list', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
-  } catch {
-    j = { ok: false, error: t('The editor app is not reachable.') };
-  }
-  if (!j.ok) {
-    list.innerHTML = `<div class="mini">${escapeHtml(j.error === 'not_signed_in' ? t('Sign in with Google first (in the upload dialog) to see your videos.') : videoError(j))}</div>`;
-    return;
-  }
-  list.innerHTML = j.sequences.length ? '' : `<div class="mini">${escapeHtml(t('No videos on Google yet.'))}</div>`;
-  j.sequences.forEach(s => {
-    const row = document.createElement('div');
-    row.className = `check-row ${s.state === 'PROCESSED' ? 'ok' : s.state === 'FAILED' ? 'error' : 'warn'}`;
-    const when = s.uploadTime ? ` · ${t('uploaded {when}', { when: formatWhen(Date.parse(s.uploadTime)) })}` : '';
-    row.innerHTML = `<span class="lv"></span><span class="nm">${escapeHtml(s.filename || s.id)}</span><span class="msg">${escapeHtml(videoStateText(s) + when)}</span><button class="btn">${escapeHtml(t('Delete'))}</button>`;
-    row.querySelector('button').onclick = async () => {
-      if (!confirm(t('Delete this video and all photos Google made of it from Street View? This cannot be undone.'))) return;
-      const d = await (await fetch('/api/video/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) })).json();
-      if (!d.ok) { alert(videoError(d)); return; }
-      listVideos();
-    };
-    list.appendChild(row);
-  });
-}
-vdEl('vd-refresh').onclick = listVideos;
+// The parts in modules of their own get what they need from here.
+initNotices({ t, lang: () => currentLang });
+initReport({ t, closeMenus, openModal, saveTextFile, pageInfo: reportPageInfo });
+initVideoDialog({
+  t, lang: () => currentLang, toast, openModal, closeMenus, setAppBusy, storageGet, storageSet,
+  formatBytes, formatEta, formatDistance, editorKey: EDITOR_KEY,
+});
+initDialogs();
 
 // ── Info points (hotspots) ────────────────────────
 let hsEditing = null; // { nodeId, id } of the point in the dialog

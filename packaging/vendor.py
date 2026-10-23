@@ -58,6 +58,8 @@ FILES = {
     "mediapipe/blaze_face_short_range.tflite": f"{MODELS}/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
     # Vehicles, for suggesting where licence plates are (COCO object detector).
     "mediapipe/efficientdet_lite0.tflite": "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
+    # QR codes for sharing a tour (MIT, the licence is in the file's header).
+    "qrcode/qrcode.mjs": f"{NPM}/qrcode-generator@2.0.4/dist/qrcode.mjs",
     # The UI font; Latin only (German and English).
     "manrope/manrope-latin-wght-normal.woff2": f"{MANROPE}/files/manrope-latin-wght-normal.woff2",
     "manrope/manrope-latin-ext-wght-normal.woff2": f"{MANROPE}/files/manrope-latin-ext-wght-normal.woff2",

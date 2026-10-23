@@ -7,7 +7,7 @@ def four_linked(page):
     for i in range(4):
         page.click(f'#node-list .nrow >> nth={i}', modifiers=['Control'])
     page.click('#multibar-connect')
-    assert page.inner_text('#st') == 'Nodes 4 · Links 3'
+    assert page.inner_text('#st').startswith('Nodes 4 · Links 3')
 
 
 def test_upload_with_a_place_id_google_refuses(editor):

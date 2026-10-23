@@ -2,7 +2,6 @@
 video to Google (a fake one here, as the Street View Publish API answers) and lists the sequences."""
 import hashlib
 import json
-import struct
 import threading
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -12,29 +11,9 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from conftest import launch_app, open_editor, start
+from helpers import mp4
 
-MAC_EPOCH = datetime(1904, 1, 1, tzinfo=timezone.utc)
 REAL_START = datetime(2026, 6, 14, 9, 30, 0, tzinfo=timezone.utc)
-
-
-def box(kind, payload=b''):
-    return struct.pack('>I', 8 + len(payload)) + kind + payload
-
-
-def mp4(created, seconds=60, width=5760, height=2880, spherical=True, camm=False, data=3 * 1024 * 1024):
-    """A small MP4 as cameras write it, with the header (moov) after the video data."""
-    ct = int((created - MAC_EPOCH).total_seconds())
-    mvhd = box(b'mvhd', b'\0' * 4 + struct.pack('>IIII', ct, ct, 1000, seconds * 1000) + b'\0' * 80)
-    tkhd = box(b'tkhd', b'\0' * 76 + struct.pack('>II', width << 16, height << 16))
-    hdlr = box(b'hdlr', b'\0' * 8 + b'vide' + b'\0' * 12 + b'VideoHandler\0')
-    trak = box(b'trak', tkhd + box(b'mdia', hdlr))
-    if spherical:
-        trak += box(b'uuid', b'\xff\xcc\x82\x63\xf8\x55\x4a\x93\x88\x14\x58\x7a\x02\x52\x1f\xdd'
-                    b'<rdf:SphericalVideo><GSpherical:Spherical>true</GSpherical:Spherical></rdf:SphericalVideo>')
-    if camm:
-        trak += box(b'trak', box(b'mdia', box(b'minf', box(b'stbl', box(b'stsd', b'\0' * 8 + box(b'camm', b'\0' * 8))))))
-    body = bytes((i * 7) % 251 for i in range(data))
-    return box(b'ftyp', b'isom\0\0\0\0isommp41') + box(b'mdat', body) + box(b'moov', mvhd + trak)
 
 
 def gpx(start, seconds, skip=()):
@@ -45,8 +24,13 @@ def gpx(start, seconds, skip=()):
     return f'<?xml version="1.0"?><gpx version="1.1" creator="test"><trk><trkseg>{pts}</trkseg></trk></gpx>'.encode()
 
 
+MIB2 = 2 * 1024 * 1024
+
+
 class FakeStreetView(BaseHTTPRequestHandler):
-    """photoSequence:startUpload, the upload URL, photoSequence (create, get, delete), photoSequences."""
+    """photoSequence:startUpload, the resumable upload (start, upload, query), photoSequence
+    (create, get, delete), photoSequences. st.hiccup: the next piece breaks off after 2 MiB;
+    st.down: no piece gets through."""
     state = None
 
     def log_message(self, *args):
@@ -68,19 +52,44 @@ class FakeStreetView(BaseHTTPRequestHandler):
             self.rfile.read(length)
             return self.reply({'uploadUrl': f'{st.base}/media/upload/seq-new'})
         if url.path == '/media/upload/seq-new':
-            digest, left = hashlib.sha256(), length
-            while left:
-                chunk = self.rfile.read(min(left, 256 * 1024))
-                digest.update(chunk)
-                left -= len(chunk)
-            st.uploads.append({'size': length, 'sha': digest.hexdigest(), 'type': self.headers.get('Content-Type'),
-                               'protocol': self.headers.get('X-Goog-Upload-Protocol')})
-            return self.reply({})
+            return self.upload(st, length)
         if url.path == '/v1/photoSequence':
             st.created.append({'query': parse_qs(url.query), 'body': json.loads(self.rfile.read(length))})
             st.sequences['seq-new'] = {'processingState': 'PENDING', 'filename': 'walk.mp4'}
             return self.reply({'name': 'seq-new'})
         self.reply({'error': {'message': 'not found'}}, 404)
+
+    def upload(self, st, length):
+        command = self.headers.get('X-Goog-Upload-Command')
+        body = self.rfile.read(length) if length else b''
+        if command == 'start':
+            assert self.headers.get('X-Goog-Upload-Protocol') == 'resumable'
+            st.session = {'data': bytearray(), 'final': False, 'type': self.headers.get('X-Goog-Upload-Header-Content-Type')}
+            self.send_response(200)
+            self.send_header('X-Goog-Upload-URL', f'{st.base}/media/upload/seq-new?upload_id=u1')
+            self.send_header('Content-Length', '0')
+            return self.end_headers()
+        sess = st.session
+        if command == 'query':
+            self.send_response(200)
+            self.send_header('X-Goog-Upload-Status', 'final' if sess['final'] else 'active')
+            self.send_header('X-Goog-Upload-Size-Received', str(len(sess['data'])))
+            self.send_header('Content-Length', '0')
+            return self.end_headers()
+        offset = int(self.headers['X-Goog-Upload-Offset'])
+        st.pieces.append((offset, len(body), command))
+        if st.down:
+            return self.reply({'error': {'message': 'Service unavailable'}}, 503)
+        assert offset == len(sess['data']), 'resumed at the wrong place'
+        if st.hiccup:
+            st.hiccup = False
+            sess['data'] += body[:MIB2]
+            return self.reply({'error': {'message': 'Backend error'}}, 503)
+        sess['data'] += body
+        if 'finalize' in command:
+            sess['final'] = True
+            st.uploads.append({'size': len(sess['data']), 'sha': hashlib.sha256(sess['data']).hexdigest(), 'type': sess['type']})
+        return self.reply({})
 
     def do_GET(self):
         st, url = self.state, urlparse(self.path)
@@ -101,7 +110,8 @@ class FakeStreetView(BaseHTTPRequestHandler):
 @pytest.fixture(scope='module')
 def google():
     srv = ThreadingHTTPServer(('127.0.0.1', 0), FakeStreetView)
-    st = SimpleNamespace(base=f'http://127.0.0.1:{srv.server_port}', uploads=[], created=[], deleted=[], auth=set(), sequences={
+    st = SimpleNamespace(base=f'http://127.0.0.1:{srv.server_port}', uploads=[], created=[], deleted=[], auth=set(), pieces=[],
+                         session=None, hiccup=False, down=False, sequences={
         'seq-a': {'processingState': 'PROCESSED', 'filename': 'harbour.mp4', 'photos': [{}, {}, {}], 'distanceMeters': 412.6,
                   'viewCount': '17', 'uploadTime': '2026-05-01T10:00:00Z'},
         'seq-b': {'processingState': 'FAILED', 'failureReason': 'NO_OVERLAP_GPS', 'filename': 'old.mp4', 'uploadTime': '2026-04-01T10:00:00Z'},
@@ -162,9 +172,11 @@ def test_video_upload_with_gpx(page, google):
     assert 'ok: The track covers the whole video (60 points).' in got, got
     assert 'ok: 5 point(s) filled in along the track where it had gaps of 5 to 30 s (Google refuses gaps over 5 s).' in got, got
 
+    google.hiccup = True  # the connection breaks after 2 MiB: the editor asks how far it got and goes on
     page.click('#vd-go')
     page.wait_for_function("document.getElementById('vd-status').textContent.startsWith('Uploaded.')", timeout=60000)
-    assert google.uploads == [{'size': len(video), 'sha': hashlib.sha256(video).hexdigest(), 'type': 'video/mp4', 'protocol': 'raw'}]
+    assert google.uploads == [{'size': len(video), 'sha': hashlib.sha256(video).hexdigest(), 'type': 'video/mp4'}]
+    assert google.pieces == [(0, len(video), 'upload, finalize'), (MIB2, len(video) - MIB2, 'upload, finalize')]
     assert google.auth == {'Bearer test-token'}
     (created,) = google.created
     assert created['query'] == {'inputType': ['VIDEO']}
@@ -203,3 +215,48 @@ def test_video_facts(page):
     page.set_input_files('#vd-file', files=[{'name': 'notes.mp4', 'mimeType': 'video/mp4', 'buffer': b'not a video at all'}])
     page.wait_for_function("document.querySelector('#vd-facts .check-row.error')")
     assert facts(page, 'vd-facts') == ['error: This is not an MP4 or MOV video that can be read.']
+
+
+def test_video_upload_goes_on_after_a_restart(page, google, tmp_path):
+    """Stopped while Google was unreachable; after a reload the same video goes on from where Google stands."""
+    google.uploads.clear()
+    google.created.clear()
+    google.pieces.clear()
+    path = tmp_path / 'tram.mp4'
+    path.write_bytes(mp4(REAL_START, camm=True, data=5 * 1024 * 1024))
+    page.click('#btools')
+    page.click('button[data-run=video]')
+    page.set_input_files('#vd-file', str(path))
+    page.wait_for_function("!document.getElementById('vd-go').disabled")
+
+    # The first piece breaks off after 2 MiB, and then Google is down: stopped while waiting to try again.
+    google.hiccup = True
+
+    def go_down(route):
+        google.down = True
+        route.continue_()
+    page.route('**/api/video/query', go_down)
+    page.click('#vd-go')
+    page.wait_for_function("document.getElementById('vd-status').textContent.includes('asking Google how much arrived')", timeout=30000)
+    page.click('#vd-stop')
+    page.wait_for_function("document.getElementById('vd-status').textContent.includes('Stopped.')", timeout=30000)
+    assert google.uploads == []
+
+    # "Restart": the page is loaded again, and Google is back.
+    page.unroute('**/api/video/query')
+    google.down = False
+    page.reload()
+    page.wait_for_selector('#map.leaflet-container')
+    page.click('#btools')
+    page.click('button[data-run=video]')
+    resume = page.inner_text('#vd-resume')
+    assert 'The upload of tram.mp4 stopped at' in resume, resume
+    page.set_input_files('#vd-file', str(path))
+    page.wait_for_function("document.getElementById('vd-go').textContent === 'Continue upload'")
+    page.click('#vd-go')
+    page.wait_for_function("document.getElementById('vd-status').textContent.startsWith('Uploaded.')", timeout=60000)
+    data = path.read_bytes()
+    assert google.uploads == [{'size': len(data), 'sha': hashlib.sha256(data).hexdigest(), 'type': 'video/mp4'}]
+    assert google.pieces[-1] == (MIB2, len(data) - MIB2, 'upload, finalize')  # only the rest was sent again
+    assert google.created[-1]['body']['gpsSource'] == 'CAMERA_MOTION_METADATA_TRACK'
+    assert page.is_hidden('#vd-resume')

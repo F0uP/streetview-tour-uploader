@@ -57,7 +57,8 @@ import app_window  # noqa: E402
 from google_api import (  # noqa: E402
     UPLOAD_PROGRESS, GoogleError, _connect_photos, _delete_photos, _google_libs,
     _list_photos, _photo_status, _update_photos, _upload_photo,
-    _create_sequence, _delete_sequence, _list_sequences, _upload_video,
+    _create_sequence, _delete_sequence, _list_sequences, _video_chunk, _video_query, _video_start,
+    _download_photo,
 )
 from places import PLACES_CACHE, _geocode, _places_nearby  # noqa: E402
 
@@ -719,24 +720,31 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(500, {'ok': False, 'error': str(e)})
         return self._json(200, {'ok': True, 'size': length})
 
-    def _upload_video(self, parsed):
+    def _video_chunk(self, parsed):
+        """One piece of a 360° video, streamed on to Google's resumable upload."""
         self.close_connection = True  # an unread body must not leak into a next request
-        job = parse_qs(parsed.query).get('job', [''])[0] or None
+        query = parse_qs(parsed.query)
+        job = query.get('job', [''])[0] or None
         length = int(self.headers.get('Content-Length') or 0)
         try:
             creds = _load_credentials()
         except RuntimeError:
+            _drain_body(self.rfile, length)
             return self._json(401, {'ok': False, 'error': 'not_signed_in'})
         try:
-            url = _upload_video(creds, self.rfile, length, self.headers.get('Content-Type') or 'video/mp4', job)
+            received = _video_chunk(creds, query.get('url', [''])[0], self.rfile, length,
+                                    int(query.get('offset', ['0'])[0]), query.get('final', ['0'])[0] == '1', job)
         except GoogleError as e:
             return self._json(200, {'ok': False, 'error': e.message, 'status': e.status, 'step': e.step})
-        except Exception as e:
-            return self._json(200, {'ok': False, 'error': str(e)})
+        except Exception as e:  # e.g. the connection to Google broke: the editor asks how far it got
+            return self._json(200, {'ok': False, 'error': str(e), 'status': 0, 'step': 'upload'})
         finally:
             UPLOAD_PROGRESS.pop(job, None)
-        return self._json(200, {'ok': True, 'uploadUrl': url})
+        return self._json(200, {'ok': True, 'received': received})
 
+    # ── POST: what the editor asks the app to do ──
+    # Each path has a method of its own (POST_ROUTES, below the class). Bodies that
+    # can be hundreds of MB are streamed: handled before the body would be read.
     def do_POST(self):
         if self._forbidden_origin():
             return self._json(403, {'ok': False, 'error': 'forbidden'})
@@ -745,17 +753,18 @@ class Handler(SimpleHTTPRequestHandler):
             if not self._key_ok():
                 return self._bad_key()
             return self._write_picked_file(parsed)
-        if parsed.path == '/api/video/upload':  # a 360° video, often GB: streamed on to Google
+        if parsed.path == '/api/video/chunk':  # a piece of a 360° video: streamed on to Google
             if not self._key_ok():
+                _drain_body(self.rfile, int(self.headers.get('Content-Length') or 0))
                 return self._bad_key()
-            return self._upload_video(parsed)
+            return self._video_chunk(parsed)
         length = int(self.headers.get('Content-Length') or 0)
-        raw_body = self.rfile.read(length) if length else b''
+        body = self.rfile.read(length) if length else b''
 
         if parsed.path == '/api/bye':
             # Sent with navigator.sendBeacon, which can't set headers: key in the body.
             try:
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
+                payload = json.loads(body.decode('utf-8') or '{}')
             except ValueError:
                 payload = {}
             if not self._key_ok(str(payload.get('key', ''))):
@@ -764,286 +773,366 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(200, {'ok': True})
         if not self._key_ok():
             return self._bad_key()
-
-        try:
-            if parsed.path == '/api/hello':
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
-                PAGES.hello(str(payload.get('page', '')))
-                return self._json(200, {'ok': True})
-
-            if parsed.path == '/api/busy':
-                # While e.g. an upload runs, closing the window asks first (the page sends the question).
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
-                if APP['window']:
-                    APP['window'].set_busy(str(payload.get('question') or '')[:500])
-                return self._json(200, {'ok': True})
-
-            if parsed.path == '/api/files/pick':
-                if not APP['window']:
-                    return self._json(404, {'ok': False, 'error': 'not_found'})
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
-                kind = payload.get('kind')
-                if kind not in ('open', 'save', 'folder'):
-                    raise RuntimeError(f"Unknown dialog: {kind}")
-                multiple = kind == 'open' and bool(payload.get('multiple'))
-                path = APP['window'].pick(
-                    kind, suggested_name=Path(str(payload.get('suggestedName') or '')).name,
-                    filters=_file_filters(payload.get('types')),
-                    all_files_label='Alle Dateien' if app_tray.GERMAN else 'All files', multiple=multiple)
-                if not path:
-                    return self._json(200, {'ok': True, 'cancelled': True})
-                if multiple:
-                    return self._json(200, {'ok': True, 'files': [
-                        {'token': _file_token(p, 'file'), 'name': Path(p).name} for p in path]})
-                path = Path(path)
-                if kind == 'folder':
-                    # Export folders are remembered (grant); a folder to import photos from isn't.
-                    grant = _remember_folder(path) if payload.get('remember', True) else None
-                    return self._json(200, {'ok': True, 'token': _file_token(path, 'folder'),
-                                            'name': path.name or str(path), 'grant': grant})
-                return self._json(200, {'ok': True, 'token': _file_token(path, 'file'), 'name': path.name})
-
-            if parsed.path == '/api/files/photos':
-                # The photos in a folder the user picked (import): a token for each.
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
-                entry = FILES.get(str(payload.get('token') or ''))
-                if not APP['window'] or not entry or entry['kind'] != 'folder' or not entry['path'].is_dir():
-                    return self._json(404, {'ok': False, 'error': 'folder_not_found'})
-                root = entry['path']
-                return self._json(200, {'ok': True, 'files': [
-                    {'token': _file_token(p, 'file'), 'name': p.name, 'path': p.relative_to(root).as_posix()}
-                    for p in _folder_photos(root)]})
-
-            if parsed.path in ('/api/files/ref', '/api/files/ref/open'):
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
-                if not APP['window']:
-                    return self._json(404, {'ok': False, 'error': 'not_found'})
-                if parsed.path == '/api/files/ref':  # files the page holds tokens for -> ids for the autosave
-                    entries = [FILES.get(str(tok)) for tok in payload.get('tokens', [])]
-                    paths = [e['path'] for e in entries if e and e['kind'] == 'file' and e['path'].is_file()]
-                    if len(paths) != len(entries):
-                        return self._json(200, {'ok': False, 'error': 'unknown_file'})
-                    return self._json(200, {'ok': True, 'refs': _make_file_refs(paths)})
-                ref = _file_refs().get(str(payload.get('ref') or ''))
-                path = ref and Path(ref['path'])
-                if not path or not path.is_file():
-                    return self._json(200, {'ok': False, 'error': 'gone'})
-                st = path.stat()
-                if (st.st_size, st.st_mtime_ns) != (ref['size'], ref['mtime']):
-                    return self._json(200, {'ok': False, 'error': 'changed'})
-                return self._json(200, {'ok': True, 'token': _file_token(path, 'file'), 'name': path.name})
-
-            if parsed.path in ('/api/recent/add', '/api/recent/open', '/api/recent/remove'):
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
-                if not APP['window']:
-                    return self._json(404, {'ok': False, 'error': 'not_found'})
-                if parsed.path == '/api/recent/add':  # a project was just opened or saved here
-                    entry = FILES.get(str(payload.get('token') or ''))
-                    if entry and entry['kind'] == 'file':
-                        path = str(entry['path'])
-                        _save_recent([path] + [p for p in _recent_paths() if p != path])
-                    return self._json(200, {'ok': True})
-                rid = str(payload.get('id') or '')
-                path = next((p for p in _recent_paths() if _recent_id(p) == rid), None)
-                if parsed.path == '/api/recent/remove':
-                    _save_recent([p for p in _recent_paths() if p != path])
-                    return self._json(200, {'ok': True})
-                if not path or not Path(path).is_file():
-                    return self._json(200, {'ok': False, 'error': 'file_gone'})
-                return self._json(200, {'ok': True, 'token': _file_token(path, 'file'), 'name': Path(path).name})
-
-            if parsed.path == '/api/files/folder':
-                # The export folder picked in an earlier run (the page keeps only the grant id).
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
-                path = _folder_grants().get(str(payload.get('grant') or ''))
-                if not APP['window'] or not path or not Path(path).is_dir():
-                    return self._json(200, {'ok': False, 'error': 'folder_gone'})
-                return self._json(200, {'ok': True, 'token': _file_token(path, 'folder'), 'name': Path(path).name or path})
-
-            if parsed.path == '/api/window-title':
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
-                if APP['window']:
-                    APP['window'].set_title(str(payload.get('title') or '')[:200])
-                return self._json(200, {'ok': True})
-
-            if parsed.path == '/api/window-theme':
-                # The editor switched light / dark: the window frame follows.
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
-                if APP['window']:
-                    APP['window'].set_theme(payload.get('theme') == 'dark')
-                return self._json(200, {'ok': True})
-
-            if parsed.path == '/api/focus':
-                # A second launch of the app: show this window, and open a project it brought along.
-                if APP['window']:
-                    APP['window'].focus()
-                    if PENDING['path']:
-                        APP['window'].run_js('window.__svtOpenPending && window.__svtOpenPending()')
-                return self._json(200, {'ok': True, 'window': bool(APP['window'])})
-
-            if parsed.path == '/api/set-credentials':
-                payload = json.loads(raw_body.decode('utf-8'))
-                _save_credentials(payload.get('client_id'), payload.get('client_secret'))
-                return self._json(200, {'ok': True})
-
-            if parsed.path == '/api/clear-credentials':
-                _clear_credentials()
-                return self._json(200, {'ok': True})
-
-            if parsed.path == '/api/login':
-                _sign_in()
-                return self._json(200, {'ok': True})
-
-            if parsed.path == '/api/upload-photo':
-                qs = parse_qs(parsed.query)
-                filename = qs.get('filename', [''])[0]
-                lat = float(qs['lat'][0])
-                lng = float(qs['lng'][0])
-                heading = float(qs['heading'][0]) if qs.get('heading', [''])[0] else None
-                place_id = qs.get('place_id', [''])[0] or None
-                job = qs.get('job', [''])[0] or None
-                level = ({'number': int(qs['level'][0]), 'name': qs.get('level_name', [''])[0][:3]}
-                         if qs.get('level', [''])[0] else None)
-                try:
-                    creds = _load_credentials()
-                except RuntimeError:
-                    return self._json(401, {'ok': False, 'error': 'not_signed_in'})
-                try:
-                    photo_id = _upload_photo(creds, raw_body, filename, lat, lng, heading, place_id, job, level)
-                except GoogleError as e:
-                    return self._json(200, {'ok': False, 'error': e.message, 'status': e.status,
-                                            'step': e.step, 'kind': e.kind})
-                finally:
-                    UPLOAD_PROGRESS.pop(job, None)
-                return self._json(200, {'ok': True, 'photoId': photo_id})
-
-            if parsed.path == '/api/connect':
-                payload = json.loads(raw_body.decode('utf-8'))
-                try:
-                    creds = _load_credentials()
-                except RuntimeError:
-                    return self._json(401, {'ok': False, 'error': 'not_signed_in'})
-                results = _connect_photos(creds, payload.get('name_to_id', {}), payload.get('connects', {}))
-                return self._json(200, {'ok': True, 'results': results})
-
-            if parsed.path in ('/api/photo-status', '/api/update-photos', '/api/list-photos', '/api/delete-photos'):
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
-                try:
-                    creds = _load_credentials()
-                except RuntimeError:
-                    return self._json(401, {'ok': False, 'error': 'not_signed_in'})
-                if parsed.path == '/api/list-photos':
-                    return self._json(200, {'ok': True, 'photos': _list_photos(creds)})
-                if parsed.path == '/api/delete-photos':
-                    return self._json(200, {'ok': True, 'results': _delete_photos(creds, payload.get('ids', []))})
-                if parsed.path == '/api/photo-status':
-                    return self._json(200, {'ok': True, 'photos': _photo_status(creds, payload.get('ids', []))})
-                return self._json(200, {'ok': True, 'results': _update_photos(creds, payload.get('items', []))})
-
-            if parsed.path == '/api/report':
-                # "Create a bug report": a zip to save, without sign-in, keys or photos.
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
-                data = bug_report.build(
-                    APP_VERSION, UPLOADER_DIR, payload, packaged=PACKAGED, window=bool(APP['window']),
-                    signed_in=TOKEN_FILE.exists(), places_key=bool(_places_key()),
-                    secrets=[EDITOR_KEY, _places_key()])
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/zip')
-                self.send_header('Content-Length', str(len(data)))
-                self.send_header('Cache-Control', 'no-store')
-                self.end_headers()
-                self.wfile.write(data)
-                return
-
-            if parsed.path in ('/api/video/create', '/api/video/list', '/api/video/delete'):
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
-                try:
-                    creds = _load_credentials()
-                except RuntimeError:
-                    return self._json(401, {'ok': False, 'error': 'not_signed_in'})
-                try:
-                    if parsed.path == '/api/video/list':
-                        return self._json(200, {'ok': True, 'sequences': _list_sequences(creds)})
-                    if parsed.path == '/api/video/delete':
-                        _delete_sequence(creds, str(payload.get('id') or ''))
-                        return self._json(200, {'ok': True})
-                    gps = [{'lat': float(p['lat']), 'lng': float(p['lng']), 'time': str(p['time'])}
-                           for p in payload.get('gps') or []]
-                    sid = _create_sequence(creds, str(payload.get('uploadUrl') or ''), gps,
-                                           str(payload.get('captureTime') or '') or None)
-                    return self._json(200, {'ok': True, 'id': sid})
-                except GoogleError as e:
-                    return self._json(200, {'ok': False, 'error': e.message, 'status': e.status, 'step': e.step})
-
-            if parsed.path in ('/api/places', '/api/places/key', '/api/places/nearby', '/api/places/geocode'):
-                payload = json.loads(raw_body.decode('utf-8') or '{}')
-                lang = 'de' if payload.get('lang') == 'de' else 'en'
-                if parsed.path == '/api/places':
-                    return self._json(200, {'ok': True, 'configured': bool(_places_key())})
-                if parsed.path == '/api/places/key':
-                    key = str(payload.get('key') or '').strip()
-                    if not key:
-                        PLACES_KEY_FILE.unlink(missing_ok=True)
-                        return self._json(200, {'ok': True, 'configured': False})
-                    if not re.fullmatch(r'[A-Za-z0-9_\-]{20,80}', key):
-                        return self._json(200, {'ok': False, 'error': 'That does not look like an API key (AIza…).'})
-                    # One lookup with each API, to tell which of them the key works for.
-                    lat, lng = float(payload.get('lat', 48.8584)), float(payload.get('lng', 2.2945))
-                    errors = {}
-                    try:
-                        _places_nearby(key, lat, lng, 50, lang)
-                    except GoogleError as e:
-                        errors['places'] = e.message
-                    try:
-                        _geocode(key, lat, lng, lang)
-                    except GoogleError as e:
-                        errors['geocoding'] = e.message
-                    if len(errors) == 2:
-                        return self._json(200, {'ok': False, 'error': errors['places'], 'errors': errors})
-                    PLACES_KEY_FILE.write_text(key, encoding='utf-8')
-                    return self._json(200, {'ok': True, 'configured': True, 'places': 'places' not in errors,
-                                            'geocoding': 'geocoding' not in errors, 'errors': errors})
-                key = _places_key()
-                if not key:
-                    return self._json(200, {'ok': False, 'error': 'no_key'})
-                # 'fetched': how many lookups really went to Google (the rest came from the cache),
-                # so the editor can show what was used of the free monthly usage.
-                try:
-                    if parsed.path == '/api/places/geocode':
-                        points = [(float(p['lat']), float(p['lng'])) for p in payload.get('points', [])][:500]
-                        fetched = len({(round(a, 5), round(b, 5)) for a, b in points
-                                       if ('geo', key, round(a, 5), round(b, 5), lang) not in PLACES_CACHE})
-                        with ThreadPoolExecutor(max_workers=6) as pool:
-                            found = list(pool.map(lambda ll: _geocode(key, ll[0], ll[1], lang), points))
-                        return self._json(200, {'ok': True, 'results': found, 'fetched': fetched})
-                    lat, lng = float(payload['lat']), float(payload['lng'])
-                    radius = min(max(float(payload.get('radius', 50)), 5.0), 500.0)
-                    fetched = int((key, round(lat, 5), round(lng, 5), round(radius), lang) not in PLACES_CACHE)
-                    places = _places_nearby(key, lat, lng, radius, lang)
-                except GoogleError as e:
-                    return self._json(200, {'ok': False, 'error': e.message, 'status': e.status, 'step': e.step})
-                return self._json(200, {'ok': True, 'places': places, 'fetched': fetched})
-
-            if parsed.path == '/api/open-file':
-                payload = json.loads(raw_body.decode('utf-8'))
-                path = Path(payload.get('path') or '')
-                if path.suffix.lower() not in PROJECT_SUFFIXES or not path.is_file():
-                    raise RuntimeError(f"Not a project file: {path}")
-                PENDING['path'] = str(path.resolve())
-                return self._json(200, {'ok': True})
-
-            if parsed.path == '/api/update/install':
-                if not app_update.is_installed():
-                    raise RuntimeError("Only the installed app can update itself.")
-                app_update.start_install(APP_VERSION, lambda: SHUTDOWN['fn']())
-                return self._json(200, {'ok': True})
-
+        handler = POST_ROUTES.get(parsed.path)
+        if not handler:
             return self._json(404, {'ok': False, 'error': 'not_found'})
-
+        try:
+            return getattr(self, handler)(parsed, body)
         except RuntimeError as e:
             return self._json(400, {'ok': False, 'error': str(e)})
         except Exception as e:
             return self._json(500, {'ok': False, 'error': str(e)})
+
+    @staticmethod
+    def _payload(body):
+        return json.loads(body.decode('utf-8') or '{}')
+
+    @staticmethod
+    def _creds():
+        """The Google sign-in, or None (then the editor is told 'not_signed_in')."""
+        try:
+            return _load_credentials()
+        except RuntimeError:
+            return None
+
+    def _not_signed_in(self):
+        return self._json(401, {'ok': False, 'error': 'not_signed_in'})
+
+    def _send_bytes(self, data, content_type):
+        self.send_response(200)
+        self.send_header('Content-Type', content_type)
+        self.send_header('Content-Length', str(len(data)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(data)
+
+    # The editor pages and the window
+    def _post_hello(self, parsed, body):
+        PAGES.hello(str(self._payload(body).get('page', '')))
+        return self._json(200, {'ok': True})
+
+    def _post_busy(self, parsed, body):
+        # While e.g. an upload runs, closing the window asks first (the page sends the question).
+        if APP['window']:
+            APP['window'].set_busy(str(self._payload(body).get('question') or '')[:500])
+        return self._json(200, {'ok': True})
+
+    def _post_window_title(self, parsed, body):
+        if APP['window']:
+            APP['window'].set_title(str(self._payload(body).get('title') or '')[:200])
+        return self._json(200, {'ok': True})
+
+    def _post_window_theme(self, parsed, body):
+        # The editor switched light / dark: the window frame follows.
+        if APP['window']:
+            APP['window'].set_theme(self._payload(body).get('theme') == 'dark')
+        return self._json(200, {'ok': True})
+
+    def _post_focus(self, parsed, body):
+        # A second launch of the app: show this window, and open a project it brought along.
+        if APP['window']:
+            APP['window'].focus()
+            if PENDING['path']:
+                APP['window'].run_js('window.__svtOpenPending && window.__svtOpenPending()')
+        return self._json(200, {'ok': True, 'window': bool(APP['window'])})
+
+    def _post_open_file(self, parsed, body):
+        path = Path(json.loads(body.decode('utf-8')).get('path') or '')
+        if path.suffix.lower() not in PROJECT_SUFFIXES or not path.is_file():
+            raise RuntimeError(f"Not a project file: {path}")
+        PENDING['path'] = str(path.resolve())
+        return self._json(200, {'ok': True})
+
+    def _post_update_install(self, parsed, body):
+        if not app_update.is_installed():
+            raise RuntimeError("Only the installed app can update itself.")
+        app_update.start_install(APP_VERSION, lambda: SHUTDOWN['fn']())
+        return self._json(200, {'ok': True})
+
+    def _post_report(self, parsed, body):
+        # "Create a bug report": a zip to save, without sign-in, keys or photos.
+        data = bug_report.build(
+            APP_VERSION, UPLOADER_DIR, self._payload(body), packaged=PACKAGED, window=bool(APP['window']),
+            signed_in=TOKEN_FILE.exists(), places_key=bool(_places_key()),
+            secrets=[EDITOR_KEY, _places_key()])
+        return self._send_bytes(data, 'application/zip')
+
+    # Files in the app window: only where the user picked them in the system's dialogs
+    def _post_files_pick(self, parsed, body):
+        if not APP['window']:
+            return self._json(404, {'ok': False, 'error': 'not_found'})
+        payload = self._payload(body)
+        kind = payload.get('kind')
+        if kind not in ('open', 'save', 'folder'):
+            raise RuntimeError(f"Unknown dialog: {kind}")
+        multiple = kind == 'open' and bool(payload.get('multiple'))
+        path = APP['window'].pick(
+            kind, suggested_name=Path(str(payload.get('suggestedName') or '')).name,
+            filters=_file_filters(payload.get('types')),
+            all_files_label='Alle Dateien' if app_tray.GERMAN else 'All files', multiple=multiple)
+        if not path:
+            return self._json(200, {'ok': True, 'cancelled': True})
+        if multiple:
+            return self._json(200, {'ok': True, 'files': [
+                {'token': _file_token(p, 'file'), 'name': Path(p).name} for p in path]})
+        path = Path(path)
+        if kind == 'folder':
+            # Export folders are remembered (grant); a folder to import photos from isn't.
+            grant = _remember_folder(path) if payload.get('remember', True) else None
+            return self._json(200, {'ok': True, 'token': _file_token(path, 'folder'),
+                                    'name': path.name or str(path), 'grant': grant})
+        return self._json(200, {'ok': True, 'token': _file_token(path, 'file'), 'name': path.name})
+
+    def _post_files_photos(self, parsed, body):
+        # The photos in a folder the user picked (import): a token for each.
+        entry = FILES.get(str(self._payload(body).get('token') or ''))
+        if not APP['window'] or not entry or entry['kind'] != 'folder' or not entry['path'].is_dir():
+            return self._json(404, {'ok': False, 'error': 'folder_not_found'})
+        root = entry['path']
+        return self._json(200, {'ok': True, 'files': [
+            {'token': _file_token(p, 'file'), 'name': p.name, 'path': p.relative_to(root).as_posix()}
+            for p in _folder_photos(root)]})
+
+    def _post_files_ref(self, parsed, body):
+        payload = self._payload(body)
+        if not APP['window']:
+            return self._json(404, {'ok': False, 'error': 'not_found'})
+        if parsed.path == '/api/files/ref':  # files the page holds tokens for -> ids for the autosave
+            entries = [FILES.get(str(tok)) for tok in payload.get('tokens', [])]
+            paths = [e['path'] for e in entries if e and e['kind'] == 'file' and e['path'].is_file()]
+            if len(paths) != len(entries):
+                return self._json(200, {'ok': False, 'error': 'unknown_file'})
+            return self._json(200, {'ok': True, 'refs': _make_file_refs(paths)})
+        ref = _file_refs().get(str(payload.get('ref') or ''))
+        path = ref and Path(ref['path'])
+        if not path or not path.is_file():
+            return self._json(200, {'ok': False, 'error': 'gone'})
+        st = path.stat()
+        if (st.st_size, st.st_mtime_ns) != (ref['size'], ref['mtime']):
+            return self._json(200, {'ok': False, 'error': 'changed'})
+        return self._json(200, {'ok': True, 'token': _file_token(path, 'file'), 'name': path.name})
+
+    def _post_files_folder(self, parsed, body):
+        # The export folder picked in an earlier run (the page keeps only the grant id).
+        path = _folder_grants().get(str(self._payload(body).get('grant') or ''))
+        if not APP['window'] or not path or not Path(path).is_dir():
+            return self._json(200, {'ok': False, 'error': 'folder_gone'})
+        return self._json(200, {'ok': True, 'token': _file_token(path, 'folder'), 'name': Path(path).name or path})
+
+    def _post_recent(self, parsed, body):
+        payload = self._payload(body)
+        if not APP['window']:
+            return self._json(404, {'ok': False, 'error': 'not_found'})
+        if parsed.path == '/api/recent/add':  # a project was just opened or saved here
+            entry = FILES.get(str(payload.get('token') or ''))
+            if entry and entry['kind'] == 'file':
+                path = str(entry['path'])
+                _save_recent([path] + [p for p in _recent_paths() if p != path])
+            return self._json(200, {'ok': True})
+        rid = str(payload.get('id') or '')
+        path = next((p for p in _recent_paths() if _recent_id(p) == rid), None)
+        if parsed.path == '/api/recent/remove':
+            _save_recent([p for p in _recent_paths() if p != path])
+            return self._json(200, {'ok': True})
+        if not path or not Path(path).is_file():
+            return self._json(200, {'ok': False, 'error': 'file_gone'})
+        return self._json(200, {'ok': True, 'token': _file_token(path, 'file'), 'name': Path(path).name})
+
+    # Google sign-in
+    def _post_set_credentials(self, parsed, body):
+        payload = json.loads(body.decode('utf-8'))
+        _save_credentials(payload.get('client_id'), payload.get('client_secret'))
+        return self._json(200, {'ok': True})
+
+    def _post_clear_credentials(self, parsed, body):
+        _clear_credentials()
+        return self._json(200, {'ok': True})
+
+    def _post_login(self, parsed, body):
+        _sign_in()
+        return self._json(200, {'ok': True})
+
+    # Street View: photos
+    def _post_upload_photo(self, parsed, body):
+        qs = parse_qs(parsed.query)
+        filename = qs.get('filename', [''])[0]
+        lat = float(qs['lat'][0])
+        lng = float(qs['lng'][0])
+        heading = float(qs['heading'][0]) if qs.get('heading', [''])[0] else None
+        place_id = qs.get('place_id', [''])[0] or None
+        job = qs.get('job', [''])[0] or None
+        level = ({'number': int(qs['level'][0]), 'name': qs.get('level_name', [''])[0][:3]}
+                 if qs.get('level', [''])[0] else None)
+        creds = self._creds()
+        if not creds:
+            return self._not_signed_in()
+        try:
+            photo_id = _upload_photo(creds, body, filename, lat, lng, heading, place_id, job, level)
+        except GoogleError as e:
+            return self._json(200, {'ok': False, 'error': e.message, 'status': e.status,
+                                    'step': e.step, 'kind': e.kind})
+        finally:
+            UPLOAD_PROGRESS.pop(job, None)
+        return self._json(200, {'ok': True, 'photoId': photo_id})
+
+    def _post_connect(self, parsed, body):
+        payload = json.loads(body.decode('utf-8'))
+        creds = self._creds()
+        if not creds:
+            return self._not_signed_in()
+        results = _connect_photos(creds, payload.get('name_to_id', {}), payload.get('connects', {}))
+        return self._json(200, {'ok': True, 'results': results})
+
+    def _post_google_photo(self, parsed, body):
+        # A photo's bytes from Google ("Photos from Google"): as a file, or an error as JSON.
+        creds = self._creds()
+        if not creds:
+            return self._not_signed_in()
+        try:
+            data = _download_photo(creds, str(self._payload(body).get('id') or ''))
+        except GoogleError as e:
+            return self._json(200, {'ok': False, 'error': e.message, 'status': e.status})
+        return self._send_bytes(data, 'image/jpeg')
+
+    def _post_photos(self, parsed, body):
+        payload = self._payload(body)
+        creds = self._creds()
+        if not creds:
+            return self._not_signed_in()
+        if parsed.path == '/api/list-photos':
+            return self._json(200, {'ok': True, 'photos': _list_photos(creds)})
+        if parsed.path == '/api/delete-photos':
+            return self._json(200, {'ok': True, 'results': _delete_photos(creds, payload.get('ids', []))})
+        if parsed.path == '/api/photo-status':
+            return self._json(200, {'ok': True, 'photos': _photo_status(creds, payload.get('ids', []))})
+        return self._json(200, {'ok': True, 'results': _update_photos(creds, payload.get('items', []))})
+
+    # Street View: 360° videos (the pieces themselves: _video_chunk, streamed)
+    def _post_video(self, parsed, body):
+        payload = self._payload(body)
+        creds = self._creds()
+        if not creds:
+            return self._not_signed_in()
+        try:
+            if parsed.path == '/api/video/start':
+                upload_url, session_url = _video_start(creds, int(payload.get('size') or 0), str(payload.get('type') or 'video/mp4'))
+                return self._json(200, {'ok': True, 'uploadUrl': upload_url, 'session': session_url})
+            if parsed.path == '/api/video/query':
+                return self._json(200, {'ok': True, **_video_query(creds, str(payload.get('session') or ''))})
+            if parsed.path == '/api/video/list':
+                return self._json(200, {'ok': True, 'sequences': _list_sequences(creds)})
+            if parsed.path == '/api/video/delete':
+                _delete_sequence(creds, str(payload.get('id') or ''))
+                return self._json(200, {'ok': True})
+            gps = [{'lat': float(p['lat']), 'lng': float(p['lng']), 'time': str(p['time'])}
+                   for p in payload.get('gps') or []]
+            sid = _create_sequence(creds, str(payload.get('uploadUrl') or ''), gps,
+                                   str(payload.get('captureTime') or '') or None)
+            return self._json(200, {'ok': True, 'id': sid})
+        except GoogleError as e:
+            return self._json(200, {'ok': False, 'error': e.message, 'status': e.status, 'step': e.step})
+
+    # Places on Google Maps (the user's own API key)
+    def _post_places(self, parsed, body):
+        payload = self._payload(body)
+        lang = 'de' if payload.get('lang') == 'de' else 'en'
+        if parsed.path == '/api/places':
+            return self._json(200, {'ok': True, 'configured': bool(_places_key())})
+        if parsed.path == '/api/places/key':
+            return self._save_places_key(payload, lang)
+        key = _places_key()
+        if not key:
+            return self._json(200, {'ok': False, 'error': 'no_key'})
+        # 'fetched': how many lookups really went to Google (the rest came from the cache),
+        # so the editor can show what was used of the free monthly usage.
+        try:
+            if parsed.path == '/api/places/geocode':
+                points = [(float(p['lat']), float(p['lng'])) for p in payload.get('points', [])][:500]
+                fetched = len({(round(a, 5), round(b, 5)) for a, b in points
+                               if ('geo', key, round(a, 5), round(b, 5), lang) not in PLACES_CACHE})
+                with ThreadPoolExecutor(max_workers=6) as pool:
+                    found = list(pool.map(lambda ll: _geocode(key, ll[0], ll[1], lang), points))
+                return self._json(200, {'ok': True, 'results': found, 'fetched': fetched})
+            lat, lng = float(payload['lat']), float(payload['lng'])
+            radius = min(max(float(payload.get('radius', 50)), 5.0), 500.0)
+            fetched = int((key, round(lat, 5), round(lng, 5), round(radius), lang) not in PLACES_CACHE)
+            places = _places_nearby(key, lat, lng, radius, lang)
+        except GoogleError as e:
+            return self._json(200, {'ok': False, 'error': e.message, 'status': e.status, 'step': e.step})
+        return self._json(200, {'ok': True, 'places': places, 'fetched': fetched})
+
+    def _save_places_key(self, payload, lang):
+        key = str(payload.get('key') or '').strip()
+        if not key:
+            PLACES_KEY_FILE.unlink(missing_ok=True)
+            return self._json(200, {'ok': True, 'configured': False})
+        if not re.fullmatch(r'[A-Za-z0-9_\-]{20,80}', key):
+            return self._json(200, {'ok': False, 'error': 'That does not look like an API key (AIza…).'})
+        # One lookup with each API, to tell which of them the key works for.
+        lat, lng = float(payload.get('lat', 48.8584)), float(payload.get('lng', 2.2945))
+        errors = {}
+        try:
+            _places_nearby(key, lat, lng, 50, lang)
+        except GoogleError as e:
+            errors['places'] = e.message
+        try:
+            _geocode(key, lat, lng, lang)
+        except GoogleError as e:
+            errors['geocoding'] = e.message
+        if len(errors) == 2:
+            return self._json(200, {'ok': False, 'error': errors['places'], 'errors': errors})
+        PLACES_KEY_FILE.write_text(key, encoding='utf-8')
+        return self._json(200, {'ok': True, 'configured': True, 'places': 'places' not in errors,
+                                'geocoding': 'geocoding' not in errors, 'errors': errors})
+
+
+# Which method of Handler answers which POST path.
+POST_ROUTES = {
+    '/api/hello': '_post_hello',
+    '/api/busy': '_post_busy',
+    '/api/window-title': '_post_window_title',
+    '/api/window-theme': '_post_window_theme',
+    '/api/focus': '_post_focus',
+    '/api/open-file': '_post_open_file',
+    '/api/update/install': '_post_update_install',
+    '/api/report': '_post_report',
+    '/api/files/pick': '_post_files_pick',
+    '/api/files/photos': '_post_files_photos',
+    '/api/files/ref': '_post_files_ref',
+    '/api/files/ref/open': '_post_files_ref',
+    '/api/files/folder': '_post_files_folder',
+    '/api/recent/add': '_post_recent',
+    '/api/recent/open': '_post_recent',
+    '/api/recent/remove': '_post_recent',
+    '/api/set-credentials': '_post_set_credentials',
+    '/api/clear-credentials': '_post_clear_credentials',
+    '/api/login': '_post_login',
+    '/api/upload-photo': '_post_upload_photo',
+    '/api/connect': '_post_connect',
+    '/api/google-photo': '_post_google_photo',
+    '/api/list-photos': '_post_photos',
+    '/api/delete-photos': '_post_photos',
+    '/api/photo-status': '_post_photos',
+    '/api/update-photos': '_post_photos',
+    '/api/video/start': '_post_video',
+    '/api/video/query': '_post_video',
+    '/api/video/create': '_post_video',
+    '/api/video/list': '_post_video',
+    '/api/video/delete': '_post_video',
+    '/api/places': '_post_places',
+    '/api/places/key': '_post_places',
+    '/api/places/nearby': '_post_places',
+    '/api/places/geocode': '_post_places',
+}
+
+
+def _drain_body(stream, length):
+    """Read and drop a request body that is not used (else the client is still sending when answered)."""
+    while length > 0:
+        chunk = stream.read(min(length, 1024 * 1024))
+        if not chunk:
+            break
+        length -= len(chunk)
 
 
 def _migrate_legacy_credentials():

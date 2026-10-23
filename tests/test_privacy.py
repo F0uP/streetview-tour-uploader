@@ -1,10 +1,15 @@
 """Faces and plates: all photos checked on this computer, then reviewed one by one in the blur tool."""
+import base64
+import io
+
 import pytest
+from PIL import Image
 
 from helpers import KIEL, STEP_8M, b64, drop, face_pano, jpg
 
 ROWS = "[...document.querySelectorAll('#pv-list .check-row')].map(r => r.textContent)"
 SHOWN = "id => document.getElementById(id).classList.contains('show')"
+CHIPS = "[...document.querySelectorAll('#checklist-chips .st-chip')].map(c => c.className.split(' ')[1] + ': ' + c.textContent)"
 
 
 def needs_webgl(page):
@@ -44,11 +49,43 @@ def test_check_all_photos_review_and_blur(editor):
     rows = page.evaluate(ROWS)
     assert 'blurred' in rows[0] and rows[0].endswith('Again'), rows
 
-    # blurred photos are skipped next time; the face is gone from the photo
-    status = check_photos(page)
-    assert status.startswith('Checked 2 of 2 photo(s): 0 with faces'), status
+    # checked photos are skipped next time (the blurred one too); the face is gone from the photo
+    page.set_checked('#pv-skip', True)
+    page.click('#pv-go')
+    assert page.inner_text('#pv-status') == 'Nothing to check.'
     status = check_photos(page, skip=False)
     assert status.startswith('Checked 3 of 3 photo(s): 0 with faces'), status
+
+    # what was checked stays with the tour - also after a restart
+    page.keyboard.press('Escape')
+    assert 'ok: Faces & plates checked' in page.evaluate(CHIPS)
+    page.wait_for_timeout(1500)  # the autosave
+    page.reload()
+    page.wait_for_function(SHOWN, arg='restore-banner')
+    page.click('#restore-yes')
+    page.wait_for_function("document.querySelectorAll('#node-list .nrow').length === 3")
+    assert 'ok: Faces & plates checked' in page.evaluate(CHIPS)
+
+
+def test_a_face_on_the_seam(editor):
+    """A face where the panorama's right edge meets its left one: found whole, blurred on both sides."""
+    page = editor.page
+    needs_webgl(page)
+    im = face_pano(220)
+    w, h = im.size
+    rolled = Image.new('RGB', (w, h))
+    rolled.paste(im.crop((w // 2, 0, w, h)), (0, 0))
+    rolled.paste(im.crop((0, 0, w // 2, h)), (w // 2, 0))
+    buf = io.BytesIO()
+    rolled.save(buf, 'JPEG', quality=90)
+    boxes = page.evaluate("""async b => {
+      const det = await import('/js/detect.js');
+      const bmp = await createImageBitmap(await (await fetch('data:image/jpeg;base64,' + b)).blob());
+      return det.findFaces(bmp);
+    }""", base64.b64encode(buf.getvalue()).decode())
+    assert len(boxes) == 2, boxes
+    right, left = sorted(boxes, key=lambda b: -b['x'])
+    assert abs(right['x'] + right['w'] - w) < 1 and left['x'] == 0 and left.get('seam') is True, boxes
 
 
 def test_plates_in_the_blur_tool(editor):

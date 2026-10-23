@@ -9,6 +9,8 @@ import base64
 import io
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlparse
 
 # SVT_STREETVIEW_API: the tests point the app at a fake Google with it.
 BASE_URL = os.environ.get('SVT_STREETVIEW_API') or 'https://streetviewpublish.googleapis.com/v1'
@@ -216,7 +218,34 @@ def _photo_facts(photo):
         'level': pose.get('level'),
         'connections': [((c.get('target') or {}).get('id')) for c in photo.get('connections') or [] if (c.get('target') or {}).get('id')],
         'viewCount': int(photo.get('viewCount') or 0),
+        'placeId': next((p.get('placeId') for p in photo.get('places') or [] if p.get('placeId')), None),
+        'placeName': next((p.get('name') for p in photo.get('places') or [] if p.get('placeId')), None),
+        'thumbnailUrl': photo.get('thumbnailUrl'),
+        'captureTime': photo.get('captureTime'),
     }
+
+
+def _download_photo(creds, pid):
+    """A photo's own bytes as Google keeps them - to load photos from Google into the editor."""
+    requests, *_ = _google_libs()
+    session = _session(creds)
+    for cid in _id_candidates(pid):
+        r = session.get(f'{BASE_URL}/photo/{cid}', params={'view': 'INCLUDE_DOWNLOAD_URL'})
+        if r.status_code in (400, 404):
+            continue  # another form of the ID, maybe
+        if not r.ok:
+            raise GoogleError('download', r.status_code, _google_message(r))
+        url = r.json().get('downloadUrl')
+        if not url:
+            raise GoogleError('download', 404, 'Google offers no download of this photo.')
+        # The download address is signed for itself; only if Google wants the sign-in, it goes along.
+        d = requests.get(url, timeout=180)
+        if d.status_code in (401, 403):
+            d = session.get(url, timeout=180)
+        if not d.ok:
+            raise GoogleError('download', d.status_code, _google_message(d))
+        return d.content
+    raise GoogleError('download', 404, 'This photo is not on Google (any more).')
 
 
 def _list_photos(creds):
@@ -321,14 +350,24 @@ def _update_photos(creds, items):
 
 # ── 360° videos (photo sequences) ─────────────────
 # Google cuts a 360° video into photos itself, places them along the GPS track and
-# connects them. The video goes from the editor through this app to Google as a
-# stream, never whole in memory (videos are often several GB).
+# connects them. Videos are often several GB, so they go up with Google's resumable
+# protocol: the editor sends the video piece by piece through this app (never whole
+# in memory), and after a broken connection - or a restart - asks Google how much
+# arrived and goes on from there.
 
 class _StreamReader:
     """`total` bytes from a stream (the editor's request), handed on piece by piece, with progress."""
 
     def __init__(self, stream, total, job):
         self.stream, self.total, self.job, self.sent = stream, total, job, 0
+
+    def drain(self):
+        """Read what is left, so the editor can be answered (it is still sending otherwise)."""
+        while self.sent < self.total:
+            chunk = self.stream.read(min(1024 * 1024, self.total - self.sent))
+            if not chunk:
+                break
+            self.sent += len(chunk)
 
     def __len__(self):
         return self.total
@@ -354,23 +393,59 @@ def _session(creds):
     return session
 
 
-def _upload_video(creds, stream, total, content_type='video/mp4', job=None):
-    """Send the video bytes to Google; returns the upload URL that _create_sequence refers to."""
+def _check_upload_url(url):
+    """The sign-in goes along only to Google's own upload addresses (the editor hands them in)."""
+    ours, theirs = urlparse(BASE_URL), urlparse(url or '')
+    if (theirs.scheme, theirs.netloc) != (ours.scheme, ours.netloc):
+        raise GoogleError('upload', 400, 'Not an upload address of the Street View Publish API.')
+
+
+def _video_start(creds, size, content_type='video/mp4'):
+    """Open a resumable upload: (upload URL - names the video when the sequence is made -,
+    session URL - where its bytes go)."""
     session = _session(creds)
-    if job:
-        UPLOAD_PROGRESS[job] = {'phase': 'starting', 'sent': 0, 'total': total}
     r = session.post(f'{BASE_URL}/photoSequence:startUpload', json={})
     if not r.ok:
         raise GoogleError('start', r.status_code, _google_message(r))
     upload_url = r.json()['uploadUrl']
-    r = session.post(upload_url, data=_StreamReader(stream, total, job), headers={
-        'Content-Type': content_type or 'video/mp4',
-        'X-Goog-Upload-Protocol': 'raw',
-        'X-Goog-Upload-Content-Length': str(total),
+    r = session.post(upload_url, data=b'', headers={
+        'X-Goog-Upload-Protocol': 'resumable',
+        'X-Goog-Upload-Command': 'start',
+        'X-Goog-Upload-Header-Content-Length': str(size),
+        'X-Goog-Upload-Header-Content-Type': content_type or 'video/mp4',
     })
     if not r.ok:
         raise GoogleError('upload', r.status_code, _google_message(r))
-    return upload_url
+    session_url = r.headers.get('X-Goog-Upload-URL')
+    if not session_url:
+        raise GoogleError('upload', r.status_code, 'Google did not open a resumable upload.')
+    return upload_url, session_url
+
+
+def _video_chunk(creds, session_url, stream, length, offset, final, job=None):
+    """Send `length` bytes of the video, which start at `offset`; `final`: the last piece."""
+    _check_upload_url(session_url)
+    reader = _StreamReader(stream, length, job)
+    try:
+        r = _session(creds).post(session_url, data=reader, headers={
+            'X-Goog-Upload-Command': 'upload, finalize' if final else 'upload',
+            'X-Goog-Upload-Offset': str(offset),
+        })
+    finally:
+        reader.drain()
+    if not r.ok:
+        raise GoogleError('upload', r.status_code, _google_message(r))
+    return offset + length
+
+
+def _video_query(creds, session_url):
+    """How much of the video Google has: {'status': 'active' | 'final' | ..., 'received': bytes}."""
+    _check_upload_url(session_url)
+    r = _session(creds).post(session_url, data=b'', headers={'X-Goog-Upload-Command': 'query'})
+    if not r.ok:
+        raise GoogleError('query', r.status_code, _google_message(r))
+    return {'status': r.headers.get('X-Goog-Upload-Status') or 'active',
+            'received': int(r.headers.get('X-Goog-Upload-Size-Received') or 0)}
 
 
 def _create_sequence(creds, upload_url, gps=None, capture_time=None):
@@ -436,14 +511,13 @@ def _list_sequences(creds):
         token = data.get('nextPageToken')
         if not token:
             break
-    out = []
-    for op in ops[:50]:
-        sid = _sequence_id(op)
-        if not sid:
-            continue
-        # The list holds little more than the ID once a sequence is done: ask for each.
-        r = session.get(f'{BASE_URL}/photoSequence/{sid}', params={'view': 'BASIC'})
-        out.append(_sequence_facts(r.json() if r.ok else op))
+    # The list holds little more than the ID once a sequence is done: ask for each,
+    # a few at a time.
+    def details(op):
+        r = session.get(f'{BASE_URL}/photoSequence/{_sequence_id(op)}', params={'view': 'BASIC'})
+        return _sequence_facts(r.json() if r.ok else op)
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        out = list(pool.map(details, [op for op in ops[:50] if _sequence_id(op)]))
     out.sort(key=lambda s: s.get('uploadTime') or '', reverse=True)
     return out
 

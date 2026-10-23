@@ -2,7 +2,9 @@
 import base64
 import io
 import json
+import struct
 import zipfile
+from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
 
 from PIL import Image, ImageDraw, ImageFilter
@@ -61,6 +63,29 @@ def face_pano(size=220, width=2048, shift=0):
     d.polygon([(cx, cy - r * 0.1), (cx - r * 0.12, cy + r * 0.3), (cx + r * 0.12, cy + r * 0.3)], fill=(200, 150, 120))
     d.chord([cx - r * 0.35, cy + r * 0.35, cx + r * 0.35, cy + r * 0.7], 0, 180, fill=(170, 60, 60))
     return im.filter(ImageFilter.GaussianBlur(1.2))
+
+
+MAC_EPOCH = datetime(1904, 1, 1, tzinfo=timezone.utc)  # MP4 times count from 1904
+
+
+def box(kind, payload=b''):
+    return struct.pack('>I', 8 + len(payload)) + kind + payload
+
+
+def mp4(created=None, seconds=60, width=5760, height=2880, spherical=True, camm=False, data=3 * 1024 * 1024):
+    """A small MP4 as cameras write it, with the header (moov) after the video data."""
+    ct = int(((created or datetime(2026, 6, 14, 9, 30, tzinfo=timezone.utc)) - MAC_EPOCH).total_seconds())
+    mvhd = box(b'mvhd', b'\0' * 4 + struct.pack('>IIII', ct, ct, 1000, seconds * 1000) + b'\0' * 80)
+    tkhd = box(b'tkhd', b'\0' * 76 + struct.pack('>II', width << 16, height << 16))
+    hdlr = box(b'hdlr', b'\0' * 8 + b'vide' + b'\0' * 12 + b'VideoHandler\0')
+    trak = box(b'trak', tkhd + box(b'mdia', hdlr))
+    if spherical:
+        trak += box(b'uuid', b'\xff\xcc\x82\x63\xf8\x55\x4a\x93\x88\x14\x58\x7a\x02\x52\x1f\xdd'
+                    b'<rdf:SphericalVideo><GSpherical:Spherical>true</GSpherical:Spherical></rdf:SphericalVideo>')
+    if camm:
+        trak += box(b'trak', box(b'mdia', box(b'minf', box(b'stbl', box(b'stsd', b'\0' * 8 + box(b'camm', b'\0' * 8))))))
+    body = bytes((i * 7) % 251 for i in range(data))
+    return box(b'ftyp', b'isom\0\0\0\0isommp41') + box(b'mdat', body) + box(b'moov', mvhd + trak)
 
 
 def b64(name, data, mime='image/jpeg'):

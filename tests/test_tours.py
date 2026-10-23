@@ -24,14 +24,14 @@ def test_two_projects_on_one_map(editor, tmp_path):
 
     add(page, a)  # on an empty map: simply opened
     assert page.title().startswith('Holstenstrasse.vrtour')
-    assert page.inner_text('#st') == 'Nodes 3 · Links 2' and not page.is_visible('#tours')
+    assert page.inner_text('#st').startswith('Nodes 3 · Links 2') and not page.is_visible('#tours')
 
     drop(page, [file_item(b)], confirm=None)
     assert page.inner_text('#choice-title') == 'Rathaus.vrtour'
     assert page.locator('#choice-buttons .btn').all_inner_texts() == ['Add to the map', 'Open instead', 'Cancel']
     page.click('#choice-buttons .btn.g')
     page.wait_for_timeout(1200)
-    assert page.inner_text('#st') == 'Nodes 6 · Links 4 · Tours 2'
+    assert page.inner_text('#st').startswith('Nodes 6 · Links 4 · Tours 2')
     assert page.title() == '• Holstenstrasse + Rathaus.vrtour – Tour Editor'
     assert page.evaluate(TOURS) == [['Holstenstrasse', '3', '#8b5cf6'], ['Rathaus', '3', '#0ea5e9']]
     assert page.evaluate(STARS) == ['Holstenstrasse-2 start', 'Rathaus-2 start']
@@ -42,7 +42,7 @@ def test_two_projects_on_one_map(editor, tmp_path):
     editor.answer = lambda message: 'already on the map' not in message
     add(page, a)
     assert any('3 of its points are already on the map' in d for d in editor.dialogs)
-    assert page.inner_text('#st') == 'Nodes 6 · Links 4 · Tours 2'
+    assert page.inner_text('#st').startswith('Nodes 6 · Links 4 · Tours 2')
 
     # one tour as a website: the export asks which
     page.click('#bproject')
@@ -100,7 +100,7 @@ def test_two_projects_on_one_map(editor, tmp_path):
     page.wait_for_selector('#restore-banner.show')
     page.click('#restore-yes')
     page.wait_for_timeout(1500)
-    assert page.inner_text('#st') == 'Nodes 6 · Links 4 · Tours 2'
+    assert page.inner_text('#st').startswith('Nodes 6 · Links 4 · Tours 2')
     assert [t[0] for t in page.evaluate(TOURS)] == ['Holstenstrasse', 'Town hall']
 
 
@@ -108,5 +108,5 @@ def test_opening_instead_replaces_the_map(editor, tmp_path):
     page = editor.page
     add(page, vrtour(tmp_path / 'A.vrtour', 'A', 54.3233, 10.1228))
     add(page, vrtour(tmp_path / 'B.vrtour', 'B', 54.3260, 10.1300), choice='.btn:nth-child(2)')
-    assert page.inner_text('#st') == 'Nodes 3 · Links 2'
+    assert page.inner_text('#st').startswith('Nodes 3 · Links 2')
     assert page.title().startswith('B.vrtour')

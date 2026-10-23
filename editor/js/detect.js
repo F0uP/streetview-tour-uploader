@@ -71,6 +71,32 @@ export function overlap(a, b) {
   return (x * y) / Math.min(a.w * a.h, b.w * b.h);
 }
 
+// The same, for boxes in a panorama W wide: one that runs off the right edge goes on at the left.
+function overlapRound(a, b, W) {
+  return Math.max(overlap(a, b), overlap({ ...a, x: a.x + W }, b), overlap(a, { ...b, x: b.x + W }));
+}
+
+// A box in "round" coordinates (x may lie past either edge) as it lies in the
+// image: one box, or two where it crosses the seam at the left and right edge
+// (the second marked `seam`, so the thing in it is counted once).
+export function wrapBox(b, W) {
+  const x = ((b.x % W) + W) % W;
+  if (x + b.w <= W) return [{ ...b, x }];
+  return [{ ...b, x, w: W - x }, { ...b, x: 0, w: x + b.w - W, seam: true }];
+}
+
+// A tile at x..x+T; past the right edge it continues with the left one.
+function drawTile(ctx, bmp, x, y, T, cs) {
+  const W = bmp.width;
+  if (x + T <= W) {
+    ctx.drawImage(bmp, x, y, T, T, 0, 0, cs, cs);
+    return;
+  }
+  const part = W - x, k = cs / T;
+  ctx.drawImage(bmp, x, y, part, T, 0, 0, part * k, cs);
+  ctx.drawImage(bmp, 0, y, T - part, T, part * k, 0, cs - part * k, cs);
+}
+
 // passes: [tile size, top, bottom of the band to scan (share of the height)]. The
 // smaller a face or car, the farther away and the closer to the horizon it is - so
 // small tiles only need a narrow band. overlap: of neighbouring tiles.
@@ -82,7 +108,8 @@ async function scan(bmp, detector, { passes, overlap: share = 0.35, input = 320 
     if (T < 96) return;
     const y0 = Math.round(H * top), y1 = Math.max(y0 + T, Math.round(H * bottom));
     for (let y = y0; y <= y1 - T + step - 1; y += step) {
-      for (let x = 0; x < W; x += step) tiles.push({ x: Math.min(x, W - T), y: Math.min(y, H - T), T });
+      // Round the whole panorama: the last tiles reach over the seam, so a face there is seen whole.
+      for (let x = 0; x < W; x += step) tiles.push({ x, y: Math.min(y, H - T), T });
     }
   });
   const tile = document.createElement('canvas');
@@ -93,7 +120,7 @@ async function scan(bmp, detector, { passes, overlap: share = 0.35, input = 320 
     const { x, y, T } = tiles[i];
     const cs = Math.min(T, input);
     if (tile.width !== cs) { tile.width = cs; tile.height = cs; }
-    ctx.drawImage(bmp, x, y, T, T, 0, 0, cs, cs);
+    drawTile(ctx, bmp, x, y, T, cs);
     const k = T / cs;
     detector.detect(tile).detections.forEach(d => {
       const b = d.boundingBox;
@@ -107,13 +134,14 @@ async function scan(bmp, detector, { passes, overlap: share = 0.35, input = 320 
   const minSide = Math.max(16, W / 400);
   const kept = [];
   found.filter(f => f.w >= minSide && f.h >= minSide).sort((a, b) => b.score - a.score)
-    .forEach(f => { if (!kept.some(k => overlap(k, f) > 0.3)) kept.push(f); });
+    .forEach(f => { if (!kept.some(k => overlapRound(k, f, W) > 0.3)) kept.push(f); });
   return kept;
 }
 
-function clampBox(r, W, H) {
-  const x = Math.max(0, r.x), y = Math.max(0, r.y);
-  return { x, y, w: Math.min(W - x, r.w - (x - r.x)), h: Math.min(H - y, r.h - (y - r.y)) };
+// Into the image: split at the seam, cut at the top and bottom.
+function placeBox(r, W, H) {
+  const y = Math.max(0, r.y), h = Math.min(H - y, r.h - (y - r.y));
+  return wrapBox({ ...r, w: Math.min(r.w, W), y, h }, W);
 }
 
 // Faces, each grown a little so hair and chin are covered too.
@@ -121,9 +149,8 @@ export async function findFaces(bmp, onProgress) {
   const detector = await loadFaceDetector();
   const H = bmp.height;
   const passes = [[H / 16, 0.4, 0.62], [H / 8, 0.3, 0.72], [H / 4, 0.2, 0.8]];
-  return (await scan(bmp, detector, { passes }, onProgress)).map(f => ({
-    ...clampBox({ x: f.x - f.w * 0.35, y: f.y - f.h * 0.35, w: f.w * 1.7, h: f.h * 1.7 }, bmp.width, H), kind: 'face',
-  }));
+  return (await scan(bmp, detector, { passes }, onProgress)).flatMap(f =>
+    placeBox({ x: f.x - f.w * 0.35, y: f.y - f.h * 0.35, w: f.w * 1.7, h: f.h * 1.7, kind: 'face' }, bmp.width, H));
 }
 
 // Where a licence plate usually is on a vehicle seen from the front or back: the
@@ -138,7 +165,6 @@ export async function findPlates(bmp, onProgress) {
   const H = bmp.height;
   // Vehicles stand on the ground and are larger than faces: a lower band, bigger tiles.
   const passes = [[H / 5, 0.44, 0.7], [H / 2.6, 0.4, 0.88]];
-  return (await scan(bmp, detector, { passes }, onProgress)).map(v => ({
-    ...clampBox(plateZone(v), bmp.width, H), kind: 'plate',
-  }));
+  return (await scan(bmp, detector, { passes }, onProgress)).flatMap(v =>
+    placeBox({ ...plateZone(v), kind: 'plate' }, bmp.width, H));
 }

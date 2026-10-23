@@ -28,7 +28,7 @@ def test_import_places_links_and_turns_a_walk(editor, tmp_path):
     assert page.inner_text('#imp-go') == 'Import 6 photo(s)'
     page.click('#imp-go')
     page.wait_for_selector('#check-back.show')
-    assert page.inner_text('#st') == 'Nodes 6 · Links 4'
+    assert page.inner_text('#st').startswith('Nodes 6 · Links 4')
     assert page.evaluate(NAMES) == ['g1', 'g2', 'x', 'g3', 'g4', 'g5']  # by capture time
     toast = page.evaluate("[...document.querySelectorAll('.toast')].map(t => t.textContent).join(' ')")
     assert 'Imported 6 photo(s): 4 link(s), 5 heading(s)' in toast and '1 without a position' in toast
@@ -62,7 +62,7 @@ def test_import_places_links_and_turns_a_walk(editor, tmp_path):
     page.set_input_files('#imp-gpx', str(gpx))
     page.click('#imp-go')
     page.wait_for_selector('#check-back.show')
-    assert page.inner_text('#st') == 'Nodes 6 · Links 5'
+    assert page.inner_text('#st').startswith('Nodes 6 · Links 5')
     page.click('[data-close=check-back]')
 
     # the same photos again: skipped
