@@ -43,7 +43,7 @@ def find_place_id(query):
         print(f"  Address : {c.get('formatted_address', 'unknown')}")
         print(f"  Place ID: {c['place_id']}")
         print(f"  LatLng  : ({loc.get('lat')}, {loc.get('lng')})")
-        print(f"\nUse it like this:")
+        print("\nUse it like this:")
         print(f"   python upload_tour.py --folder ./photos --place-id {c['place_id']}")
 
 

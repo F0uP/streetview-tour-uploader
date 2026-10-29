@@ -44,7 +44,7 @@ NOT_BUNDLED = {"pystray", "pillow", "piexif"}
 FROM_SYSTEM = {"cryptography", "cffi", "pycparser"}
 DEPENDS = ("python3 (>= 3.11), python3-gi, gir1.2-gtk-3.0, gir1.2-webkit2-4.1 | gir1.2-webkit2-4.0, "
            "python3-cryptography (>= 38.0.3), xdg-utils")
-APP_FILES = ["run_editor.py", "google_api.py", "places.py", "bug_report.py", "app_window.py", "app_update.py", "app_tray.py"]
+APP_FILES = ["run_editor.py", "google_api.py", "places.py", "panoramax.py", "bug_report.py", "app_window.py", "app_update.py", "app_tray.py"]
 ICON_SIZES = [16, 24, 32, 48, 64, 128, 256, 512]
 
 
@@ -98,12 +98,8 @@ def vendor(target, workdir):
         *[str(w) for w in sorted(wheels.glob("*.whl"))])
 
     shutil.rmtree(target / "bin", ignore_errors=True)
-    # pywebview's Windows and Android binaries, and the discovery documents of
-    # the ~600 Google APIs the app doesn't use (about 100 MB).
+    # pywebview's Windows and Android binaries.
     shutil.rmtree(target / "webview" / "lib", ignore_errors=True)
-    for doc in (target / "googleapiclient" / "discovery_cache" / "documents").glob("*.json"):
-        if not doc.name.startswith("streetviewpublish."):
-            doc.unlink()
     compiled = [p for p in target.rglob("*") if p.suffix in (".so", ".pyd", ".dll", ".dylib", ".exe")]
     if compiled:
         sys.exit("Compiled files ended up in the package:\n  " + "\n  ".join(map(str, compiled)))

@@ -4,7 +4,8 @@ Street View 360 Photo Tour Uploader
 
 Uploads equirectangular 360 JPEGs (RICOH THETA, Insta360, GoPro MAX, etc.) to the
 Street View Publish API, links them to a place, and auto-builds navigation
-connections between photos.
+connections between photos. It shares the sign-in and the API code with the
+editor (google_api.py).
 
 Usage:
   # EXIF GPS + auto-connect in file order (simple linear route)
@@ -18,113 +19,55 @@ Usage:
 
   # Dry run (no upload)
   python upload_tour.py --folder ./photos --manifest ./photos/tour.csv --dry-run
+
+  # Links only (Google was still processing the photos last time)
+  python upload_tour.py --folder ./photos --manifest ./photos/tour.csv --connect-only
 """
 
-import os
-import sys
-import json
-import csv
-import time
-import math
 import argparse
-import threading
-import webbrowser
-import requests
+import csv
+import json
+import sys
+import time
 from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # google_api.py
 
 try:
-    from google.oauth2.credentials import Credentials
-    from google_auth_oauthlib.flow import InstalledAppFlow
-    from google.auth.transport.requests import Request
-    from googleapiclient.discovery import build as build_service
     import piexif
+    from google_api import GoogleError, SignIn, _photo_status, _update_photos, _upload_photo
 except ImportError:
     print("Missing dependencies. Install them first:")
     print("   pip install -r requirements.txt")
     sys.exit(1)
 
-# ──────────────────────────────────────────────
-# Config
-# ──────────────────────────────────────────────
-SCOPES = ['https://www.googleapis.com/auth/streetviewpublish']
-BASE_URL = 'https://streetviewpublish.googleapis.com/v1'
-TOKEN_FILE = Path(__file__).parent / 'token.json'
-CREDENTIALS_FILE = Path(__file__).parent / 'client_secrets.json'
+HERE = Path(__file__).resolve().parent
+SIGN_IN = SignIn(HERE / 'token.json', HERE / 'client_secrets.json')  # the same files as the editor from source
+PHOTO_SUFFIXES = {'.jpg', '.jpeg'}
+
 
 # ──────────────────────────────────────────────
 # OAuth 2.0
 # ──────────────────────────────────────────────
 def get_credentials():
-    """OAuth 2.0 auth (custom loopback flow that avoids Windows IPv4/IPv6 issues)."""
-    creds = None
-    if TOKEN_FILE.exists():
-        creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
+    """The saved sign-in; the first time (or once it expired) the browser asks for it."""
+    try:
+        return SIGN_IN.credentials()
+    except GoogleError as e:
+        print(f"Google sign-in: {e.message}")
+        sys.exit(1)
+    except RuntimeError:
+        if not SIGN_IN.credentials_file.exists():
+            print("client_secrets.json not found")
+            print(f"   Save it as {SIGN_IN.credentials_file} (or set it up once in the editor)")
+            sys.exit(1)
+        print('\nOpening your browser - sign in with your Google account (within 3 minutes)...')
+        try:
+            return SIGN_IN.sign_in()
+        except RuntimeError as e:
+            print(f'\n{e}')
+            sys.exit(1)
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            if not CREDENTIALS_FILE.exists():
-                print("client_secrets.json not found")
-                print(f"   Save it as {CREDENTIALS_FILE}")
-                sys.exit(1)
-
-            PORT = 8085
-            flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_FILE), SCOPES)
-            flow.redirect_uri = f'http://127.0.0.1:{PORT}/'
-            auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
-
-            received = {}
-
-            class _Handler(BaseHTTPRequestHandler):
-                def do_GET(self):
-                    params = parse_qs(urlparse(self.path).query)
-                    received['code'] = params.get('code', [None])[0]
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'text/html; charset=utf-8')
-                    self.end_headers()
-                    self.wfile.write('Authentication complete. You can close this tab.'.encode())
-                def log_message(self, *args):
-                    pass
-
-            # Dual-stack IPv4/IPv6 (works around Windows localhost -> ::1 issue)
-            import socket as _socket
-            class _DualStackServer(HTTPServer):
-                address_family = _socket.AF_INET6
-                def server_bind(self):
-                    self.socket.setsockopt(_socket.IPPROTO_IPV6, _socket.IPV6_V6ONLY, 0)
-                    super().server_bind()
-
-            try:
-                server = _DualStackServer(('::', PORT), _Handler)
-            except OSError:
-                # Fall back to IPv4 where IPv6 is disabled
-                server = HTTPServer(('0.0.0.0', PORT), _Handler)
-                flow.redirect_uri = f'http://127.0.0.1:{PORT}/'
-                auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
-            t = threading.Thread(target=server.handle_request)
-            t.daemon = True
-            t.start()
-
-            print(f'\nOpening your browser...')
-            webbrowser.open(auth_url)
-            print('Sign in with your Google account (within 120 seconds)...')
-            t.join(timeout=120)
-            server.server_close()
-
-            if not received.get('code'):
-                print('\nAuth timed out. Please run again.')
-                sys.exit(1)
-
-            flow.fetch_token(code=received['code'])
-            creds = flow.credentials
-
-        with open(TOKEN_FILE, 'w') as f:
-            f.write(creds.to_json())
-
-    return creds
 
 # ──────────────────────────────────────────────
 # EXIF GPS
@@ -146,206 +89,116 @@ def get_exif_gps(filepath):
                 val = -val
             return val
 
-        lat_key = piexif.GPSIFD.GPSLatitude
-        lat_ref_key = piexif.GPSIFD.GPSLatitudeRef
-        lng_key = piexif.GPSIFD.GPSLongitude
-        lng_ref_key = piexif.GPSIFD.GPSLongitudeRef
-
-        if lat_key not in gps or lng_key not in gps:
+        if piexif.GPSIFD.GPSLatitude not in gps or piexif.GPSIFD.GPSLongitude not in gps:
             return None, None, None, None
-
-        lat = dms_to_decimal(gps[lat_key], gps.get(lat_ref_key, b'N'))
-        lng = dms_to_decimal(gps[lng_key], gps.get(lng_ref_key, b'E'))
+        lat = dms_to_decimal(gps[piexif.GPSIFD.GPSLatitude], gps.get(piexif.GPSIFD.GPSLatitudeRef, b'N'))
+        lng = dms_to_decimal(gps[piexif.GPSIFD.GPSLongitude], gps.get(piexif.GPSIFD.GPSLongitudeRef, b'E'))
 
         alt = None
-        alt_key = piexif.GPSIFD.GPSAltitude
-        if alt_key in gps:
-            a = gps[alt_key]
+        if piexif.GPSIFD.GPSAltitude in gps:
+            a = gps[piexif.GPSIFD.GPSAltitude]
             alt = a[0] / a[1] if a[1] != 0 else 0.0
 
         heading = None
-        hdg_key = piexif.GPSIFD.GPSImgDirection
-        if hdg_key in gps:
-            h = gps[hdg_key]
+        if piexif.GPSIFD.GPSImgDirection in gps:
+            h = gps[piexif.GPSIFD.GPSImgDirection]
             heading = h[0] / h[1] if h[1] != 0 else None
 
         return lat, lng, alt, heading
-
-    except Exception as e:
+    except Exception:
         return None, None, None, None
 
+
 # ──────────────────────────────────────────────
-# API calls
+# Upload and links
 # ──────────────────────────────────────────────
-def start_upload(session):
-    r = session.post(f'{BASE_URL}/photo:startUpload', json={})
-    if not r.ok:
-        raise requests.HTTPError(
-            f'[START UPLOAD] {r.status_code}: {r.text[:400]}', response=r
-        )
-    return r.json()['uploadUrl']
-
-def push_bytes(session, upload_url, filepath):
-    with open(filepath, 'rb') as f:
-        data = f.read()
-    r = session.post(
-        upload_url,
-        data=data,
-        headers={
-            'Content-Type': 'image/jpeg',
-            'X-Goog-Upload-Protocol': 'raw',
-            'X-Goog-Upload-Content-Length': str(len(data)),
-        }
-    )
-    if not r.ok:
-        raise requests.HTTPError(
-            f'[UPLOAD BYTES] {r.status_code}: {r.text[:400]}', response=r
-        )
-    r.raise_for_status()
-
-def create_photo(session, upload_url, lat, lng, alt=None, heading=None, place_id=None):
-    pose = {'latLngPair': {'latitude': lat, 'longitude': lng}}
-    if alt is not None:
-        pose['altitude'] = alt
-    if heading is not None:
-        pose['heading'] = heading
-
-    body = {
-        'uploadReference': {'uploadUrl': upload_url},
-        'pose': pose,
-    }
-    if place_id:
-        body['places'] = [{'placeId': place_id}]
-
-    r = session.post(f'{BASE_URL}/photo', json=body)
-    if not r.ok:
-        raise requests.HTTPError(
-            f'[CREATE PHOTO] {r.status_code}: {r.text[:400]}', response=r
-        )
-    r.raise_for_status()
-    return r.json().get('photoId', {}).get('id')
-
-def _patch_connections(sv_service, pid, connections):
-    """Set connections on a single photo (using the official client)."""
+def upload_one(creds, pd, place_id):
+    """Upload one photo; its ID, or None (the reason is printed)."""
     try:
-        sv_service.photo().update(
-            id=pid,
-            updateMask='connections',
-            body={'connections': connections}
-        ).execute()
-        return True
-    except Exception as e:
-        print(f"    error: {e}")
-        return False
+        return _upload_photo(creds, pd['path'].read_bytes(), pd['filename'], pd['lat'], pd['lng'],
+                             heading=pd['heading'], place_id=place_id, altitude=pd.get('alt'))
+    except GoogleError as e:
+        print(f"  error ({e.step}, {e.status}): {e.message}")
+    except OSError as e:
+        print(f"  error: {e}")
+    return None
 
 
-def connect_photos(creds, photo_ids):
-    """Connect each photo to its neighbors in order (simple linear route)."""
-    sv_service = build_service('streetviewpublish', 'v1', credentials=creds)
-    print(f"\nBuilding connections... ({len(photo_ids)} photos)")
-    for i, pid in enumerate(photo_ids):
-        connections = []
-        if i > 0:
-            connections.append({'target': {'id': photo_ids[i - 1]}})
-        if i < len(photo_ids) - 1:
-            connections.append({'target': {'id': photo_ids[i + 1]}})
-        if not connections:
+def wait_until_known(creds, ids, minutes):
+    """Wait (up to `minutes`) until Google knows the photos - it accepts links only then.
+    Returns {id: what Google knows of it} for the photos it knows."""
+    deadline = time.time() + minutes * 60
+    while True:
+        try:
+            status = _photo_status(creds, ids)
+        except GoogleError as e:
+            print(f"  could not ask Google: {e.message}")
+            status = {}
+        known = {pid: s for pid, s in status.items() if s.get('status') != 'notfound'}
+        print(f"  Google knows {len(known)} of {len(ids)} photos", end='\r')
+        if len(known) == len(ids) or time.time() >= deadline:
+            print()
+            return known
+        time.sleep(15)
+
+
+def connect(creds, name_to_id, links, wait_minutes):
+    """Set the links: links = {filename: [linked filename, ...]}. Photos Google doesn't know
+    yet are left out; run again with --connect-only later for them."""
+    if not links:
+        return
+    print(f"\nWaiting for Google to take the photos in (up to {wait_minutes} min)...")
+    known = wait_until_known(creds, list(name_to_id.values()), wait_minutes)
+    # Google answers to the real form of each ID: use it for the links too.
+    real = {name: known[pid].get('resolvedId') or pid for name, pid in name_to_id.items() if pid in known}
+    items = []
+    for name, targets in links.items():
+        if name not in real:
+            print(f"  {name}: not processed by Google yet - skip")
             continue
-        ok = _patch_connections(sv_service, pid, connections)
-        status = 'OK' if ok else 'NG'
-        print(f"  [{status}] [{i+1}/{len(photo_ids)}] {pid[:24]}...")
-        time.sleep(0.3)
+        facts = known[name_to_id[name]]
+        ids = [real[t] for t in targets if t in real]
+        missing = [t for t in targets if t not in real]
+        if missing:
+            print(f"  {name}: {', '.join(missing)} not on Google yet - left out")
+        # Position and heading stay as Google has them; only the links change.
+        items.append({'id': real[name], 'lat': facts['lat'], 'lng': facts['lng'], 'heading': facts.get('heading'), 'connections': ids})
+    if not items:
+        print("Nothing to link yet. Try again later with --connect-only.")
+        return
+    print(f"\nBuilding connections... ({len(items)} photos)")
+    for res in _update_photos(creds, items):
+        name = next(n for n, i in real.items() if i == res['id'])
+        print(f"  [{'OK' if res['ok'] else 'NG'}] {name}" + ('' if res['ok'] else f"  {res.get('error')}"))
 
 
-def wait_until_ready(session, photo_ids, timeout=600, interval=15):
-    """Wait until all photos go PROCESSING -> READY/PUBLISHED."""
-    print(f"\nWaiting for Google to process (up to {timeout//60} min)...")
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        r = session.get(
-            f'{BASE_URL}/photos',
-            params={'photoIds': ','.join(photo_ids), 'view': 'BASIC'}
-        )
-        if not r.ok:
-            time.sleep(interval)
-            continue
-        photos = r.json().get('photos', [])
-        statuses = {p.get('photoId', {}).get('id'): p.get('mapsPublishStatus', '?') for p in photos}
-        pending = [pid for pid, st in statuses.items() if st != 'PUBLISHED']
-        if not pending:
-            print("  All photos are published")
-            return True
-        ready_count = len(photo_ids) - len(pending)
-        print(f"  Processing... {ready_count}/{len(photo_ids)} done", end='\r')
-        time.sleep(interval)
-    print(f"\n  Timed out. Some photos are still processing. Re-run with --connect-only later.")
-    return False
+def linear_links(names):
+    return {n: [x for x in (names[i - 1] if i else None, names[i + 1] if i + 1 < len(names) else None) if x]
+            for i, n in enumerate(names)}
 
 
-def connect_photos_from_manifest(creds, name_to_id, manifest_rows, wait=False):
-    """Connect photos based on the connects_to column in the CSV manifest (branching routes)."""
-    sv_service = build_service('streetviewpublish', 'v1', credentials=creds)
-
-    print(f"\nBuilding connections (from manifest)...")
-    for row in manifest_rows:
-        filename = row['filename']
-        connects_str = row.get('connects_to', '').strip()
-        if not connects_str:
-            continue
-
-        pid = name_to_id.get(filename)
-        if not pid:
-            print(f"  {filename}: no uploaded ID found -> skip")
-            continue
-
-        target_names = [n.strip() for n in connects_str.split(';') if n.strip()]
-        connections = []
-        for tname in target_names:
-            tid = name_to_id.get(tname)
-            if tid:
-                connections.append({'target': {'id': tid}})
-            else:
-                print(f"  target '{tname}' has no ID -> skip")
-
-        if not connections:
-            continue
-
-        ok = _patch_connections(sv_service, pid, connections)
-        status = 'OK' if ok else 'NG'
-        labels = ', '.join(target_names)
-        print(f"  [{status}] {filename} -> [{labels}]")
-        time.sleep(0.3)
-
-
-def sync_photo_ids(session, name_to_id):
-    """Correct stored photoIds to the actual published photoIds.
-    The ID returned by the create API can have extra trailing characters."""
-    r = session.get(f'{BASE_URL}/photos?pageSize=50&view=BASIC')
-    if not r.ok:
-        print(f"  Could not fetch published IDs ({r.status_code}); using stored IDs")
-        return name_to_id
-    published_ids = [p['photoId']['id'] for p in r.json().get('photos', [])]
-
-    corrected = {}
-    for name, stored_id in name_to_id.items():
-        # The published ID is a prefix of the stored ID
-        match = next((pid for pid in published_ids if stored_id.startswith(pid)), None)
-        if match:
-            corrected[name] = match
-        else:
-            corrected[name] = stored_id
-            print(f"  {name}: no matching published ID found")
-    return corrected
+def manifest_links(rows):
+    return {row['filename'].strip(): [t.strip() for t in (row.get('connects_to') or '').split(';') if t.strip()]
+            for row in rows}
 
 
 def load_manifest(manifest_path):
     """Load tour.csv."""
-    rows = []
     with open(manifest_path, encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            rows.append(row)
-    return rows
+        return list(csv.DictReader(f))
+
+
+def save_result(folder, name_to_id, place_id, manifest):
+    result_file = folder / 'upload_result.json'
+    result_file.write_text(json.dumps({
+        'uploaded': len(name_to_id),
+        'place_id': place_id,
+        'manifest': str(manifest) if manifest else None,
+        'name_to_id': name_to_id,
+        'photo_ids': list(name_to_id.values()),
+    }, indent=2, ensure_ascii=False), encoding='utf-8')
+    return result_file
+
 
 # ──────────────────────────────────────────────
 # Main
@@ -357,6 +210,7 @@ def main():
     parser.add_argument('--place-id',     default=None,  help='Google Place ID to link the tour to')
     parser.add_argument('--dry-run',      action='store_true', help='Validate only, do not upload')
     parser.add_argument('--connect-only', action='store_true', help='Re-run only the connection step from upload_result.json')
+    parser.add_argument('--wait',         type=float, default=10, help='Minutes to wait for Google before linking (default 10)')
     args = parser.parse_args()
 
     folder = Path(args.folder)
@@ -368,11 +222,17 @@ def main():
     if not args.place_id:
         meta_path = folder / 'tour-meta.json'
         if meta_path.exists():
-            with open(meta_path, encoding='utf-8') as f:
-                meta = json.load(f)
+            meta = json.loads(meta_path.read_text(encoding='utf-8'))
             if meta.get('place_id'):
                 args.place_id = meta['place_id']
                 print(f"place_id: {args.place_id}  ({meta.get('note', '')})")
+
+    manifest_rows = None
+    if args.manifest:
+        if not Path(args.manifest).exists():
+            print(f"Manifest not found: {args.manifest}")
+            sys.exit(1)
+        manifest_rows = load_manifest(args.manifest)
 
     # ── Re-run connections only ───────────────────
     if args.connect_only:
@@ -380,165 +240,88 @@ def main():
         if not result_file.exists():
             print(f"{result_file} not found. Run the upload first.")
             sys.exit(1)
-        with open(result_file, encoding='utf-8') as f:
-            result = json.load(f)
-        photo_ids = result.get('photo_ids', [])
-        name_to_id = result.get('name_to_id', {})
-        if not photo_ids:
+        name_to_id = json.loads(result_file.read_text(encoding='utf-8')).get('name_to_id', {})
+        if not name_to_id:
             print("No uploaded photoIds found.")
             sys.exit(1)
-        print(f"Building connections for {len(photo_ids)} photos...")
         creds = get_credentials()
-        session = requests.Session()
-        session.headers.update({'Authorization': f'Bearer {creds.token}'})
-        name_to_id = sync_photo_ids(session, name_to_id)
-        photo_ids = list(name_to_id.values())
-        manifest_rows = load_manifest(args.manifest) if args.manifest else None
-        if manifest_rows:
-            connect_photos_from_manifest(creds, name_to_id, manifest_rows)
-        else:
-            connect_photos(creds, photo_ids)
+        links = manifest_links(manifest_rows) if manifest_rows else linear_links(list(name_to_id))
+        connect(creds, name_to_id, links, args.wait)
         print("Connections done")
         return
 
     # ──────────────────────────────────────────
     # Manifest or auto-scan
     # ──────────────────────────────────────────
-    manifest_rows = None
-    if args.manifest:
-        manifest_path = Path(args.manifest)
-        if not manifest_path.exists():
-            print(f"Manifest not found: {manifest_path}")
-            sys.exit(1)
-        manifest_rows = load_manifest(manifest_path)
-        print(f"Manifest: {manifest_path}  ({len(manifest_rows)} rows)")
-
-        valid = []
+    valid = []
+    if manifest_rows:
+        print(f"Manifest: {args.manifest}  ({len(manifest_rows)} rows)")
         for row in manifest_rows:
             filename = row['filename'].strip()
             path = folder / filename
             if not path.exists():
                 print(f"  {filename}: file not found -> skip")
                 continue
-
             # lat/lng: CSV first, then EXIF
-            lat_raw = row.get('lat', '').strip()
-            lng_raw = row.get('lng', '').strip()
-            heading_raw = row.get('heading', '').strip()
-
+            lat_raw, lng_raw = (row.get('lat') or '').strip(), (row.get('lng') or '').strip()
+            heading_raw = (row.get('heading') or '').strip()
             if lat_raw and lng_raw:
-                lat, lng = float(lat_raw), float(lng_raw)
-                alt = None
+                lat, lng, alt = float(lat_raw), float(lng_raw), None
             else:
                 lat, lng, alt, _ = get_exif_gps(path)
                 if lat is None:
                     print(f"  {filename}: no lat/lng in CSV or EXIF -> skip")
                     continue
-
             heading = float(heading_raw) if heading_raw else None
-
-            valid.append({
-                'path': path,
-                'filename': filename,
-                'lat': lat, 'lng': lng, 'alt': alt,
-                'heading': heading,
-            })
-            print(f"  {filename:40s} ({lat:.6f}, {lng:.6f})"
-                  + (f"  heading={heading:.0f}" if heading is not None else ""))
-
+            valid.append({'path': path, 'filename': filename, 'lat': lat, 'lng': lng, 'alt': alt, 'heading': heading})
+            print(f"  {filename:40s} ({lat:.6f}, {lng:.6f})" + (f"  heading={heading:.0f}" if heading is not None else ""))
     else:
         # Auto-scan (EXIF GPS + file order)
-        photos = sorted([p for p in folder.iterdir() if p.suffix.upper() == '.JPG'])
+        photos = sorted(p for p in folder.iterdir() if p.suffix.lower() in PHOTO_SUFFIXES)
         if not photos:
             print(f"No JPG files found: {folder}")
             sys.exit(1)
-
-        print(f"Folder: {folder}")
-        print(f"Found {len(photos)} photos\n")
-
-        valid = []
+        print(f"Folder: {folder}\nFound {len(photos)} photos\n")
         for p in photos:
             lat, lng, alt, heading = get_exif_gps(p)
             if lat is not None:
-                valid.append({'path': p, 'filename': p.name,
-                              'lat': lat, 'lng': lng, 'alt': alt, 'heading': heading})
-                print(f"  {p.name:40s} ({lat:.6f}, {lng:.6f})"
-                      + (f"  heading={heading:.1f}" if heading else ""))
+                valid.append({'path': p, 'filename': p.name, 'lat': lat, 'lng': lng, 'alt': alt, 'heading': heading})
+                print(f"  {p.name:40s} ({lat:.6f}, {lng:.6f})" + (f"  heading={heading:.1f}" if heading is not None else ""))
             else:
                 print(f"  {p.name:40s} no GPS -> skip")
 
     print(f"\nTo upload: {len(valid)} photos")
-
     if not valid:
         print("No valid photos.")
         sys.exit(1)
-
     if args.dry_run:
         print("\n[dry-run] Stopping here. Remove --dry-run to actually upload.")
         return
 
     print("\nGoogle auth...")
     creds = get_credentials()
-    session = requests.Session()
-    session.headers.update({'Authorization': f'Bearer {creds.token}'})
 
-    print(f"\nUploading...")
+    print("\nUploading...")
     name_to_id = {}   # filename -> photoId (used for connections)
-    uploaded_ids = []
-
     for i, pd in enumerate(valid, 1):
         print(f"\n[{i}/{len(valid)}] {pd['filename']}")
-        try:
-            upload_url = start_upload(session)
-            push_bytes(session, upload_url, pd['path'])
-            photo_id = create_photo(
-                session,
-                upload_url,
-                pd['lat'], pd['lng'], pd['alt'], pd['heading'],
-                args.place_id,
-            )
-            if photo_id:
-                uploaded_ids.append(photo_id)
-                name_to_id[pd['filename']] = photo_id
-                print(f"  photoId: {photo_id}")
-            else:
-                print(f"  could not get photoId")
-            time.sleep(1.0)
+        photo_id = upload_one(get_credentials(), pd, args.place_id)  # a long upload can outlast the sign-in's hour
+        if photo_id:
+            name_to_id[pd['filename']] = photo_id
+            print(f"  photoId: {photo_id}")
+        save_result(folder, name_to_id, args.place_id, args.manifest)
 
-        except requests.HTTPError as e:
-            print(f"  HTTP error: {e}")
-        except Exception as e:
-            print(f"  error: {e}")
+    if len(name_to_id) > 1:
+        links = manifest_links(manifest_rows) if manifest_rows else linear_links([pd['filename'] for pd in valid if pd['filename'] in name_to_id])
+        connect(get_credentials(), name_to_id, links, args.wait)
 
-    # Build connections
-    if len(uploaded_ids) > 1:
-        if manifest_rows:
-            connect_photos_from_manifest(creds, name_to_id, manifest_rows)
-        else:
-            connect_photos(creds, uploaded_ids)
-
-    # Save result
-    result_file = folder / 'upload_result.json'
-    with open(result_file, 'w', encoding='utf-8') as f:
-        json.dump(
-            {
-                'uploaded': len(uploaded_ids),
-                'place_id': args.place_id,
-                'manifest': str(args.manifest) if args.manifest else None,
-                'name_to_id': name_to_id,
-                'photo_ids': uploaded_ids,
-            },
-            f,
-            indent=2,
-            ensure_ascii=False,
-        )
-
-    print(f"\nDone! Uploaded {len(uploaded_ids)} photos")
-    if len(uploaded_ids) > 1:
-        print(f"You can re-run connections in a few minutes with:")
-        print(f"   python upload_tour.py --folder {args.folder} --connect-only")
+    result_file = save_result(folder, name_to_id, args.place_id, args.manifest)
+    print(f"\nDone! Uploaded {len(name_to_id)} photos")
+    if len(name_to_id) > 1:
+        print("If some photos were not linked yet, run later:")
+        print(f"   python upload_tour.py --folder {args.folder}" + (f" --manifest {args.manifest}" if args.manifest else "") + " --connect-only")
     print(f"Result: {result_file}")
-    print(f"Check: https://www.google.com/maps/contrib/")
+    print("Check: https://www.google.com/maps/contrib/")
     if args.place_id:
         print(f"Linked to Place ID: {args.place_id}")
 

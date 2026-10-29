@@ -87,7 +87,7 @@ def test_tour_progress_and_the_bell(editor):
     linked(page)
     linked(page, name='t', north=0.001)  # a second tour
     rows = page.evaluate("[...document.querySelectorAll('#tour-list .tprog')].map(e => e.textContent)")
-    assert rows and all(r.endswith('/5') for r in rows), rows
+    assert rows and all(r.endswith('/6') for r in rows), rows
     # plain messages light a dot, an alert counts
     assert page.get_attribute('#notes-badge', 'class') == 'notes-badge dot'
     page.evaluate("alert('Something went wrong')")

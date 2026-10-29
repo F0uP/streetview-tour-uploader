@@ -77,8 +77,31 @@ def test_photos_from_google_and_their_changes_back(editor):
     run_upload(page)
     assert google.uploads == []
     (items,) = google.updates
-    assert [(i['id'], i['heading'], sorted(i['connections'])) for i in items] == [('g-a', 120.0, ['g-b'])]
+    # only turned: the links on Google stay as they are (they aren't sent)
+    assert [(i['id'], i['heading'], 'connections' in i) for i in items] == [('g-a', 120.0, False)]
     assert items[0]['placeId'] == 'ChIJplace'
+
+
+def test_links_to_photos_outside_the_project_stay(editor):
+    """Loaded for a part of the map only: a new link sends the links, and those to the photos left out stay."""
+    page = editor.page
+    photos = [dict(PHOTOS[0], connections=['g-b', 'g-far']), PHOTOS[1], PHOTOS[2], PHOTOS[3]]
+    google = Google(page)
+    google.listed = lambda: photos
+    page.route('**/api/photo-status', lambda r: r.fulfill(json={'ok': True, 'photos': {
+        p['id']: {'status': p['status'], 'resolvedId': p['id'], 'lat': p['lat'], 'lng': p['lng'], 'heading': p['heading'],
+                  'connections': p['connections']} for p in photos if p['id'] in json.loads(r.request.post_data)['ids']}}))
+    load_from_google(page, everything=False)  # the three around Kiel, not g-far
+    page.keyboard.press('Escape')
+    assert page.evaluate(NAMES) == ['Google photo 1', 'Google photo 2', 'Google photo 3']
+    page.click('#node-list .nrow >> nth=0', modifiers=['Control'])  # g-a
+    page.click('#node-list .nrow >> nth=2', modifiers=['Control'])  # g-c
+    page.click('#multibar-connect')
+    page.click('#bupload')
+    page.wait_for_timeout(500)
+    run_upload(page)
+    sent = {i['id']: sorted(i['connections']) for batch in google.updates for i in batch if 'connections' in i}
+    assert sent == {'g-a': ['g-b', 'g-c', 'g-far'], 'g-c': ['g-a', 'g-b']}, sent
 
 
 def test_only_the_photos_in_view_and_none_twice(editor):

@@ -19,7 +19,8 @@ def test_checklist_and_review(editor):
     google = FakeGoogle(page)
     three_linked(page)
     chips = page.evaluate(CHIPS)
-    assert chips == ['ok: 3 photo(s)', 'todo: 1 without north', 'todo: Faces & plates: 3 not checked', 'info: Places 0/3', 'todo: Not on Google yet'], chips
+    assert chips == ['ok: 3 photo(s)', 'ok: 2 link(s)', 'todo: 1 without north', 'todo: Faces & plates: 3 not checked', 'info: Places 0/3',
+                     'todo: Not on Google yet'], chips
 
     # a chip leads to what is left: the point without north
     page.click('#checklist-chips .st-chip:has-text("without north")')

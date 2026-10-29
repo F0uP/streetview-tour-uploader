@@ -25,16 +25,29 @@ export const VIEWER_LIBS = {
   'psv/virtual-tour-plugin/index.module.js': 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/virtual-tour-plugin@5.11.5/index.module.js',
 };
 
+// Where the page may load scripts from: its own scripts (with the nonce) and its libraries.
+function scriptSources(libBase) {
+  if (libBase == null) return 'https://cdn.jsdelivr.net';
+  try { return new URL(libBase).origin; } catch { return "'self'"; }
+}
+
 // lang and mapLabel: the editor's language, for the page and its one button.
+// A point's name can't run anything, even if it held markup: the libraries show names
+// as HTML (the arrows' and the minimap's tooltips), so the page gets them escaped
+// (name; label is the plain text), and a Content-Security-Policy lets only the page's
+// own scripts run.
 export function genViewer(startId, nodes, { editable = false, libBase = null, title = null, lang = 'en', mapLabel = 'Map' } = {}) {
   const sn = nodes.find(n => n.id === startId) || nodes[0];
   const closeScript = '<' + '/script>';
   const hasMap = nodes.filter(n => n.lat != null && n.lng != null).length > 1;
   const lib = path => (libBase == null ? VIEWER_LIBS[path] : libBase + path);
+  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+  const pageNodes = nodes.map(n => ({ ...n, name: escapeHtml(n.name), label: n.name }));
   return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}' ${scriptSources(libBase)}; object-src 'none'; base-uri 'none'">
 <title>${escapeHtml(title || `${sn.name} - Tour`)}</title>
 <link rel="stylesheet" href="${lib('psv/core/index.css')}">
 <link rel="stylesheet" href="${lib('psv/virtual-tour-plugin/index.css')}">
@@ -47,6 +60,7 @@ ${hasMap ? `<link rel="stylesheet" href="${lib('leaflet/leaflet.css')}">` : ''}
 .psv-panel-content h2{font-family:system-ui,sans-serif;margin-bottom:10px}.psv-panel-content p{font-family:system-ui,sans-serif;line-height:1.6;margin-bottom:10px}.psv-panel-content a{color:#c4b5fd}
 #mm{position:fixed;left:12px;bottom:52px;width:240px;height:170px;border-radius:10px;overflow:hidden;border:2px solid rgba(255,255,255,.7);box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:10;transition:height .2s,width .2s}
 #mm.small{width:44px;height:44px}#mm.small .leaflet-control-container,#mm.small .leaflet-pane{display:none}
+#mm .leaflet-control-attribution{font:9px/1.4 system-ui,sans-serif;padding:0 4px;background:rgba(255,255,255,.75)}
 #mm-t{position:absolute;right:4px;top:4px;z-index:1000;border:none;border-radius:6px;background:rgba(0,0,0,.65);color:#fff;font:600 11px system-ui,sans-serif;padding:3px 7px;cursor:pointer}
 #mm.small #mm-t{inset:0;width:100%;height:100%;border-radius:8px;font-size:18px}
 @media (prefers-color-scheme:dark){#mm .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.7)}#mm{background:#1b1d22}}
@@ -56,18 +70,18 @@ ${hasMap ? `<link rel="stylesheet" href="${lib('leaflet/leaflet.css')}">` : ''}
 <div id="viewer"></div>
 <div id="badge">${escapeHtml(sn.name)}</div>
 ${hasMap ? `<div id="mm"><button id="mm-t" title="${escapeHtml(mapLabel)}">✕</button></div>
-<script src="${lib('leaflet/leaflet.js')}">${closeScript}` : ''}
-<script type="importmap">${JSON.stringify({ imports: {
+<script nonce="${nonce}" src="${lib('leaflet/leaflet.js')}">${closeScript}` : ''}
+<script type="importmap" nonce="${nonce}">${JSON.stringify({ imports: {
   three: lib('three/three.module.min.js'),
   '@photo-sphere-viewer/core': lib('psv/core/index.module.js'),
   '@photo-sphere-viewer/virtual-tour-plugin': lib('psv/virtual-tour-plugin/index.module.js'),
   '@photo-sphere-viewer/markers-plugin': lib('psv/markers-plugin/index.module.js'),
 } })}${closeScript}
-<script type="module">
+<script type="module" nonce="${nonce}">
 import { Viewer } from '@photo-sphere-viewer/core';
 import { VirtualTourPlugin } from '@photo-sphere-viewer/virtual-tour-plugin';
 import { MarkersPlugin } from '@photo-sphere-viewer/markers-plugin';
-const NODES=${JSON.stringify(nodes).replace(/</g, '\\u003c')};
+const NODES=${JSON.stringify(pageNodes).replace(/</g, '\\u003c')};
 const EDIT=${editable ? 'true' : 'false'};
 const START=${JSON.stringify(startId)};
 const viewer=new Viewer({container:document.getElementById('viewer'),panoData:()=>({poseHeading:0}),panorama:NODES.find(n=>n.id===START)?.panorama??NODES[0].panorama,navbar:['zoom','move','fullscreen'],defaultZoomLvl:0,defaultYaw:${sn.heading != null ? +degToRad(sn.heading).toFixed(4) : 0},plugins:[MarkersPlugin,[VirtualTourPlugin,{nodes:NODES,startNodeId:START,arrowStyle:{scale:[0.5,2]}}]]});
@@ -75,8 +89,9 @@ const tour=viewer.getPlugin(VirtualTourPlugin);
 const mmEl=document.getElementById('mm');
 let mark=()=>{};
 if(mmEl&&window.L){
-  const mm=L.map(mmEl,{zoomControl:false,attributionControl:false});
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{subdomains:'abc',maxZoom:19}).addTo(mm);
+  const mm=L.map(mmEl,{zoomControl:false});
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'}).addTo(mm);
+  mm.attributionControl.setPrefix(false);
   const pts=NODES.filter(n=>n.lat!=null&&n.lng!=null);const byId=Object.fromEntries(pts.map(n=>[n.id,n]));
   pts.forEach(n=>n.links.forEach(l=>{const o=byId[l.nodeId];if(o&&n.id<o.id)L.polyline([[n.lat,n.lng],[o.lat,o.lng]],{color:'#8b5cf6',weight:3,opacity:.8}).addTo(mm);}));
   const dots=Object.fromEntries(pts.map(n=>[n.id,L.circleMarker([n.lat,n.lng],{radius:5,color:'#fff',weight:1.5,fillColor:'#8b5cf6',fillOpacity:1}).addTo(mm).bindTooltip(n.name).on('click',()=>tour.setCurrentNode(n.id))]));
@@ -85,7 +100,7 @@ if(mmEl&&window.L){
   mark(START);
   document.getElementById('mm-t').onclick=()=>{const s=mmEl.classList.toggle('small');document.getElementById('mm-t').textContent=s?'🗺':'✕';setTimeout(()=>mm.invalidateSize(),250);};
 }
-tour.addEventListener('node-changed',({node})=>{document.getElementById('badge').textContent=node.name;mark(node.id);if(EDIT)parent.postMessage({type:'svt-node',id:node.id},'*');});
+tour.addEventListener('node-changed',({node})=>{document.getElementById('badge').textContent=node.label;mark(node.id);if(EDIT)parent.postMessage({type:'svt-node',id:node.id},'*');});
 if(EDIT){
   window.psv={viewer,tour};
   viewer.addEventListener('ready',()=>parent.postMessage({type:'svt-node',id:tour.getCurrentNode()?.id||START},'*'),{once:true});

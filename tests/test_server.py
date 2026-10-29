@@ -11,6 +11,7 @@ import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -173,33 +174,23 @@ def test_places_lookups_and_cache(app):
     assert not app.PLACES_KEY_FILE.exists()
 
 
+class FakeSession:
+    """Street View Publish's photo.update as _update_photos sends it: PUT /photo/{id}?updateMask=…"""
+
+    def __init__(self, refuse=lambda body: False):
+        self.calls, self.refuse = [], refuse
+
+    def put(self, url, params, json):
+        self.calls.append((url.rsplit('/', 1)[-1], params['updateMask'], json.get('places'), json.get('connections')))
+        refused = self.refuse(json)
+        return SimpleNamespace(ok=not refused, status_code=400 if refused else 200,
+                               json=lambda: {'error': {'message': 'Invalid place id'}}, text='', reason='')
+
+
 def test_a_refused_place_does_not_hold_up_an_update(app, monkeypatch):
-    class HttpErr(Exception):
-        def __init__(self, status):
-            super().__init__('Invalid place id')
-            self.resp = type('R', (), {'status': status})()
-            self.reason = 'Invalid place id'
-
-    calls = []
-
-    class Service:
-        def photo(self):
-            return self
-
-        def update(self, id, updateMask, body):
-            calls.append((id, updateMask, body.get('places')))
-
-            def execute():
-                if 'places' in updateMask and body['places'] and body['places'][0]['placeId'].startswith('BAD'):
-                    raise HttpErr(400)
-            return SimpleExecute(execute)
-
-    class SimpleExecute:
-        def __init__(self, fn):
-            self.execute = fn
-
     google_api = importlib.import_module('google_api')
-    monkeypatch.setattr(google_api, '_google_libs', lambda: (None, None, None, None, lambda *a, **k: Service()))
+    fake = FakeSession(lambda body: bool(body.get('places')) and body['places'][0]['placeId'].startswith('BAD'))
+    monkeypatch.setattr(google_api, '_session', lambda *a, **k: fake)
     monkeypatch.setattr(google_api.time, 'sleep', lambda s: None)
     out = app._update_photos(None, [
         {'id': 'p1', 'lat': 1, 'lng': 2, 'heading': 90, 'connections': ['p2'], 'placeId': 'ChIJgood'},
@@ -208,11 +199,21 @@ def test_a_refused_place_does_not_hold_up_an_update(app, monkeypatch):
         {'id': 'p4', 'lat': 1, 'lng': 2, 'connections': []},
     ])
     assert out == [{'id': 'p1', 'ok': True}, {'id': 'p2', 'ok': True, 'placeRejected': True}, {'id': 'p3', 'ok': True}, {'id': 'p4', 'ok': True}]
-    assert calls == [('p1', 'pose.latLngPair,connections,pose.heading,places', [{'placeId': 'ChIJgood'}]),
-                     ('p2', 'pose.latLngPair,connections,places', [{'placeId': 'BADplace'}]),
-                     ('p2', 'pose.latLngPair,connections', None),
-                     ('p3', 'pose.latLngPair,connections,places', []),
-                     ('p4', 'pose.latLngPair,connections', None)]
+    assert [c[:3] for c in fake.calls] == [('p1', 'pose.latLngPair,connections,pose.heading,places', [{'placeId': 'ChIJgood'}]),
+                                           ('p2', 'pose.latLngPair,connections,places', [{'placeId': 'BADplace'}]),
+                                           ('p2', 'pose.latLngPair,connections', None),
+                                           ('p3', 'pose.latLngPair,connections,places', []),
+                                           ('p4', 'pose.latLngPair,connections', None)]
+
+
+def test_an_update_without_links_leaves_them_on_google(app, monkeypatch):
+    """Only a changed heading: the links on Google (also to photos outside the project) stay."""
+    google_api = importlib.import_module('google_api')
+    fake = FakeSession()
+    monkeypatch.setattr(google_api, '_session', lambda *a, **k: fake)
+    monkeypatch.setattr(google_api.time, 'sleep', lambda s: None)
+    assert app._update_photos(None, [{'id': 'p1', 'lat': 1, 'lng': 2, 'heading': 45}]) == [{'id': 'p1', 'ok': True}]
+    assert fake.calls == [('p1', 'pose.latLngPair,pose.heading', None, None)]
 
 
 def test_an_update_shows_the_new_editor_even_if_the_old_one_was_cached(app, pw, tmp_path):

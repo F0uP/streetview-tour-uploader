@@ -7,6 +7,14 @@ import { DE, DE_RX, DE_HTML } from './i18n-de.js';
 import { buildZip, readZip } from './zip.js';
 import { parseGpx, parseOffsetHours, positionAt } from './gpx.js';
 import { degToRad, escapeHtml, normalizeRad, radToDeg } from './util.js';
+import { bearingDeg, distanceMeters, formatDistance, fromLocal, headingDiff, normalizeHeading, offsetEast, toLocal } from './geo.js';
+import { buildExif, jpegInfo, readCamera, replaceExif, withMetadata } from './exif.js';
+import { encodeJpeg, hideArea } from './photo-edit.js';
+import { initPhotoTools, openNadir, openSunNorth } from './photo-tools.js';
+import { exportGpx, exportKml, exportPhotos, initExports } from './exports.js';
+import { initViewCone, updateViewCone } from './viewcone.js';
+import { initFilmstrip, renderFilmstrip, stepFilmstrip } from './filmstrip.js';
+import { initPanoramax, openPanoramax } from './panoramax-dialog.js';
 import { VIEWER_LIBS, VIEWER_LICENSES, genViewer as viewerPage } from './viewer.js';
 import { bestShift, headingFromShift, isClearMatch, photoFeatures, walkWeights } from './align.js';
 import { findFaces, findPlates, overlap } from './detect.js';
@@ -351,7 +359,15 @@ let saveDirHandle = null;
 let appHasWindow = false; // the editor runs in the app's own window, not in a browser tab
 const uid = () => `n${S.nxt++}`;
 const cuid = () => `c${S.nxt++}`;
-const gn = id => S.nodes.find(n => n.id === id);
+// Points by id and their place in the list, kept until the list changes.
+let nodeIndex = { list: null, length: -1, byId: new Map(), pos: new Map() };
+function indexNodes() {
+  if (nodeIndex.list !== S.nodes || nodeIndex.length !== S.nodes.length || nodeIndex.dirty) {
+    nodeIndex = { list: S.nodes, length: S.nodes.length, byId: new Map(S.nodes.map(n => [n.id, n])), pos: new Map(S.nodes.map((n, i) => [n.id, i])) };
+  }
+  return nodeIndex;
+}
+const gn = id => indexNodes().byId.get(id);
 const gcbs = (a, b) => S.conns.filter(c => (c.from === a && c.to === b) || (c.from === b && c.to === a));
 
 const map = L.map('map', { zoomControl: true, doubleClickZoom: false }).setView([54.3233, 10.1228], 13);
@@ -360,9 +376,8 @@ const map = L.map('map', { zoomControl: true, doubleClickZoom: false }).setView(
 // filter (.osm-dark). Satellite imagery comes from Esri World Imagery, which is
 // much better for placing photos and checking north against buildings.
 const baseLayers = {
-  street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  street: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    subdomains: 'abc',
     maxZoom: 20,
     maxNativeZoom: 19,
     className: 'osm-dark',
@@ -501,7 +516,7 @@ document.getElementById('qm-copy').onclick = () => {
     name: `${n.name} copy`,
     // The copy is a new photo spot: not on Google yet, and its info points are its own.
     gsvPhotoId: null, gsvStatus: null, gsvShareLink: null, gsvSig: null,
-    gsvConfirmed: false, gsvUploadedAt: null, gsvObsolete: [],
+    gsvConfirmed: false, gsvUploadedAt: null, gsvObsolete: [], gsvRemote: null, pmx: null,
     hotspots: (n.hotspots || []).map(h => ({ ...h, id: `h${S.nxt++}` })),
   };
   S.nodes.push(copy);
@@ -865,6 +880,7 @@ function projectData(nodes = S.nodes) {
       placeFor: n.placeFor ?? null,
       level: n.level, // missing: never set; null: none
       gsvViews: n.gsvViews ?? null,
+      pmx: n.pmx ?? null, // on Panoramax: { instance, at }
     })),
     conns: S.conns.filter(c => ids.has(c.from) && ids.has(c.to)).map(c => ({ id: c.id, from: c.from, to: c.to })),
     startId: starts[0] ?? null,
@@ -1093,7 +1109,7 @@ async function readProjectFile(file, handle = null) {
           tourId: tourIdOf(nd),
           placeId: nd.placeId, placeName: nd.placeName ?? null, placeAuto: !!nd.placeAuto,
           placeKind: nd.placeKind ?? null, placeDist: nd.placeDist ?? null, placeFor: nd.placeFor ?? null,
-          level: nd.level, gsvViews: nd.gsvViews ?? null,
+          level: nd.level, gsvViews: nd.gsvViews ?? null, pmx: nd.pmx ?? null,
         };
       }),
       conns: (data.conns || []).map(c => ({ id: c.id, from: c.from, to: c.to })),
@@ -1147,6 +1163,9 @@ async function exportCsv(scope = null) {
     alert(t('These nodes have no photo: {names}', { names: missingPhotos.map(n => n.name).join(', ') }));
     return;
   }
+  // The CSV names photos by file name (for one folder): the same name twice can't be told apart.
+  const twice = [...new Set(nodes.map(n => n.photoName).filter((name, i, all) => all.indexOf(name) !== i))];
+  if (twice.length && !confirm(t('Several points have a photo of the same file name ({names}) - in the CSV their links can\'t be told apart. Rename the files first for a correct CSV. Export anyway?', { names: twice.slice(0, 5).join(', ') }))) return;
   const idToFile = Object.fromEntries(nodes.map(n => [n.id, n.photoName]));
   const rows = nodes.map(n => {
     const connectsTo = S.conns
@@ -1336,6 +1355,10 @@ function staticCommands() {
     { icon: ICONS.redo, label: 'Check for updates', run: () => checkForUpdates({ force: true, quiet: false }) },
     { icon: ICONS.compass, label: 'Headings from walking direction…', run: openWalkHeadings },
     { icon: ICONS.compass, label: 'North from the photos…', run: () => openNorthMatch() },
+    { icon: ICONS.compass, label: 'North from the sun…', run: () => openSunNorth() },
+    { icon: ICONS.eye, label: 'Cover the tripod…', run: () => openNadir() },
+    { icon: ICONS.upload, label: 'Publish on Panoramax…', run: () => openPanoramax() },
+    { icon: ICONS.download, label: 'Export photos with position and north (.zip)', run: () => runExport('photos') },
     { icon: ICONS.grid, label: 'Check tour…', run: () => openTourCheck() },
     { icon: ICONS.upload, label: 'Compare with Google…', run: () => openGoogleCompare() },
     { icon: ICONS.eye, label: 'Views on Google…', run: () => openViews() },
@@ -1397,7 +1420,7 @@ cmdkInput.addEventListener('keydown', e => {
 document.getElementById('cheat-close').onclick = () => cheatBack.classList.remove('show');
 document.querySelectorAll('.modal-back, .cmdk-back').forEach(back => {
   back.addEventListener('click', e => {
-    if (e.target !== back) return;
+    if (e.target !== back || back.hasAttribute('data-keep-open')) return;
     back.classList.remove('show');
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   });
@@ -1722,10 +1745,13 @@ async function loadAddresses(g, nodes) {
   const todo = nodes.filter(n => !g.geo.has(n.id));
   if (!todo.length) return;
   try {
-    const j = await placesApi('/api/places/geocode', { points: todo.map(n => ({ lat: n.lat, lng: n.lng })) });
-    if (!j.ok) throw new Error(j.error);
-    placeLookups.address += j.fetched || 0;
-    todo.forEach((n, i) => g.geo.set(n.id, j.results[i]));
+    for (let at = 0; at < todo.length; at += 400) { // the app takes up to 500 points at a time
+      const part = todo.slice(at, at + 400);
+      const j = await placesApi('/api/places/geocode', { points: part.map(n => ({ lat: n.lat, lng: n.lng })) });
+      if (!j.ok) throw new Error(j.error);
+      placeLookups.address += j.fetched || 0;
+      part.forEach((n, i) => g.geo.set(n.id, j.results[i]));
+    }
   } catch (err) {
     g.errors.push(t('House numbers and streets: {msg}', { msg: err.message }));
   }
@@ -2084,16 +2110,27 @@ function formatEta(sec) {
   return t('about {n} min left', { n: Math.round(sec / 60) });
 }
 
+// Google takes photos of up to 75 MB; bigger ones are encoded again (smaller) for the upload.
+const GOOGLE_MAX = 75 * 1024 * 1024 - 256 * 1024;
+const UPLOAD_PARALLEL = 3;
+
+async function photoForGoogle(n) {
+  if (n.photoFile.size <= GOOGLE_MAX) return n.photoFile;
+  const smaller = await rewritePhoto(n, null, null);
+  uplLine(`${n.photoName}: ${t('made smaller for Google ({a} → {b})', { a: formatBytes(n.photoFile.size), b: formatBytes(smaller.size) })}`);
+  return smaller;
+}
+
 // Send one photo: browser -> this app (XHR, with progress), and while the app
 // passes it on to Google, poll how far that got.
-function uploadOne(n, placeId, onBytes) {
+function uploadOne(n, placeId, onBytes, file = n.photoFile) {
   return new Promise(resolve => {
     const job = `j${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
     const params = new URLSearchParams({ filename: n.photoName, lat: n.lat, lng: n.lng, job });
     if (n.heading != null) params.set('heading', n.heading);
     if (placeId) params.set('place_id', placeId);
     if (n.level) { params.set('level', n.level.number); params.set('level_name', n.level.name || ''); }
-    const total = n.photoFile.size;
+    const total = file.size;
     let local = 0, remote = 0, phase = 'local', finished = false;
     // A progress poll still in flight when the upload ends must not report anymore.
     const report = () => { if (!finished) onBytes(Math.min(total, local * 0.15 + remote * 0.85), phase); };
@@ -2116,7 +2153,7 @@ function uploadOne(n, placeId, onBytes) {
       resolve(j);
     };
     xhr.onerror = () => { finished = true; clearInterval(poll); resolve({ ok: false, error: t('The editor app is not reachable.'), kind: 'network' }); };
-    xhr.send(n.photoFile);
+    xhr.send(file);
   });
 }
 
@@ -2128,7 +2165,7 @@ function explainUploadError(j) {
   if (j.status === 401 || j.status === 403) return t('Google refused access ({s}): {msg} - sign in again, and check that the Street View Publish API is enabled.', { s: j.status, msg });
   if (j.status === 429) return t('Too many requests to Google - wait a few minutes and try again.');
   if (/too large|size/i.test(msg)) return t('The photo is too large for Google (max 75 MB).');
-  return j.status ? `${t('Google error')} ${j.status}: ${msg}` : msg;
+  return j.status ? `${t('Google error')} ${j.status}: ${msg}` : t(msg);
 }
 
 // Find photos that are already on Google at the same spot, so an interrupted or
@@ -2157,17 +2194,33 @@ async function adoptExistingGooglePhotos(nodes) {
   return adopted;
 }
 
-// Push position / heading / links of photos Google already knows.
+// Push position / heading / links of photos Google already knows. The links go along only
+// when they changed; then links on Google to photos this project doesn't have (loaded from
+// Google for a part of the map only, or linked with another tool) are kept.
+const gsvLinksOf = n => getLinkedNodes(n.id).filter(o => o.gsvConfirmed && o.gsvPhotoId).map(o => o.gsvPhotoId).sort();
+function gsvLinksChanged(n) {
+  let last = null;
+  try { last = JSON.parse(n.gsvSig)?.[3]; } catch {}
+  return !Array.isArray(last) || JSON.stringify(last) !== JSON.stringify(gsvLinksOf(n));
+}
+
 async function pushGoogleChanges(nodes = S.nodes) {
-  const items = nodes.filter(n => n.gsvPhotoId && n.gsvConfirmed && gsvChanged(n));
+  let items = nodes.filter(n => n.gsvPhotoId && n.gsvConfirmed && gsvChanged(n));
   if (!items.length) return { ok: 0, failed: 0, items };
+  if (items.some(n => gsvLinksChanged(n) && !n.gsvRemote)) await refreshGoogleStatus({ quiet: true });
+  // Without knowing Google's links (offline), a photo whose links changed waits for the next try.
+  items = items.filter(n => !gsvLinksChanged(n) || n.gsvRemote);
+  if (!items.length) return { ok: 0, failed: 0, items };
+  const known = new Set(S.nodes.map(n => n.gsvPhotoId).filter(Boolean));
+  const sent = new Map(items.map(n => [n, gsvLinksChanged(n)
+    ? [...gsvLinksOf(n), ...(n.gsvRemote.connections || []).filter(id => !known.has(id))] : null]));
   const r = await fetch('/api/update-photos', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       items: items.map(n => ({
         id: n.gsvPhotoId, lat: n.lat, lng: n.lng, heading: n.heading,
-        connections: getLinkedNodes(n.id).filter(o => o.gsvConfirmed && o.gsvPhotoId).map(o => o.gsvPhotoId),
+        ...(sent.get(n) ? { connections: sent.get(n) } : {}),
         ...(n.placeId !== undefined ? { placeId: n.placeId } : {}),
         ...(n.level !== undefined ? { level: n.level } : {}),
       })),
@@ -2183,10 +2236,14 @@ async function pushGoogleChanges(nodes = S.nodes) {
       Object.assign(n, NO_PLACE);
       uplLine(`${n.photoName}: ${t('Google did not accept its place - kept without one')}`);
     }
-    if (res.ok) { n.gsvSig = gsvSignature(n); ok++; } else failed++;
-    uplLine(`${t('update')} ${n.photoName}: ${res.ok ? 'OK' : `${t('FAILED')} (${res.error})`}`);
+    if (res.ok) {
+      n.gsvSig = gsvSignature(n);
+      if (sent.get(n) && n.gsvRemote) n.gsvRemote.connections = sent.get(n);
+      ok++;
+    } else failed++;
+    uplLine(`${t('update')} ${n.photoName || n.name}: ${res.ok ? 'OK' : `${t('FAILED')} (${res.error})`}`);
   });
-  scheduleAutosave();
+  scheduleAutosave({ edit: false });
   return { ok, failed, items };
 }
 
@@ -2318,39 +2375,48 @@ async function runUpload() {
   nodes.filter(n => !todo.includes(n) && !upList.querySelector(`.up-row[data-node="${n.id}"][data-state="done"]`))
     .forEach(n => setRow(n, 'skipped', t('Already on Google')));
 
-  const totalBytes = todo.reduce((sum, n) => sum + n.photoFile.size, 0);
-  let doneBytes = 0;
-  const started = performance.now();
+  const totalBytes = todo.reduce((sum, n) => sum + Math.min(n.photoFile.size, GOOGLE_MAX), 0);
+  const sentBytes = new Map(); // node -> bytes of it sent so far
   const samples = [];
-  let uploaded = 0, failed = 0, authFailed = false;
+  let uploaded = 0, failed = 0, authFailed = false, begun = 0;
+  const sentSoFar = () => [...sentBytes.values()].reduce((a, b) => a + b, 0);
 
-  for (let i = 0; i < todo.length; i++) {
-    const n = todo[i];
-    if (uploadCancel) { setRow(n, 'skipped', t('Cancelled')); continue; }
+  const sendOne = async n => {
+    if (uploadCancel) { setRow(n, 'skipped', t('Cancelled')); return; }
+    begun++;
     setRow(n, 'uploading', t('Uploading…'), 0);
-    setOverall({ title: t('Uploading photo {a} of {b}', { a: i + 1, b: todo.length }), pct: totalBytes ? (doneBytes / totalBytes) * 100 : 0 });
+    setOverall({ title: t('Uploading photo {a} of {b}', { a: begun, b: todo.length }), pct: totalBytes ? (sentSoFar() / totalBytes) * 100 : 0 });
+    let file;
+    try {
+      file = await photoForGoogle(n);
+    } catch (err) {
+      failed++;
+      setRow(n, 'failed', t('The photo could not be made smaller: {msg}', { msg: err.message || err }), 100);
+      return;
+    }
     const onBytes = (bytes, phase) => {
       const now = performance.now();
-      const sent = doneBytes + bytes;
+      sentBytes.set(n, bytes);
+      const sent = sentSoFar();
       samples.push([now, sent]);
       while (samples.length > 2 && now - samples[0][0] > 6000) samples.shift();
       const [t0, b0] = samples[0];
       const speed = now - t0 > 500 ? (sent - b0) / ((now - t0) / 1000) : 0;
-      const pct = totalBytes ? (sent / totalBytes) * 100 : 100;
-      setRow(n, 'uploading', phase === 'creating' ? t('Registering with Google…') : `${formatBytes(bytes)} / ${formatBytes(n.photoFile.size)}`, (bytes / n.photoFile.size) * 100);
+      const pct = totalBytes ? Math.min(100, (sent / totalBytes) * 100) : 100;
+      setRow(n, 'uploading', phase === 'creating' ? t('Registering with Google…') : `${formatBytes(bytes)} / ${formatBytes(file.size)}`, (bytes / file.size) * 100);
       setOverall({
-        title: t('Uploading photo {a} of {b}', { a: i + 1, b: todo.length }),
+        title: t('Uploading photo {a} of {b}', { a: begun, b: todo.length }),
         pct,
         sub: [`${formatBytes(sent)} / ${formatBytes(totalBytes)}`, speed > 0 ? `${(speed / 1e6).toFixed(1)} MB/s` : '', speed > 0 ? formatEta((totalBytes - sent) / speed) : ''].filter(Boolean).join(' · '),
       });
     };
     const ownPlace = n.placeId !== undefined;
     const pid = ownPlace ? n.placeId : placeId;
-    let j = await uploadOne(n, pid && !rejectedPlaces.has(pid) ? pid : null, onBytes);
+    let j = await uploadOne(n, pid && !rejectedPlaces.has(pid) ? pid : null, onBytes, file);
     if (!j.ok && j.kind === 'place') {
       // Google refused the Place ID: try this photo once without it.
       uplLine(`${n.photoName}: ${t('Place ID rejected')} (${j.error})`);
-      const retry = await uploadOne(n, null, onBytes);
+      const retry = await uploadOne(n, null, onBytes, file);
       if (retry.ok && ownPlace) {
         rejectedPlaces.add(pid);
         showNotice(t('Google did not accept the place "{name}" ({msg}). Those photos are uploaded with their position only.', { name: n.placeName || pid, msg: j.error }));
@@ -2366,7 +2432,7 @@ async function runUpload() {
       }
       j = retry;
     }
-    doneBytes += n.photoFile.size;
+    sentBytes.set(n, Math.min(n.photoFile.size, GOOGLE_MAX));
     if (j.ok) {
       Object.assign(n, { gsvPhotoId: j.photoId, gsvUploadedAt: Date.now(), gsvConfirmed: false, gsvStatus: 'pending', gsvSig: null, gsvShareLink: null });
       uploaded++;
@@ -2381,7 +2447,14 @@ async function runUpload() {
       uplLine(`${n.photoName}: ${t('FAILED')} (${j.error})`);
       if (j.kind === 'auth') { authFailed = true; uploadCancel = true; }
     }
-  }
+  };
+  // The first photo alone (a Place ID or sign-in Google refuses shows up before the others go),
+  // then a few at a time.
+  let next = 0;
+  if (todo.length) await sendOne(todo[next++]);
+  await Promise.all(Array.from({ length: Math.min(UPLOAD_PARALLEL, todo.length - next) }, async () => {
+    while (next < todo.length) await sendOne(todo[next++]);
+  }));
   // While waiting for Google, the button skips the wait instead (links follow in the background).
   // (If the upload itself was cancelled or sign-in failed, there is nothing to wait for.)
   uploadPhase = 'wait';
@@ -2469,7 +2542,7 @@ document.getElementById('up-cancel').onclick = () => {
   document.getElementById('up-cancel').disabled = true;
   showNotice(uploadPhase === 'wait'
     ? t('Not waiting for Google - links and positions are set in the background as soon as Google is ready.')
-    : t('Stopping after the current photo…'), 'info');
+    : t('Stopping after the photos being sent now…'), 'info');
 };
 document.getElementById('up-finish').onclick = () => {
   if (uploadRunning) return;
@@ -2497,11 +2570,6 @@ function startGoogleBackgroundSync() {
   }, 60000);
 }
 
-function normalizeHeading(v) {
-  if (v == null || Number.isNaN(v)) return null;
-  return ((v % 360) + 360) % 360;
-}
-
 function parseHeadingInput(v) {
   if (v == null || `${v}`.trim() === '') return null;
   const n = Number(v);
@@ -2523,29 +2591,6 @@ function northYaw(n) {
 function getNodeEditorYaw(n) {
   if (n?.heading != null) return northYaw(n);
   return n?.viewYaw ?? 0;
-}
-
-function distanceMeters(a, b) {
-  const R = 6371000;
-  const lat1 = a.lat * Math.PI / 180;
-  const lat2 = b.lat * Math.PI / 180;
-  const dLat = (b.lat - a.lat) * Math.PI / 180;
-  const dLng = (b.lng - a.lng) * Math.PI / 180;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-function formatDistance(m) {
-  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`;
-}
-
-function bearingDeg(from, to) {
-  const lat1 = from.lat * Math.PI / 180;
-  const lat2 = to.lat * Math.PI / 180;
-  const dLng = (to.lng - from.lng) * Math.PI / 180;
-  const y = Math.sin(dLng) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-  return normalizeHeading(radToDeg(Math.atan2(y, x)));
 }
 
 function lockViewerPitch(viewer) {
@@ -2785,7 +2830,7 @@ tourListEl.addEventListener('dblclick', e => {
 });
 
 function markerHtml(n) {
-  const i = S.nodes.indexOf(n);
+  const i = indexNodes().pos.get(n.id) ?? S.nodes.indexOf(n);
   const cls = ['nd'];
   const tc = tourColorOf(n);
   if (n.id === S.selId) cls.push('sel');
@@ -2804,10 +2849,12 @@ function markerHtml(n) {
 let suppressNextNodeClick = false;
 
 function createMarker(n, { animate = true } = {}) {
+  const html = markerHtml(n);
   const mk = L.marker([n.lat, n.lng], {
-    icon: L.divIcon({ html: markerHtml(n), className: '', iconAnchor: [17, 17] }),
+    icon: L.divIcon({ html, className: '', iconAnchor: [17, 17] }),
     draggable: true,
   }).addTo(map);
+  mk.svtHtml = html;
   const el = mk.getElement();
   if (el) {
     if (animate) {
@@ -2847,6 +2894,8 @@ function createMarker(n, { animate = true } = {}) {
 }
 
 function attachLongPress(el, id) {
+  if (el.dataset.longPress) return; // Leaflet keeps the element when the icon changes
+  el.dataset.longPress = '1';
   let timer = null;
   let moved = false;
   el.addEventListener('touchstart', () => {
@@ -2865,8 +2914,12 @@ function attachLongPress(el, id) {
 }
 
 function refreshMarker(n) {
-  n.marker?.setIcon(L.divIcon({ html: markerHtml(n), className: '', iconAnchor: [17, 17] }));
-  const el = n.marker?.getElement();
+  if (!n.marker) return;
+  const html = markerHtml(n);
+  if (n.marker.svtHtml === html) return; // nothing changed: the icon stays
+  n.marker.svtHtml = html;
+  n.marker.setIcon(L.divIcon({ html, className: '', iconAnchor: [17, 17] }));
+  const el = n.marker.getElement();
   if (el) attachLongPress(el, n.id);
 }
 
@@ -2945,6 +2998,7 @@ function jumpToNode(id, recordHistory = true) {
     map.panTo(node.marker.getLatLng(), { animate: true });
   }
   showQuickMenu();
+  renderFilmstrip();
 }
 
 function drawLastConn() {
@@ -2994,6 +3048,7 @@ function refreshConnLines() {
     if (c.xMark) map.removeLayer(c.xMark);
     drawConn(c, { animate: false });
   });
+  updateViewCone(); // a point may have moved
 }
 
 function getLinkedNodes(id) {
@@ -3008,14 +3063,13 @@ function updateSb() {
   const n = gn(S.selId);
   document.getElementById('no-sel').style.display = n ? 'none' : '';
   document.getElementById('n-pr').style.display = n ? '' : 'none';
-  if (!n) return;
+  if (!n) { updateViewCone(); return; }
   niN.value = n.name;
   niS.checked = S.starts.has(n.id);
   refreshLatLngUi(n);
   gpsBadge.innerHTML = n.hasGps ? '<span class="gok">GPS</span>' : '<span class="gno">No GPS</span>';
   phB.style.display = n.photoUrl ? 'none' : '';
-  phN.innerHTML = [escapeHtml(n.photoName || ''), n.blurred && t('blurred')].filter(Boolean).join(' · ') +
-    (n.gsvPhotoId ? `<div style="margin-top:4px">${gsvStatusHtml(n)}</div>` : '');
+  renderPhotoLine(n);
   renderHotspots(n);
   document.getElementById('bn-blur').style.display = n.photoFile ? '' : 'none';
   document.querySelector('.np-photo-bar').style.display = n.photoUrl ? '' : 'none';
@@ -3111,7 +3165,9 @@ function refreshHeadingUi(n) {
     : n.headingSource === 'exif' ? t('from the photo (EXIF)')
     : n.headingSource === 'auto' ? t('from the walking direction')
     : n.headingSource === 'match' ? t('matched to the neighbouring photos')
+    : n.headingSource === 'sun' ? t('from the sun')
     : n.headingSource === 'google' ? t('as on Google') : t('set by hand');
+  updateViewCone();
 }
 
 async function ensurePanoViewer(n) {
@@ -3119,6 +3175,7 @@ async function ensurePanoViewer(n) {
     if (panoFocus) setPanoFocus(false);
     panoWrap.style.display = 'none';
     panoHelp.textContent = 'Choose a photo to check north alignment here.';
+    updateViewCone();
     return;
   }
   panoWrap.style.display = '';
@@ -3139,8 +3196,11 @@ async function ensurePanoViewer(n) {
       const pos = lockViewerPitch(panoViewer);
       const yaw = normalizeHeading(radToDeg(pos.yaw));
       panoHelp.textContent = `View yaw ${yaw.toFixed(1)}°. Rotate horizontally only and face north.`;
+      updateViewCone();
     });
+    panoViewer.addEventListener('zoom-updated', () => updateViewCone());
   }
+  // Only a new photo sets the view; redrawing the side panel leaves it where the user turned it.
   if (panoNodeId !== n.id) {
     panoNodeId = n.id;
     const yaw = walkArrivalYaw ?? getNodeEditorYaw(n);
@@ -3149,10 +3209,9 @@ async function ensurePanoViewer(n) {
       transition: false,
       position: { yaw, pitch: 0 },
     });
-  } else {
-    panoViewer.rotate({ yaw: getNodeEditorYaw(n), pitch: 0 });
   }
   if (S.selId === n.id) refreshPanoMarkers(n);
+  updateViewCone();
   if (panoFocus) { renderFocusBar(n); updateFocusMap(n); }
 }
 
@@ -3289,8 +3348,13 @@ async function ensureCompareViewers(baseNode, targetNode) {
     cmpOverlayNodeId = overNode.id;
     await cmpOverlayViewer.setPanorama(overNode.photoUrl, { transition: false, position: { yaw: 0, pitch: 0 } });
   }
-  alignCompareByHeading(baseNode, targetNode);
+  const key = `${mainNode.id}|${overNode.id}|${baseNode.heading}|${targetNode.heading}`;
+  if (cmpAligned !== key) {
+    cmpAligned = key;
+    alignCompareByHeading(baseNode, targetNode);
+  }
 }
+let cmpAligned = '';
 
 function alignCompareByHeading(baseNode, targetNode) {
   if (!cmpBaseViewer || !cmpOverlayViewer) return;
@@ -3336,7 +3400,16 @@ function updateStats() {
   const search = document.getElementById('node-search');
   search.hidden = S.nodes.length < 8 && !search.value;
   renderNodeList();
+  renderFilmstrip();
+  showLabels();
 }
+
+// The names under the points: all of them only close up or with few points (else they
+// cover each other), the selected one always, any other on hover.
+function showLabels() {
+  document.getElementById('map').classList.toggle('labels', map.getZoom() >= 19 || S.nodes.length <= 12);
+}
+map.on('zoomend', showLabels);
 
 function fitAll() {
   const b = L.latLngBounds(S.nodes.map(n => [n.lat, n.lng]));
@@ -3363,7 +3436,7 @@ function snapshotState() {
       gsvConfirmed: !!n.gsvConfirmed, gsvUploadedAt: n.gsvUploadedAt ?? null, gsvObsolete: [...(n.gsvObsolete || [])],
       hotspots: (n.hotspots || []).map(h => ({ ...h })), tourId: n.tourId ?? null,
       placeId: n.placeId, placeName: n.placeName ?? null, placeAuto: !!n.placeAuto, placeKind: n.placeKind ?? null, placeDist: n.placeDist ?? null, placeFor: n.placeFor ?? null,
-      level: n.level, gsvViews: n.gsvViews ?? null,
+      level: n.level, gsvViews: n.gsvViews ?? null, pmx: n.pmx ?? null,
     })),
     conns: S.conns.map(c => ({ id: c.id, from: c.from, to: c.to })),
     selId: S.selId, starts: [...S.starts], startId: [...S.starts][0] ?? null, tourNames: { ...S.tourNames }, nxt: S.nxt,
@@ -3419,6 +3492,7 @@ function applySnapshot(snap, { refit = false, keepGoogle = false } = {}) {
   panoNodeId = null;
   cmpBaseNodeId = null;
   cmpOverlayNodeId = null;
+  cmpAligned = '';
 
   S.nodes.forEach(n => createMarker(n, { animate: false }));
   S.conns.forEach(c => drawConn(c, { animate: false }));
@@ -3465,6 +3539,7 @@ function closeAnyOverlay() {
   if (uplBack.classList.contains('show')) { uplBack.classList.remove('show'); closed = true; }
   document.querySelectorAll('.modal-back.show').forEach(el => {
     if (el.id === 'update-back' && document.getElementById('update-close').style.display === 'none') return;
+    if (el.id === 'blur-back' && !mayCloseBlur()) { closed = true; return; } // kept open: Esc is used up
     el.classList.remove('show');
     closed = true;
   });
@@ -3521,6 +3596,13 @@ document.addEventListener('keydown', e => {
   if (panoFocus && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
     e.preventDefault();
     focusKey(e.key);
+    return;
+  }
+
+  if (['j', 'k', 'n'].includes(e.key.toLowerCase()) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const key = e.key.toLowerCase();
+    const id = key === 'n' ? nextWithoutNorth() : stepFilmstrip(key === 'j' ? 1 : -1);
+    if (id && id !== S.selId) jumpToNode(id, key !== 'n');
     return;
   }
 
@@ -3649,6 +3731,7 @@ function reorderNode(draggedId, targetId) {
   pushUndo();
   const [moved] = S.nodes.splice(from, 1);
   S.nodes.splice(to, 0, moved);
+  nodeIndex.dirty = true; // same list, new order
   toursVersion++;
   refreshAllMarkers();
   renderNodeList();
@@ -3669,8 +3752,9 @@ function setSaveStatus(mode, text) {
 }
 
 let autosaveDue = false;
-function scheduleAutosave() {
-  markDirty();
+// edit: false for what isn't the user's change (news from Google): saved, but the project isn't "unsaved".
+function scheduleAutosave({ edit = true } = {}) {
+  if (edit) markDirty();
   queueChecklist(); // every change passes here: the checklist follows
   clearTimeout(autosaveTimer);
   autosaveDue = true;
@@ -3989,7 +4073,9 @@ async function loadSavedDirectoryHandle() {
 // ── Small modal helpers ───────────────────────────
 function openModal(id) { document.getElementById(id).classList.add('show'); }
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
-document.querySelectorAll('[data-close]').forEach(el => { el.onclick = () => closeModal(el.dataset.close); });
+document.querySelectorAll('[data-close]').forEach(el => {
+  el.onclick = () => { if (el.dataset.close !== 'blur-back' || mayCloseBlur()) closeModal(el.dataset.close); };
+});
 
 function storageGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
 function storageSet(key, value) { try { localStorage.setItem(key, value); } catch {} }
@@ -4159,7 +4245,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenus()
 
 const TOOL_ACTIONS = {
   autoconnect: openAutoConnect,
-  gpx: openGpx,
+  gpxplace: openGpx,
   shift: () => openShift(),
   blur: () => openBlurTool(S.selId),
   privacy: () => openPrivacy(),
@@ -4185,6 +4271,10 @@ const TOOL_ACTIONS = {
   views: () => openViews(),
   places: () => openPlacesSetup(),
   lang: () => setLang(currentLang === 'de' ? 'en' : 'de'),
+  nadir: () => openNadir(),
+  sunnorth: () => openSunNorth(),
+  panoramax: () => openPanoramax(),
+  photos: () => runExport('photos'),
 };
 
 // ── Capture time (EXIF) ───────────────────────────
@@ -4277,9 +4367,6 @@ document.getElementById('autoc-go').onclick = async () => {
 // whole session is one undo step.
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
 const shift = { before: null, start: null, nodes: [], east: 0, north: 0, turn: 0, snapped: 0 };
-const M_PER_DEG = 111320;
-const toLocal = (p, o) => ({ x: (p.lng - o.lng) * M_PER_DEG * Math.cos((o.lat * Math.PI) / 180), y: (p.lat - o.lat) * M_PER_DEG });
-const fromLocal = (q, o) => ({ lat: o.lat + q.y / M_PER_DEG, lng: o.lng + q.x / (M_PER_DEG * Math.cos((o.lat * Math.PI) / 180)) });
 
 function openShift() {
   closeMenus();
@@ -4468,7 +4555,10 @@ document.getElementById('gpx-go').onclick = async () => {
 const blurStage = document.getElementById('blur-stage');
 const blurCanvas = document.getElementById('blur-canvas');
 const blurCtx = blurCanvas.getContext('2d');
-const blur = { node: null, bmp: null, rects: [], scale: 1, ox: 0, oy: 0, drag: null };
+const blur = { node: null, bmp: null, rects: [], scale: 1, ox: 0, oy: 0, drag: null, style: 'pixelate' };
+const blurStyle = document.getElementById('blur-style');
+blur.style = blurStyle.value = storageGet('blurStyle') === 'blur' ? 'blur' : 'pixelate';
+blurStyle.onchange = () => { blur.style = blurStyle.value; storageSet('blurStyle', blur.style); drawBlur(); };
 
 // presets: suggestions to start with; batch: opened from the check of all photos.
 async function openBlurTool(id, { presets = null, batch = false } = {}) {
@@ -4505,23 +4595,6 @@ function clampBlurView() {
   blur.oy = Math.min(Math.max(blur.oy, 0), Math.max(0, blur.bmp.height - vh));
 }
 
-// Pixelate a rectangle of `ctx` in place: shrink it to a few pixels and stretch it back.
-function pixelate(ctx, x, y, w, h, block) {
-  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
-  if (w < 2 || h < 2) return;
-  const tw = Math.max(1, Math.round(w / block)), th = Math.max(1, Math.round(h / block));
-  const tmp = new OffscreenCanvas(tw, th);
-  const tctx = tmp.getContext('2d');
-  tctx.imageSmoothingQuality = 'high';
-  tctx.drawImage(ctx.canvas, x, y, w, h, 0, 0, tw, th);
-  ctx.save();
-  ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(tmp, 0, 0, tw, th, x, y, w, h);
-  ctx.restore();
-}
-
-function blurBlockSize(r) { return Math.max(6, Math.min(r.w, r.h) / 7); }
-
 function drawBlur() {
   const { bmp, scale, ox, oy } = blur;
   blurCtx.fillStyle = '#000';
@@ -4530,7 +4603,7 @@ function drawBlur() {
   const all = blur.drag?.rect ? [...blur.rects, blur.drag.rect] : blur.rects;
   all.forEach(r => {
     const x = (r.x - ox) * scale, y = (r.y - oy) * scale, w = r.w * scale, h = r.h * scale;
-    pixelate(blurCtx, x, y, w, h, Math.max(3, blurBlockSize(r) * scale));
+    hideArea(blurCtx, { ...r, x: r.x - ox, y: r.y - oy }, blur.style, scale);
     blurCtx.strokeStyle = !r.auto ? '#c4b5fd' : r.kind === 'plate' ? '#38bdf8' : '#f6b93b';
     blurCtx.lineWidth = 2;
     blurCtx.setLineDash(r.auto ? [8, 5] : []);
@@ -4593,34 +4666,19 @@ blurCanvas.addEventListener('wheel', e => {
 }, { passive: false });
 
 document.getElementById('blur-undo').onclick = () => { blur.rects.pop(); drawBlur(); };
-document.getElementById('blur-clear').onclick = () => { blur.rects = []; drawBlur(); };
-
-// Copy the XMP (APP1 "http://ns.adobe.com/xap/1.0/") and ICC (APP2) segments of the
-// original JPEG into the re-encoded one, so it is still recognised as a 360° photo.
-// The EXIF APP1 segment is left out on purpose: it can carry an unblurred thumbnail.
-async function spliceJpegMetadata(originalBlob, newBlob) {
-  const orig = new Uint8Array(await originalBlob.slice(0, 1024 * 1024).arrayBuffer());
-  const out = new Uint8Array(await newBlob.arrayBuffer());
-  const keep = [];
-  const XMP = 'http://ns.adobe.com/xap/1.0/';
-  let p = 2;
-  while (p + 4 <= orig.length && orig[p] === 0xFF) {
-    const marker = orig[p + 1];
-    if (marker === 0xDA || marker === 0xD9) break;
-    const len = (orig[p + 2] << 8) | orig[p + 3];
-    const seg = orig.subarray(p, p + 2 + len);
-    const head = String.fromCharCode(...orig.subarray(p + 4, p + 4 + XMP.length));
-    // APP2 also carries MPF (embedded preview images, addressed by byte offsets
-    // that would point into the wrong place in the new file) - keep ICC only.
-    const isIcc = marker === 0xE2 && String.fromCharCode(...orig.subarray(p + 4, p + 15)) === 'ICC_PROFILE';
-    if ((marker === 0xE1 && head === XMP) || isIcc) keep.push(seg);
-    p += 2 + len;
-  }
-  // Skip the encoder's own JFIF APP0 so the kept segments follow SOI directly.
-  let q = 2;
-  if (out[2] === 0xFF && out[3] === 0xE0) q = 4 + ((out[4] << 8) | out[5]);
-  return new Blob([out.subarray(0, 2), ...keep, out.subarray(q)], { type: 'image/jpeg' });
+// Looked at, nothing to hide: the photo counts as checked.
+document.getElementById('blur-none').onclick = () => {
+  const n = blur.node;
+  if (blur.rects.length && !confirm(t('Close without blurring? The {n} marked area(s) are not applied.', { n: blur.rects.length }))) return;
+  blur.rects = [];
+  if (n && !n.privacyChecked) { n.privacyChecked = true; scheduleAutosave(); updateSb(); }
+  closeModal('blur-back');
+};
+// Closing with marked areas that are not applied asks first (they would be lost).
+function mayCloseBlur() {
+  return !blur.rects.length || confirm(t('Close without blurring? The {n} marked area(s) are not applied.', { n: blur.rects.length }));
 }
+document.getElementById('blur-clear').onclick = () => { blur.rects = []; drawBlur(); };
 
 document.getElementById('blur-apply').onclick = async () => {
   const n = blur.node;
@@ -4629,26 +4687,16 @@ document.getElementById('blur-apply').onclick = async () => {
   btn.disabled = true;
   btn.textContent = 'Applying…';
   try {
-    await ensureCaptureTime(n); // keep the capture time: the EXIF block is dropped below
-    const { bmp } = blur;
-    const canvas = new OffscreenCanvas(bmp.width, bmp.height);
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(bmp, 0, 0);
-    blur.rects.forEach(r => pixelate(ctx, r.x, r.y, r.w, r.h, blurBlockSize(r)));
-    const encoded = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 });
-    const jpeg = await spliceJpegMetadata(n.photoFile, encoded);
+    const jpeg = await rewritePhoto(n, blur.bmp, ctx => blur.rects.forEach(r => hideArea(ctx, r, blur.style)));
     pushUndo();
-    n.photoFile = new File([jpeg], n.photoName || 'photo.jpg', { type: 'image/jpeg' });
-    if (n.photoUrl) URL.revokeObjectURL(n.photoUrl);
-    n.photoUrl = URL.createObjectURL(n.photoFile);
-    retireGooglePhoto(n);
+    replacePhoto(n, jpeg);
     n.blurred = true;
     n.privacyChecked = true;
-    panoNodeId = null;
     updateSb();
     refreshMarker(n);
     scheduleAutosave();
     if (blur.batch && privacy.results.has(n.id)) privacy.results.get(n.id).done = true;
+    blur.rects = [];
     closeModal('blur-back');
     toast(`Blurred ${blur.rects.length} area(s) in ${n.name}`);
   } catch (err) {
@@ -4658,6 +4706,41 @@ document.getElementById('blur-apply').onclick = async () => {
     btn.textContent = 'Apply to photo';
   }
 };
+
+// A photo with changed pixels (draw changes them), as JPEG with the original's 360° metadata
+// and a new EXIF block: capture time, camera, position and north - never the original EXIF,
+// which can hold an unblurred thumbnail. source: an ImageBitmap already decoded, or null.
+async function rewritePhoto(n, source, draw, { maxBytes = GOOGLE_MAX } = {}) {
+  const bmp = source || await createImageBitmap(n.photoFile);
+  try {
+    const canvas = new OffscreenCanvas(bmp.width, bmp.height);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(bmp, 0, 0);
+    draw?.(ctx, bmp.width, bmp.height);
+    const encoded = await encodeJpeg(canvas, { quality: 0.92, maxBytes });
+    return withMetadata(encoded, n.photoFile, await poseExif(n));
+  } finally {
+    if (!source) bmp.close?.();
+  }
+}
+
+// The EXIF block for a photo as the tour has it: where it is, which way it faces, when it was taken.
+async function poseExif(n, file = n.photoFile) {
+  await ensureCaptureTime(n);
+  return buildExif({
+    taken: n.captureTime, offset: n.captureOffset, lat: n.lat, lng: n.lng, heading: n.heading,
+    ...(await readCamera(file)),
+  });
+}
+
+// The node gets the new photo; the one on Google is out of date (uploaded again, the old one deleted).
+function replacePhoto(n, blob) {
+  n.photoFile = new File([blob], n.photoName || 'photo.jpg', { type: 'image/jpeg' });
+  if (n.photoUrl) URL.revokeObjectURL(n.photoUrl);
+  n.photoUrl = URL.createObjectURL(n.photoFile);
+  retireGooglePhoto(n);
+  panoNodeId = null;
+}
 
 // ── Export as website (.zip) ──────────────────────
 function safeFileName(name) {
@@ -4998,7 +5081,8 @@ function bindMarkerTip(n) {
 }
 
 // ── Google status (published / processing / rejected) ─
-const GSV_FIELDS = ['gsvPhotoId', 'gsvStatus', 'gsvShareLink', 'gsvSig', 'gsvConfirmed', 'gsvUploadedAt', 'gsvObsolete'];
+// What happened on Google (and Panoramax): undo and redo leave it as it is.
+const GSV_FIELDS = ['gsvPhotoId', 'gsvStatus', 'gsvShareLink', 'gsvSig', 'gsvConfirmed', 'gsvUploadedAt', 'gsvObsolete', 'pmx'];
 
 // The photo of a node was replaced (new file, blurred): it has to be uploaded
 // again, and the version already on Google becomes obsolete - remember it so the
@@ -5006,7 +5090,7 @@ const GSV_FIELDS = ['gsvPhotoId', 'gsvStatus', 'gsvShareLink', 'gsvSig', 'gsvCon
 function retireGooglePhoto(n) {
   const obsolete = [...(n.gsvObsolete || [])];
   if (n.gsvPhotoId) obsolete.push(n.gsvPhotoId);
-  Object.assign(n, { gsvPhotoId: null, gsvStatus: null, gsvShareLink: null, gsvSig: null, gsvConfirmed: false, gsvUploadedAt: null, gsvObsolete: obsolete });
+  Object.assign(n, { gsvPhotoId: null, gsvStatus: null, gsvShareLink: null, gsvSig: null, gsvConfirmed: false, gsvUploadedAt: null, gsvObsolete: obsolete, gsvRemote: null, pmx: null });
 }
 
 const GSV_LABELS = {
@@ -5034,6 +5118,20 @@ function gsvLabel(n) {
   return gsvChanged(n) ? `${base} · ${t('changes not on Google yet')}` : base;
 }
 
+// After news from Google: the markers, the lists and the photo's status line - not the whole
+// side panel, which would undo what the user is typing or how the panorama is turned.
+function refreshGoogleUi() {
+  refreshAllMarkers();
+  updateStats();
+  const n = gn(S.selId);
+  if (n) renderPhotoLine(n);
+}
+
+function renderPhotoLine(n) {
+  phN.innerHTML = [escapeHtml(n.photoName || ''), n.blurred && t('blurred')].filter(Boolean).join(' · ') +
+    (n.gsvPhotoId ? `<div style="margin-top:4px">${gsvStatusHtml(n)}</div>` : '');
+}
+
 function gsvStatusHtml(n) {
   if (!n.gsvPhotoId) return '';
   const link = n.gsvShareLink ? ` <a href="${escapeHtml(n.gsvShareLink)}" target="_blank" rel="noopener">${t('open')}</a>` : '';
@@ -5057,9 +5155,12 @@ async function refreshGoogleStatus({ quiet = false } = {}) {
     if (r.status === 401) { if (!quiet) toast(t('Sign in with Google first (Upload to Google)')); return null; }
     if (!j.ok) throw new Error(j.error || 'failed');
     const counts = {};
+    let changed = false;
+    const facts = n => `${n.gsvPhotoId}|${n.gsvStatus}|${n.gsvConfirmed}|${n.gsvShareLink}|${n.gsvViews}`;
     nodes.forEach(n => {
       const s = j.photos[n.gsvPhotoId];
       if (!s) return;
+      const before = facts(n);
       if (s.status === 'notfound') {
         const young = Date.now() - (n.gsvUploadedAt || 0) < GSV_PROCESSING_GRACE;
         n.gsvStatus = !n.gsvConfirmed && young ? 'pending' : 'missing';
@@ -5072,9 +5173,11 @@ async function refreshGoogleStatus({ quiet = false } = {}) {
         // Keep the form of the ID Google actually answers to.
         if (s.resolvedId && s.resolvedId !== n.gsvPhotoId) n.gsvPhotoId = s.resolvedId;
       }
+      if (facts(n) !== before) changed = true;
       counts[n.gsvStatus] = (counts[n.gsvStatus] || 0) + 1;
     });
-    tourChanged();
+    refreshGoogleUi();
+    if (changed) scheduleAutosave({ edit: false });
     if (S.nodes.some(n => n.gsvPhotoId && (!n.gsvConfirmed || gsvChanged(n)) && n.gsvStatus !== 'missing')) startGoogleBackgroundSync();
     const summary = Object.entries(counts).map(([k, v]) => `${v} ${t(k)}`).join(' · ');
     if (!quiet) toast(t('Google status: {summary}', { summary }));
@@ -5104,10 +5207,6 @@ function findNearbyGooglePhotos(nodes, photos, used) {
     if (near.length) out.set(n, near);
   });
   return out;
-}
-
-function headingDiff(a, b) {
-  return Math.abs(((a - b) % 360 + 540) % 360 - 180);
 }
 
 let gcmpPlan = null;
@@ -5146,13 +5245,17 @@ async function openGoogleCompare() {
 
   nodes.forEach(n => {
     const issues = [];
+    const notes = [];
     let near = [...(nearby.get(n) || [])];
     if (n.gsvConfirmed && n.gsvRemote) {
       const r = n.gsvRemote;
       const expected = new Set(getLinkedNodes(n.id).filter(o => o.gsvConfirmed && o.gsvPhotoId).map(o => o.gsvPhotoId));
       const remote = new Set(r.connections || []);
+      const known = new Set(S.nodes.map(x => x.gsvPhotoId).filter(Boolean));
       const missing = [...expected].filter(id => !remote.has(id)).length;
-      const extra = [...remote].filter(id => !expected.has(id)).length;
+      const extra = [...remote].filter(id => !expected.has(id) && known.has(id)).length;
+      const outside = [...remote].filter(id => !known.has(id)).length;
+      if (outside) notes.push(t('{n} link(s) to photos outside this project - they stay', { n: outside }));
       const moved = r.lat != null && distanceMeters(n, { lat: r.lat, lng: r.lng }) > 1;
       const turned = n.heading != null && (r.heading == null || headingDiff(n.heading, r.heading) > 2);
       if (missing) issues.push(t('{n} link(s) missing on Google', { n: missing }));
@@ -5194,7 +5297,7 @@ async function openGoogleCompare() {
       near.forEach(p => used.add(p.id));
       issues.push(t('{n} more photo(s) on Google at this spot (duplicates)', { n: near.length }));
     }
-    rows.push({ n, issues, ok: !issues.length });
+    rows.push({ n, issues, notes, ok: !issues.length });
   });
   gcmpPlan = plan;
 
@@ -5203,10 +5306,11 @@ async function openGoogleCompare() {
   summary.textContent = t('{ok} of {all} photo(s) match Google exactly.', { ok: okCount, all: rows.length }) +
     (fixable ? ` ${t('{n} can be repaired.', { n: fixable })}` : '');
   list.innerHTML = '';
-  rows.sort((a, b) => a.ok - b.ok).forEach(({ n, issues, ok }) => {
+  rows.sort((a, b) => a.ok - b.ok).forEach(({ n, issues, notes, ok }) => {
     const row = document.createElement('div');
     row.className = `check-row ${ok ? 'ok' : 'warn'}`;
-    row.innerHTML = `<span class="lv"></span><span class="nm">${escapeHtml(n.name)}</span><span class="msg">${escapeHtml(ok ? t('matches Google (links, position, heading)') : issues.join(' · '))}</span><button class="btn">${t('Show')}</button>`;
+    const msg = [ok ? t('matches Google (links, position, heading)') : issues.join(' · '), ...notes].join(' · ');
+    row.innerHTML = `<span class="lv"></span><span class="nm">${escapeHtml(n.name)}</span><span class="msg">${escapeHtml(msg)}</span><button class="btn">${t('Show')}</button>`;
     row.querySelector('button').onclick = () => { closeModal('gcmp-back'); jumpToNode(n.id, false); };
     list.appendChild(row);
   });
@@ -5317,21 +5421,28 @@ const EXPORTERS = {
   project: scope => exportTourProject(scope),
   kml: scope => exportKml(scope),
   gpx: scope => exportGpx(scope),
+  photos: scope => exportPhotos(scope),
 };
+
+// What a tour action can be for: each tour, everything, the selected points.
+function tourScopes() {
+  const scopes = getTours().map(g => ({ key: `t${g.index}`, label: tourName(g), name: tourName(g), nodes: g.nodes }));
+  scopes.push({ key: 'all', label: t('Everything on the map'), name: null, nodes: S.nodes.slice() });
+  const selected = S.nodes.filter(n => S.multiSel.has(n.id));
+  if (selected.length) scopes.push({ key: 'sel', label: t('The selected points'), name: t('Selection'), nodes: selected });
+  return scopes;
+}
+const defaultScope = () => (S.multiSel.size >= 2 ? 'sel' : tourOf(S.selId)?.index != null ? `t${tourOf(S.selId).index}` : null);
 let expScopes = [];
 
 function runExport(format, tourKey = null) {
   if (!S.nodes.length) { alert('No nodes found.'); return; }
   if (!tourKey && !manyTours() && S.multiSel.size < 2) { EXPORTERS[format](null); return; }
   closeMenus();
-  expScopes = getTours().map(g => ({ key: `t${g.index}`, label: tourName(g), name: tourName(g), nodes: g.nodes }));
-  expScopes.push({ key: 'all', label: t('Everything on the map'), name: null, nodes: S.nodes.slice() });
-  const selected = S.nodes.filter(n => S.multiSel.has(n.id));
-  if (selected.length) expScopes.push({ key: 'sel', label: t('The selected points'), name: t('Selection'), nodes: selected });
+  expScopes = tourScopes();
   const select = document.getElementById('exp-tour');
   select.innerHTML = expScopes.map(sc => `<option value="${sc.key}">${escapeHtml(sc.label)} · ${escapeHtml(t('{n} point(s)', { n: sc.nodes.length }))}</option>`).join('');
-  const cur = tourOf(S.selId);
-  select.value = tourKey || (selected.length >= 2 ? 'sel' : cur?.index != null ? `t${cur.index}` : expScopes[0].key);
+  select.value = tourKey || defaultScope() || expScopes[0].key;
   document.querySelector(`input[name="exp-format"][value="${format}"]`).checked = true;
   openModal('exp-back');
   showExportScope();
@@ -5785,10 +5896,6 @@ document.addEventListener('dragover', e => {
 });
 document.addEventListener('drop', e => { if (strayFileDrag(e)) e.preventDefault(); });
 
-function offsetEast(p, meters) {
-  return { lat: p.lat, lng: p.lng + meters / (111320 * Math.cos(p.lat * Math.PI / 180)) };
-}
-
 document.getElementById('imp-go').onclick = async () => {
   if (!imp.files.length || imp.busy) return;
   const opts = {
@@ -6037,7 +6144,7 @@ async function featuresOf(n) {
 }
 
 // Headings set by hand or read from the camera are kept (unless asked) and start new matches.
-const fixedNorth = n => n.heading != null && (n.headingSource === 'manual' || n.headingSource === 'exif');
+const fixedNorth = n => n.heading != null && ['manual', 'exif', 'sun'].includes(n.headingSource);
 
 function openNorthMatch() {
   closeMenus();
@@ -6124,33 +6231,6 @@ document.getElementById('mn-apply').onclick = () => {
 };
 
 // ── Tour check ────────────────────────────────────
-const jpegInfoCache = new WeakMap();
-
-// Size and 360° metadata straight from the JPEG header, without decoding the image.
-async function jpegInfo(file) {
-  if (jpegInfoCache.has(file)) return jpegInfoCache.get(file);
-  const buf = new Uint8Array(await file.slice(0, Math.min(file.size, 2 * 1024 * 1024)).arrayBuffer());
-  const info = { width: null, height: null, gpano: false, jpeg: buf[0] === 0xFF && buf[1] === 0xD8 };
-  let p = 2;
-  while (p + 9 < buf.length && buf[p] === 0xFF) {
-    const m = buf[p + 1];
-    const len = (buf[p + 2] << 8) | buf[p + 3];
-    if (m >= 0xC0 && m <= 0xCF && ![0xC4, 0xC8, 0xCC].includes(m)) {
-      info.height = (buf[p + 5] << 8) | buf[p + 6];
-      info.width = (buf[p + 7] << 8) | buf[p + 8];
-      break;
-    }
-    if (m === 0xE1 && !info.gpano) {
-      const seg = new TextDecoder('latin1').decode(buf.subarray(p + 4, Math.min(buf.length, p + 2 + len)));
-      if (seg.includes('GPano') || seg.includes('equirectangular')) info.gpano = true;
-    }
-    if (m === 0xDA) break;
-    p += 2 + len;
-  }
-  jpegInfoCache.set(file, info);
-  return info;
-}
-
 async function checkTour() {
   const issues = [];
   const add = (n, level, msg) => issues.push({ id: n.id, level, msg });
@@ -6171,7 +6251,7 @@ async function checkTour() {
       else if (Math.abs(info.width / info.height - 2) > 0.02) add(n, 'error', t('Not a 360° panorama: {w}×{h}, Google needs a 2:1 image', { w: info.width, h: info.height }));
       else if (info.width < 4096) add(n, 'warn', t('Only {w}×{h} - Google recommends at least 4096×2048', { w: info.width, h: info.height }));
       if (!info.gpano) add(n, 'warn', t('No 360° (GPano) metadata - Google may not show it as a panorama'));
-      if (n.photoFile.size > 75 * 1024 * 1024) add(n, 'error', t('Larger than Google\'s 75 MB limit'));
+      if (n.photoFile.size > GOOGLE_MAX) add(n, 'warn', t('Larger than Google\'s 75 MB limit - it is made smaller for the upload'));
     }
     if (!n.hasGps) add(n, 'warn', t('Position was placed by hand, not from GPS - check that it is right'));
     if (n.heading == null) add(n, 'warn', t('No heading (north) set'));
@@ -6182,12 +6262,37 @@ async function checkTour() {
     const a = gn(c.from), b = gn(c.to);
     if (a && b && distanceMeters(a, b) > 50) add(a, 'warn', t('Link to {name} is {d} long', { name: b.name, d: formatDistance(distanceMeters(a, b)) }));
   });
+  // The same photo at two points (duplicated, or imported twice): it would be on Google twice.
+  const firstWith = new Map();
+  S.nodes.forEach(n => {
+    if (!n.photoFile) return;
+    const key = `${n.photoName}|${n.photoFile.size}`;
+    const first = firstWith.get(key);
+    if (first) add(n, 'warn', t('The same photo as {name} - it would be on Google twice', { name: first.name }));
+    else firstWith.set(key, n);
+  });
   for (let i = 0; i < S.nodes.length; i++) {
     for (let k = i + 1; k < S.nodes.length; k++) {
       if (distanceMeters(S.nodes[i], S.nodes[k]) < 0.5) add(S.nodes[i], 'warn', t('Same position as {name}', { name: S.nodes[k].name }));
     }
   }
   return issues.sort((a, b) => (a.level === 'error' ? 0 : 1) - (b.level === 'error' ? 0 : 1));
+}
+
+// North of linked photos, compared by their horizons (as "North from the photos" does): a clear
+// match that disagrees with the headings set means one of the two is turned.
+async function checkNorthAgainstNeighbours(onProgress) {
+  const issues = [];
+  const pairs = S.conns.map(c => [gn(c.from), gn(c.to)]).filter(([a, b]) => a?.photoFile && b?.photoFile && a.heading != null && b.heading != null);
+  for (const [i, [a, b]] of pairs.entries()) {
+    onProgress?.(i + 1, pairs.length);
+    await new Promise(r => setTimeout(r));
+    const m = bestShift(await featuresOf(a), await featuresOf(b), walkWeights(a.heading, bearingDeg(a, b)));
+    if (!isClearMatch(m)) continue;
+    const off = headingDiff(headingFromShift(a.heading, m.shift), b.heading);
+    if (off > 15) issues.push({ id: b.id, level: 'warn', msg: t('North disagrees with {name} by {d}° (compared by their horizons) - check both', { name: a.name, d: Math.round(off) }) });
+  }
+  return issues;
 }
 
 let checkContinue = null;
@@ -6202,6 +6307,14 @@ async function openTourCheck({ onContinue = null } = {}) {
     ? t('{e} problem(s) that stop the upload, {w} warning(s).', { e: errors, w: issues.length - errors })
     : '';
   list.innerHTML = issues.length ? '' : `<div class="check-ok">${t('Everything looks good.')}</div>`;
+  document.getElementById('check-north-status').textContent = '';
+  renderCheckRows(issues);
+  document.getElementById('check-continue').style.display = onContinue ? '' : 'none';
+  return issues;
+}
+
+function renderCheckRows(issues) {
+  const list = document.getElementById('check-list');
   issues.forEach(i => {
     const n = gn(i.id);
     const row = document.createElement('div');
@@ -6213,10 +6326,25 @@ async function openTourCheck({ onContinue = null } = {}) {
     };
     list.appendChild(row);
   });
-  document.getElementById('check-continue').style.display = onContinue ? '' : 'none';
-  return issues;
 }
 document.getElementById('check-rerun').onclick = () => openTourCheck({ onContinue: checkContinue });
+document.getElementById('check-north').onclick = async () => {
+  const btn = document.getElementById('check-north');
+  const status = document.getElementById('check-north-status');
+  btn.disabled = true;
+  try {
+    const found = await checkNorthAgainstNeighbours((i, n) => { status.textContent = t('Comparing photos… {i}', { i: `${i}/${n}` }); });
+    status.textContent = found.length ? t('{n} photo(s) whose north disagrees with a neighbour.', { n: found.length }) : t('North agrees with the neighbouring photos wherever they could be compared.');
+    if (found.length) {
+      document.querySelector('#check-list .check-ok')?.remove();
+      renderCheckRows(found);
+    }
+  } catch (err) {
+    status.textContent = t('Comparing failed: {msg}', { msg: err.message || err });
+  } finally {
+    btn.disabled = false;
+  }
+};
 document.getElementById('check-continue').onclick = () => {
   closeModal('check-back');
   const fn = checkContinue;
@@ -6283,12 +6411,11 @@ function renderPrivacy() {
   });
 }
 
-// Back to the list after a photo was reviewed (applied or not).
+// Back to the list after a photo was looked at (applied, nothing to blur, or just closed).
 new MutationObserver(() => {
   if (!document.getElementById('blur-back').classList.contains('show') && blur.batch) {
     blur.batch = false;
-    // Looked at: blurred, or nothing that needed it.
-    if (blur.node && !blur.node.privacyChecked) { blur.node.privacyChecked = true; scheduleAutosave(); }
+    // Checked only when blurred or confirmed as nothing to hide - just closing leaves it open.
     renderPrivacy();
     openModal('privacy-back');
   }
@@ -6437,6 +6564,7 @@ document.getElementById('fg-go').onclick = async () => {
         marker: null, tourId, hotspots: [],
         gsvPhotoId: p.id, gsvConfirmed: true, gsvStatus: p.status, gsvShareLink: p.shareLink || null,
         gsvUploadedAt: Date.parse(p.uploadTime) || null, gsvViews: p.viewCount ?? null, gsvObsolete: [],
+        gsvRemote: { lat: p.lat, lng: p.lng, heading: p.heading ?? null, connections: p.connections || [] },
         ...(p.level ? { level: { number: Number(p.level.number) || 0, name: p.level.name || '' } } : {}),
         ...(p.placeId ? { placeId: p.placeId, placeName: p.placeName || p.placeId, placeAuto: false } : {}),
       };
@@ -6576,6 +6704,67 @@ document.getElementById('rn-go').onclick = () => {
   toast(t('{n} point(s) renamed', { n: plan.length }));
 };
 
+// ── Photos with position and north ────────────────
+// A photo with where it is, which way it faces and when it was taken written into it
+// (a new EXIF block; the image itself is not touched) - for the photos export
+// (exports.js) and Panoramax, which take these from the photos.
+async function photoWithPose(n) {
+  return replaceExif(n.photoFile, await poseExif(n), { heading: n.heading });
+}
+
+// The next photo (after the selected one) without north - N.
+function nextWithoutNorth() {
+  const open = S.nodes.filter(n => n.photoFile && n.heading == null);
+  if (!open.length) { toast(t('Every photo has its north')); return null; }
+  const pos = indexNodes().pos;
+  const at = pos.get(S.selId) ?? -1;
+  return (open.find(n => pos.get(n.id) > at) || open[0]).id;
+}
+
+// ── Side panel width ──────────────────────────────
+// Drag the edge to make the side panel - and with it the panorama - wider.
+const sidebar = document.getElementById('sb');
+function setSidebarWidth(w) {
+  const width = Math.round(Math.max(280, Math.min(w, Math.min(760, innerWidth - 420))));
+  sidebar.style.width = `${width}px`;
+  return width;
+}
+function afterSidebarResize() {
+  map.invalidateSize();
+  panoViewer?.autoSize?.();
+  cmpBaseViewer?.autoSize?.();
+  cmpOverlayViewer?.autoSize?.();
+  updateViewCone();
+}
+(() => {
+  const handle = document.getElementById('sb-resize');
+  const saved = Number(storageGet('sbWidth'));
+  if (saved) setSidebarWidth(saved);
+  let drag = null;
+  handle.addEventListener('pointerdown', e => {
+    drag = { x: e.clientX, w: sidebar.getBoundingClientRect().width };
+    handle.setPointerCapture(e.pointerId);
+    document.body.classList.add('resizing');
+  });
+  handle.addEventListener('pointermove', e => {
+    if (!drag) return;
+    setSidebarWidth(drag.w + e.clientX - drag.x);
+    requestAnimationFrame(afterSidebarResize);
+  });
+  handle.addEventListener('pointerup', () => {
+    if (!drag) return;
+    drag = null;
+    document.body.classList.remove('resizing');
+    storageSet('sbWidth', String(setSidebarWidth(sidebar.getBoundingClientRect().width)));
+    afterSidebarResize();
+  });
+  handle.addEventListener('dblclick', () => {
+    sidebar.style.width = '';
+    storageSet('sbWidth', '');
+    afterSidebarResize();
+  });
+})();
+
 // ── Tour as KML / GPX, tour length ────────────────
 // For Google Earth, My Maps or a GPS app: the points (with their Street View link
 // once published) and the links between them as lines.
@@ -6583,61 +6772,6 @@ function tourLength(nodes) {
   const ids = new Set(nodes.map(n => n.id));
   return S.conns.filter(c => ids.has(c.from) && ids.has(c.to))
     .reduce((sum, c) => sum + distanceMeters(gn(c.from), gn(c.to)), 0);
-}
-
-const xmlText = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-function scopeLinks(nodes) {
-  const ids = new Set(nodes.map(n => n.id));
-  return S.conns.filter(c => ids.has(c.from) && ids.has(c.to)).map(c => [gn(c.from), gn(c.to)]);
-}
-
-async function exportKml(scope) {
-  const nodes = (scope?.nodes || S.nodes).filter(n => n.lat != null);
-  const name = scope?.name || projectName?.replace(/\.vrtour$/i, '') || t('Tour');
-  const place = n => [
-    `<Placemark><name>${xmlText(n.name)}</name>`,
-    n.gsvShareLink ? `<description>${xmlText(n.gsvShareLink)}</description>` : '',
-    `<styleUrl>#${S.starts.has(n.id) ? 'start' : 'point'}</styleUrl>`,
-    `<Point><coordinates>${n.lng.toFixed(7)},${n.lat.toFixed(7)},0</coordinates></Point></Placemark>`,
-  ].join('');
-  const line = ([a, b]) => `<Placemark><styleUrl>#link</styleUrl><LineString><tessellate>1</tessellate><coordinates>${a.lng.toFixed(7)},${a.lat.toFixed(7)},0 ${b.lng.toFixed(7)},${b.lat.toFixed(7)},0</coordinates></LineString></Placemark>`;
-  const kml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${xmlText(name)}</name>
-<Style id="point"><IconStyle><color>fff65c8b</color><scale>0.8</scale></IconStyle></Style>
-<Style id="start"><IconStyle><color>ff3bb9f6</color><scale>1.1</scale></IconStyle></Style>
-<Style id="link"><LineStyle><color>fff65c8b</color><width>3</width></LineStyle></Style>
-<Folder><name>${xmlText(t('Points'))}</name>${nodes.map(place).join('\n')}</Folder>
-<Folder><name>${xmlText(t('Links'))}</name>${scopeLinks(nodes).map(line).join('\n')}</Folder>
-</Document></kml>
-`;
-  await saveTextFile(`${fileBase(name)}.kml`, kml);
-}
-
-async function exportGpx(scope) {
-  const nodes = (scope?.nodes || S.nodes).filter(n => n.lat != null);
-  const name = scope?.name || projectName?.replace(/\.vrtour$/i, '') || t('Tour');
-  const wpt = n => `<wpt lat="${n.lat.toFixed(7)}" lon="${n.lng.toFixed(7)}"><name>${xmlText(n.name)}</name>${n.gsvShareLink ? `<link href="${xmlText(n.gsvShareLink)}"/>` : ''}</wpt>`;
-  // The walk itself: in walking order from the start, a new segment where it jumps.
-  const order = walkingOrder(nodes);
-  const segs = [];
-  order.forEach((n, i) => {
-    const prev = order[i - 1];
-    if (!prev || !getLinkedNodes(n.id).includes(prev)) segs.push([]);
-    segs[segs.length - 1].push(n);
-  });
-  const trk = segs.filter(sg => sg.length > 1)
-    .map(sg => `<trkseg>${sg.map(n => `<trkpt lat="${n.lat.toFixed(7)}" lon="${n.lng.toFixed(7)}"/>`).join('')}</trkseg>`).join('\n');
-  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Streetview Tour Editor" xmlns="http://www.topografix.com/GPX/1/1">
-<metadata><name>${xmlText(name)}</name></metadata>
-${nodes.map(wpt).join('\n')}
-<trk><name>${xmlText(name)}</name>
-${trk}
-</trk>
-</gpx>
-`;
-  await saveTextFile(`${fileBase(name)}.gpx`, gpx);
 }
 
 // ── Share the tour ────────────────────────────────
@@ -6769,6 +6903,7 @@ function tourFacts(nodes) {
     withPlace: nodes.filter(n => n.placeId),
     levels: nodes.filter(n => n.level).length,
     links: S.conns.filter(c => ids.has(c.from)).length,
+    unlinked: nodes.length > 1 ? (linked => nodes.filter(n => !linked.has(n.id)))(new Set(S.conns.flatMap(c => [c.from, c.to]))) : [],
     onGoogle: nodes.filter(n => n.gsvPhotoId && n.gsvStatus !== 'missing'),
     processing: nodes.filter(n => n.gsvPhotoId && !n.gsvConfirmed && n.gsvStatus !== 'missing'),
     toUpload: nodes.filter(n => !isSamplePhoto(n) && ((n.photoFile && needsUpload(n)) || gsvChanged(n))),
@@ -6787,17 +6922,20 @@ function checklistChips(f) {
   const jump = list => () => jumpToNode(list[0].id, false);
   const upload = () => document.getElementById('bupload').click();
   return [
-    f.noPhoto.length
+    { key: 'photos', ...(f.noPhoto.length
       ? { level: 'todo', label: t('{n} without photo', { n: f.noPhoto.length }), tip: t('Show the first one'), act: jump(f.noPhoto) }
-      : { level: 'ok', label: t('{n} photo(s)', { n: f.withPhoto.length }) },
-    f.noNorth.length
+      : { level: 'ok', label: t('{n} photo(s)', { n: f.withPhoto.length }) }) },
+    { key: 'links', ...(f.unlinked.length
+      ? { level: 'todo', label: t('{n} not linked', { n: f.unlinked.length }), tip: t('Show the first one'), act: jump(f.unlinked) }
+      : { level: 'ok', label: t('{n} link(s)', { n: f.links }) }) },
+    { key: 'north', ...(f.noNorth.length
       ? { level: 'todo', label: t('{n} without north', { n: f.noNorth.length }), tip: t('Show the first one'), act: jump(f.noNorth) }
-      : { level: 'ok', label: t('North set') },
-    f.unchecked.length
+      : { level: 'ok', label: t('North set') }) },
+    { key: 'privacy', ...(f.unchecked.length
       ? { level: 'todo', label: t('Faces & plates: {n} not checked', { n: f.unchecked.length }), tip: t('Check all photos for faces & plates…'), act: openPrivacy }
-      : { level: 'ok', label: t('Faces & plates checked'), act: openPrivacy },
-    { level: f.withPlace.length === f.nodes.length ? 'ok' : 'info', label: t('Places {a}/{b}', { a: f.withPlace.length, b: f.nodes.length }), tip: t('Places on Google Maps…'), act: () => TOOL_ACTIONS.places() },
-    f.sample
+      : { level: 'ok', label: t('Faces & plates checked'), act: openPrivacy }) },
+    { key: 'places', level: f.withPlace.length === f.nodes.length ? 'ok' : 'info', label: t('Places {a}/{b}', { a: f.withPlace.length, b: f.nodes.length }), tip: t('Places on Google Maps…'), act: () => TOOL_ACTIONS.places() },
+    { key: 'publish', ...(f.sample
       ? { level: 'info', label: t('Sample - never uploaded') }
       : f.toUpload.length
         ? { level: 'todo', label: f.onGoogle.length ? t('{n} change(s) for Google', { n: f.toUpload.length }) : t('Not on Google yet'), tip: t('Upload to Google Street View'), act: upload }
@@ -6805,9 +6943,20 @@ function checklistChips(f) {
           ? { level: 'info', label: t('Google is processing {n}', { n: f.processing.length }), tip: t('Links and positions follow by themselves once Google is ready.'), act: upload }
           : f.onGoogle.length
             ? { level: 'ok', label: t('On Google'), act: upload }
-            : { level: 'todo', label: t('Not on Google yet'), tip: t('Upload to Google Street View'), act: upload },
+            : { level: 'todo', label: t('Not on Google yet'), tip: t('Upload to Google Street View'), act: upload }) },
   ];
 }
+
+// The tools of each step, under the steps for the one chosen (or the first still open).
+const STEP_TOOLS = {
+  photos: [['Import photos…', () => openImport()], ['Place photos from GPX track…', () => openGpx()], ['Move or turn a tour…', () => openShift()]],
+  links: [['Auto-connect nodes…', () => openAutoConnect()]],
+  north: [['Headings from walking direction…', () => openWalkHeadings()], ['North from the photos…', () => openNorthMatch()], ['North from the sun…', () => openSunNorth()]],
+  privacy: [['Check all photos for faces & plates…', () => openPrivacy()], ['Cover the tripod…', () => openNadir()]],
+  places: [['Places on Google Maps…', () => openPlacesSetup()]],
+  publish: [['Check tour…', () => openTourCheck()], ['Preview', () => openExportPreview()], ['Upload', () => document.getElementById('bupload').click()], ['Publish on Panoramax…', () => openPanoramax()]],
+};
+let checklistStep = null;
 
 let checklistQueued = false;
 function queueChecklist() {
@@ -6823,15 +6972,26 @@ function renderChecklist() {
   const group = checklistGroup();
   document.getElementById('checklist-tour').textContent = group.name ? `· ${group.name}` : '';
   const chips = checklistChips(tourFacts(group.nodes));
+  const active = chips.find(c => c.key === checklistStep) || chips.find(c => c.level === 'todo') || chips[chips.length - 1];
   const el = document.getElementById('checklist-chips');
   el.innerHTML = '';
   chips.forEach(c => {
-    const b = document.createElement(c.act ? 'button' : 'span');
-    b.className = `st-chip ${c.level}`;
+    const b = document.createElement('button');
+    b.className = `st-chip ${c.level}${c === active ? ' active' : ''}`;
     b.innerHTML = `<i></i>${escapeHtml(c.label)}`;
+    b.dataset.step = c.key;
     if (c.tip) b.title = c.tip;
-    if (c.act) b.onclick = c.act;
+    b.onclick = () => { checklistStep = c.key; renderChecklist(); c.act?.(); };
     el.appendChild(b);
+  });
+  const tools = document.getElementById('checklist-tools');
+  tools.innerHTML = '';
+  STEP_TOOLS[active.key].forEach(([label, run]) => {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.textContent = t(label);
+    b.onclick = run;
+    tools.appendChild(b);
   });
 }
 
@@ -6953,8 +7113,11 @@ let focusMap = null, focusLayer = null;
 function updateFocusMap(n) {
   if (!n || !panoFocus) return;
   if (!focusMap) {
-    focusMap = L.map('focus-map', { zoomControl: false, attributionControl: false, keyboard: false });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { subdomains: 'abc', maxZoom: 20, maxNativeZoom: 19, className: 'osm-dark' }).addTo(focusMap);
+    focusMap = L.map('focus-map', { zoomControl: false, keyboard: false });
+    focusMap.attributionControl.setPrefix(false);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 20, maxNativeZoom: 19, className: 'osm-dark', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(focusMap);
     focusLayer = L.layerGroup().addTo(focusMap);
   }
   focusMap.invalidateSize();
@@ -7008,6 +7171,38 @@ initReport({ t, closeMenus, openModal, saveTextFile, pageInfo: reportPageInfo })
 initVideoDialog({
   t, lang: () => currentLang, toast, openModal, closeMenus, setAppBusy, storageGet, storageSet,
   formatBytes, formatEta, formatDistance, editorKey: EDITOR_KEY,
+});
+initViewCone({
+  map, t,
+  node: () => { const n = gn(S.selId); return n && n.photoUrl && panoViewer && panoNodeId === n.id && !panoFocus ? n : null; },
+  view: () => ({ yawDeg: radToDeg(panoViewer.getPosition().yaw), hFov: panoViewer.state.hFov || 90 }),
+  setHeading: (n, heading) => {
+    pushUndo();
+    n.heading = heading;
+    n.headingSource = 'manual';
+    n.viewYaw = northYaw(n);
+    refreshHeadingUi(n);
+    refreshMarker(n);
+    refreshCompareUi(n);
+    scheduleAutosave();
+    toast(`${n.name}: heading set to ${n.heading.toFixed(1)}°`);
+  },
+});
+initFilmstrip({
+  t, storageGet, storageSet, thumb: requestThumb, selId: () => S.selId, jump: id => jumpToNode(id, false), order: walkingOrder,
+  group: () => { const tours = getTours(); const g = (S.selId && tourOf(S.selId)) || (tours.length === 1 ? tours[0] : null); return g?.index != null ? g : null; },
+});
+initPanoramax({
+  t, toast, openModal, closeMenus, setAppBusy, scheduleAutosave, photoWithPose, isSample: isSamplePhoto, scopes: tourScopes,
+  ensureTimes: async () => { for (const n of S.nodes) if (n.photoFile) await ensureCaptureTime(n); },
+});
+initPhotoTools({
+  S, t, toast, closeMenus, openModal, closeModal, storageGet, storageSet, tourScopes, defaultScope, isSample: isSamplePhoto, pushUndo,
+  tourChanged, rewritePhoto, replacePhoto, scopeNodes, scopeLabel, ensureCaptureTime, fixedNorth, resetPanorama: () => { panoNodeId = null; },
+});
+initExports({
+  S, t, toast, gn, saveTextFile, fileBase, walkingOrder, getLinkedNodes, isSample: isSamplePhoto, safeFileName, photoWithPose, setSaveStatus,
+  projectBase: () => projectName?.replace(/\.vrtour$/i, ''),
 });
 initDialogs();
 

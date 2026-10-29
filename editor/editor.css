@@ -378,6 +378,10 @@ details.sec[open] { padding-bottom:12px; }
   border:1px solid var(--border-2); color:var(--text); font-size:10px; font-weight:600;
   padding:2px 7px; border-radius:999px; white-space:nowrap; pointer-events:none; box-shadow:var(--shadow-md);
 }
+/* Names: all of them only close up or with few points; the selected one and the one under the pointer always. */
+.nl { display:none; }
+#map.labels .nl, .nd.sel .nl, .nd:hover .nl { display:block; }
+.nd:hover .nl { z-index:2; }
 .conn-x {
   width:18px; height:18px; border-radius:50%; background:var(--panel-solid); border:1.5px solid var(--danger); color:var(--danger);
   display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; box-shadow:0 1px 6px rgba(0,0,0,.5);
@@ -754,8 +758,14 @@ a.btn { text-decoration:none; }
 .vd-head .btn { padding:4px 9px; font-size:11px; }
 #vd-facts, #vd-gpx-facts { margin-bottom:6px; }
 
-/* Checklist */
+/* Checklist: the steps of a tour, numbered, with the tools of the chosen one below */
 .checklist { margin:0 0 10px; }
+.st-chips { counter-reset:step; }
+.st-chip::before { counter-increment:step; content:counter(step); font-size:9.5px; font-weight:700; color:var(--text-faint); margin-right:-2px; }
+.st-chip.active { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); color:var(--text); }
+.st-tools { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; padding:7px; border-radius:var(--radius-sm); background:var(--panel-2); border:1px solid var(--border); }
+.st-tools:empty { display:none; }
+.st-tools .btn { height:26px; padding:0 9px; font-size:11px; font-weight:600; }
 .checklist .pl span { font-weight:600; color:var(--text-faint); text-transform:none; letter-spacing:0; }
 .st-chips { display:flex; flex-wrap:wrap; gap:5px; }
 .st-chip { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border-2); background:var(--panel-2); color:var(--text-dim); border-radius:999px; padding:3px 9px; font:inherit; font-size:11px; font-weight:600; }
@@ -837,3 +847,41 @@ body.pano-focus #tb { visibility:hidden; } /* the whole window is the panorama's
 .share-dl { display:flex; gap:6px; align-items:center; font-size:12px; color:var(--text-dim); }
 .share-dl .btn { padding:3px 9px; font-size:11px; }
 #share-site-url.bad { border-color:var(--danger); }
+
+/* Side panel: drag its edge to make it (and the panorama) wider */
+#sb-resize { width:5px; margin-left:-3px; flex-shrink:0; cursor:col-resize; position:relative; z-index:10; background:transparent; transition:background .15s ease; }
+#sb-resize:hover, body.resizing #sb-resize { background:var(--accent-soft); }
+body.resizing, body.resizing * { cursor:col-resize !important; user-select:none; }
+
+/* The view on the map: the panorama's direction and width */
+.view-cone { fill:var(--gold); fill-opacity:.22; stroke:var(--gold); stroke-opacity:.9; }
+.view-cone.unknown { fill:var(--text-faint); stroke:var(--text-dim); stroke-dasharray:5 4; }
+.view-tip { width:18px; height:18px; border-radius:50%; background:var(--gold); border:2px solid #fff; box-shadow:0 1px 6px rgba(0,0,0,.5); cursor:grab; }
+.leaflet-marker-icon.unknown .view-tip { background:var(--panel-solid); border-color:var(--gold); }
+
+/* The photos of the tour along the bottom of the map */
+.filmstrip { position:absolute; left:12px; right:12px; bottom:22px; z-index:900; display:flex; align-items:flex-end; gap:8px; pointer-events:none; }
+.fs-toggle, .fs-list { pointer-events:all; }
+.fs-toggle { flex-shrink:0; height:30px; padding:0 11px; border-radius:999px; border:1px solid var(--border-2); background:var(--panel-solid); color:var(--text-dim);
+  font:inherit; font-size:11.5px; font-weight:600; cursor:pointer; box-shadow:var(--shadow-md); }
+.fs-toggle b { color:var(--text); }
+.fs-list { display:flex; gap:5px; overflow-x:auto; padding:5px; border-radius:var(--radius-sm); background:color-mix(in srgb, var(--panel-solid) 88%, transparent);
+  border:1px solid var(--border-2); box-shadow:var(--shadow-md); max-width:100%; scrollbar-width:thin; }
+.filmstrip.closed .fs-list { display:none; }
+.fs-item { position:relative; flex-shrink:0; width:86px; height:43px; padding:0; border:2px solid transparent; border-radius:6px; overflow:hidden; cursor:pointer; background:var(--panel-3); }
+.fs-item img { width:100%; height:100%; object-fit:cover; display:block; }
+.fs-item.sel { border-color:var(--accent); }
+.fs-item .fs-i { position:absolute; left:3px; top:2px; font-size:9.5px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.8); }
+.fs-item.open::after { content:''; position:absolute; right:4px; top:4px; width:7px; height:7px; border-radius:50%; background:var(--gold); box-shadow:0 0 0 1.5px #fff; }
+.fs-none { display:block; width:100%; height:100%; background:repeating-linear-gradient(45deg, var(--panel-2), var(--panel-2) 6px, var(--panel-3) 6px, var(--panel-3) 12px); }
+body:has(.multibar.show) .filmstrip { bottom:74px; } /* above the bar for several selected points */
+
+/* Blur tool: how marked areas are hidden */
+#blur-style { width:auto; padding:5px 8px; font-size:12px; }
+
+/* Cover the tripod */
+.nadir-row { display:flex; gap:16px; align-items:flex-start; }
+.nadir-view { flex-shrink:0; text-align:center; }
+.nadir-view canvas { width:220px; height:220px; border-radius:50%; background:var(--panel-3); display:block; border:1px solid var(--border-2); }
+.nadir-opts { flex:1; min-width:0; }
+.nadir-opts .opt input[type=file] { margin-top:6px; padding:4px 6px; font-size:11px; }

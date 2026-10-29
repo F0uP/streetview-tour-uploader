@@ -39,7 +39,7 @@ import threading
 import time
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer, BaseHTTPRequestHandler, HTTPServer
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from urllib.request import Request, urlopen
@@ -55,12 +55,13 @@ import app_update  # noqa: E402
 import bug_report  # noqa: E402
 import app_window  # noqa: E402
 from google_api import (  # noqa: E402
-    UPLOAD_PROGRESS, GoogleError, _connect_photos, _delete_photos, _google_libs,
+    UPLOAD_PROGRESS, GoogleError, SignIn, _delete_photos,
     _list_photos, _photo_status, _update_photos, _upload_photo,
     _create_sequence, _delete_sequence, _list_sequences, _video_chunk, _video_query, _video_start,
     _download_photo,
 )
 from places import PLACES_CACHE, _geocode, _places_nearby  # noqa: E402
+from panoramax import Panoramax  # noqa: E402
 
 try:
     import _app_version  # written by build_exe.py / packaging/linux/build_deb.py
@@ -110,159 +111,34 @@ UPLOADER_DIR.mkdir(parents=True, exist_ok=True)
 # An installed app has no console to read (on Windows sys.stdout is even None),
 # so keep a log file next to the credentials instead - handy when something
 # goes wrong. Started from a terminal, it keeps printing there.
+LOG_MAX = 5 * 1024 * 1024  # then the log starts over; the one before stays as editor.log.1
 if sys.stdout is None or sys.stderr is None or (PACKAGED and not sys.stdout.isatty()):
-    _log = open(UPLOADER_DIR / "editor.log", "a", encoding="utf-8", buffering=1)
+    _log_file = UPLOADER_DIR / "editor.log"
+    try:
+        if _log_file.stat().st_size > LOG_MAX:
+            os.replace(_log_file, UPLOADER_DIR / "editor.log.1")
+    except OSError:
+        pass
+    _log = open(_log_file, "a", encoding="utf-8", buffering=1)
     sys.stdout = _log
     sys.stderr = _log
 TOKEN_FILE = UPLOADER_DIR / "token.json"
 CREDENTIALS_FILE = UPLOADER_DIR / "client_secrets.json"
-SCOPES = ['https://www.googleapis.com/auth/streetviewpublish']
+# The Google sign-in, kept in memory and refreshed under a lock (google_api.SignIn).
+GOOGLE = SignIn(TOKEN_FILE, CREDENTIALS_FILE)
+
+
 def _load_credentials():
-    """Return valid cached credentials, refreshing if needed. Raises RuntimeError if sign-in is required."""
-    _, Credentials, GoogleRequest, _, _ = _google_libs()
-    if not TOKEN_FILE.exists():
-        raise RuntimeError("not_signed_in")
-    creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
-    if not creds.valid:
-        if creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(GoogleRequest())
-            except Exception as e:
-                # The sign-in was revoked or ran out. For Cloud projects in "Testing"
-                # mode Google lets refresh tokens expire after 7 days. Forget it so the
-                # editor shows "not signed in" instead of a cryptic invalid_grant error.
-                print(f"Google sign-in expired: {e}")
-                TOKEN_FILE.unlink(missing_ok=True)
-                raise RuntimeError("not_signed_in") from e
-            TOKEN_FILE.write_text(creds.to_json())
-        else:
-            raise RuntimeError("not_signed_in")
-    return creds
-
-
-def _signed_in():
-    """True if there is a token that still works (refreshing it if needed)."""
-    if not TOKEN_FILE.exists():
-        return False
-    try:
-        _load_credentials()
-        return True
-    except RuntimeError:
-        return False
-    except Exception:
-        return True  # offline etc. - don't claim the sign-in is gone
+    """Valid credentials. RuntimeError('not_signed_in') when a sign-in is needed, GoogleError when offline."""
+    return GOOGLE.credentials()
 
 
 def _sign_in():
-    """Run the interactive OAuth consent flow (opens the browser) and cache the resulting token."""
-    _, _, _, InstalledAppFlow, _ = _google_libs()
-
-    if not CREDENTIALS_FILE.exists():
-        raise RuntimeError(
-            f"client_secrets.json not found. Save your OAuth desktop client credentials to {CREDENTIALS_FILE}"
-        )
-
-    flow = InstalledAppFlow.from_client_secrets_file(str(CREDENTIALS_FILE), SCOPES)
-    received = {}
-    state = None
-
-    class _Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            params = parse_qs(urlparse(self.path).query)
-            if not params.get('code') and not params.get('error'):
-                # e.g. the browser asking for /favicon.ico - not Google's redirect
-                self.send_response(404)
-                self.end_headers()
-                return
-            if params.get('state', [None])[0] != state:
-                self.send_response(400)
-                self.end_headers()
-                self.wfile.write(b'Sign-in request did not match. Please try again from the editor.')
-                return
-            received['code'] = params.get('code', [None])[0]
-            received['done'] = True
-            german = (self.headers.get('Accept-Language') or '').lower().startswith('de')
-            ok = bool(received['code'])
-            text = {
-                (True, True): ('Anmeldung abgeschlossen', 'Du kannst diesen Tab schließen und im Streetview Tour Editor weitermachen.'),
-                (True, False): ('Anmeldung abgebrochen', 'Du kannst diesen Tab schließen und es im Editor noch einmal versuchen.'),
-                (False, True): ('Signed in', 'You can close this tab and continue in the Streetview Tour Editor.'),
-                (False, False): ('Sign-in cancelled', 'You can close this tab and try again from the editor.'),
-            }[(german, ok)]
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(SIGN_IN_PAGE.format(title=text[0], text=text[1], lang='de' if german else 'en').encode('utf-8'))
-
-        def log_message(self, *args):
-            pass
-
-    # Only reachable from this computer (the redirect goes to 127.0.0.1), and
-    # the state value proves the answer belongs to this sign-in. Desktop OAuth
-    # clients accept any loopback port, so fall back to a free one if 8085 is taken.
-    try:
-        server = HTTPServer(('127.0.0.1', 8085), _Handler)
-    except OSError:
-        server = HTTPServer(('127.0.0.1', 0), _Handler)
-    server.timeout = 1
-    flow.redirect_uri = f'http://127.0.0.1:{server.server_address[1]}/'
-    auth_url, state = flow.authorization_url(prompt='consent', access_type='offline')
-
-    def serve():
-        deadline = time.time() + 180
-        while not received.get('done') and time.time() < deadline:
-            server.handle_request()
-
-    t = threading.Thread(target=serve, daemon=True)
-    t.start()
-    webbrowser.open(auth_url)
-    t.join(timeout=181)
-    server.server_close()
-
-    if not received.get('code'):
-        raise RuntimeError("Sign-in timed out or was cancelled. Please try again.")
-
-    flow.fetch_token(code=received['code'])
-    creds = flow.credentials
-    TOKEN_FILE.write_text(creds.to_json())
+    """Run the interactive OAuth consent flow (opens the browser) and keep the resulting token."""
+    creds = GOOGLE.sign_in()
     if APP['window']:
         APP['window'].focus()  # back from the browser to the editor
     return creds
-
-
-SIGN_IN_PAGE = """<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><title>{title}</title>
-<meta name="viewport" content="width=device-width, initial-scale=1"><style>
-body {{ margin:0; min-height:100vh; display:grid; place-items:center; background:#060608; color:#f3f1f7;
-  font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }}
-main {{ padding:32px 36px; max-width:420px; border-radius:16px; background:#100e16; border:1px solid rgba(255,255,255,.08); text-align:center; }}
-h1 {{ margin:0 0 8px; font-size:20px; }} p {{ margin:0; color:#9793a6; }}
-</style></head><body><main><h1>{title}</h1><p>{text}</p></main></body></html>"""
-
-
-def _save_credentials(client_id, client_secret):
-    """Write a client_secrets.json in Google's standard 'installed app' shape
-    from just the two values shown on the OAuth client's page in Google Cloud
-    Console, so the user never has to download or hand-edit a JSON file."""
-    client_id = (client_id or '').strip()
-    client_secret = (client_secret or '').strip()
-    if not client_id or not client_secret:
-        raise RuntimeError("Client ID and Client Secret are both required.")
-    doc = {
-        "installed": {
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "redirect_uris": ["http://localhost"],
-        }
-    }
-    CREDENTIALS_FILE.write_text(json.dumps(doc, indent=2), encoding='utf-8')
-
-
-def _clear_credentials():
-    TOKEN_FILE.unlink(missing_ok=True)
-    CREDENTIALS_FILE.unlink(missing_ok=True)
 
 
 # ── Google Places ─────────────────────────────────
@@ -272,6 +148,8 @@ def _clear_credentials():
 # user's own (and a billing account; the monthly free usage covers far more
 # than this app needs). The key stays in this file: the page never sees it.
 PLACES_KEY_FILE = UPLOADER_DIR / "places_api_key.txt"
+# Panoramax, the open street-level photo platform: the instance and its token (panoramax.py).
+PANORAMAX = Panoramax(UPLOADER_DIR / "panoramax.json")
 
 
 def _places_key():
@@ -317,7 +195,13 @@ KEYLESS_API = {'/api/update/status'}
 
 ALLOWED_HOSTS = {f'127.0.0.1:{PORT}', f'localhost:{PORT}'}
 ALLOWED_ORIGINS = {f'http://{h}' for h in ALLOWED_HOSTS}
-PROJECT_SUFFIXES = ('.vrtour', '.zip', '.json')
+# What a second launch may hand over (double-click): projects, nothing else. The
+# page gets a file token for it, so it must never name e.g. the app's own settings.
+PROJECT_SUFFIXES = ('.vrtour', '.zip')
+# Files the page may write to without the user having picked them in a save dialog:
+# a project it opened (Ctrl+S saves back into it). Everything else is read only.
+WRITABLE_SUFFIXES = PROJECT_SUFFIXES
+FILES_MAX = 20000  # tokens kept; the oldest go first (an import hands out one per photo)
 
 # A .vrtour file handed to the app (double-click in Explorer, or "Open with")
 # waits here until the editor tab picks it up via /api/pending-project.
@@ -333,14 +217,20 @@ APP = {'window': None}
 # only gets a token for what the user picked - it can't name any other path.
 # Folders chosen as export target are remembered under a grant id, so they
 # keep working after a restart.
-FILES = {}  # token -> {'path': Path, 'kind': 'file' | 'folder'}
+FILES = {}  # token -> {'path': Path, 'kind': 'file' | 'folder', 'write': bool}
 FOLDER_GRANTS_FILE = UPLOADER_DIR / "folders.json"
 BAD_NAME_CHARS = set('<>:"/\\|?*')
 
 
-def _file_token(path, kind):
+def _file_token(path, kind, write=None):
+    """A token for a file or folder; write: may the page write to it (default: folders and projects)."""
+    path = Path(path)
+    if write is None:
+        write = kind == 'folder' or path.suffix.lower() in WRITABLE_SUFFIXES
     token = secrets.token_urlsafe(18)
-    FILES[token] = {'path': Path(path), 'kind': kind}
+    FILES[token] = {'path': path, 'kind': kind, 'write': write}
+    while len(FILES) > FILES_MAX:
+        FILES.pop(next(iter(FILES)))
     return token
 
 
@@ -561,7 +451,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(EDITOR_DIR), **kwargs)
 
     def log_message(self, fmt, *args):
-        if self.path.startswith('/api/') and not self.path.startswith(('/api/update/status', '/api/pending-project')):
+        if self.path.startswith('/api/') and not self.path.startswith(('/api/update/status', '/api/pending-project', '/api/panoramax/check', '/api/upload-progress')):
             super().log_message(fmt, *args)
 
     # Nothing from here may be kept in a browser cache. Without Cache-Control a
@@ -627,7 +517,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parsed.path == '/api/status':
             had_token = TOKEN_FILE.exists()
-            signed_in = _signed_in()
+            signed_in = GOOGLE.signed_in()
             return self._json(200, {
                 'signedIn': signed_in,
                 'expired': had_token and not signed_in,
@@ -697,6 +587,8 @@ class Handler(SimpleHTTPRequestHandler):
         entry = FILES.get((query.get('token') or [''])[0])
         if not APP['window'] or not entry:
             return self._json(404, {'ok': False, 'error': 'unknown_file'})
+        if not entry.get('write'):
+            return self._json(403, {'ok': False, 'error': 'This file was opened for reading only.'})
         target = entry['path']
         if entry['kind'] == 'folder':
             name = (query.get('name') or [''])[0]
@@ -728,6 +620,9 @@ class Handler(SimpleHTTPRequestHandler):
         length = int(self.headers.get('Content-Length') or 0)
         try:
             creds = _load_credentials()
+        except GoogleError as e:
+            _drain_body(self.rfile, length)
+            return self._json(200, {'ok': False, 'error': e.message, 'status': e.status, 'step': e.step})
         except RuntimeError:
             _drain_body(self.rfile, length)
             return self._json(401, {'ok': False, 'error': 'not_signed_in'})
@@ -778,6 +673,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(404, {'ok': False, 'error': 'not_found'})
         try:
             return getattr(self, handler)(parsed, body)
+        except GoogleError as e:  # e.g. offline while the sign-in had to be renewed
+            return self._json(200, {'ok': False, 'error': e.message, 'status': e.status, 'step': e.step})
         except RuntimeError as e:
             return self._json(400, {'ok': False, 'error': str(e)})
         except Exception as e:
@@ -789,9 +686,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     @staticmethod
     def _creds():
-        """The Google sign-in, or None (then the editor is told 'not_signed_in')."""
+        """The Google sign-in, or None (then the editor is told 'not_signed_in'). Offline: GoogleError."""
         try:
             return _load_credentials()
+        except GoogleError:
+            raise
         except RuntimeError:
             return None
 
@@ -837,6 +736,7 @@ class Handler(SimpleHTTPRequestHandler):
         return self._json(200, {'ok': True, 'window': bool(APP['window'])})
 
     def _post_open_file(self, parsed, body):
+        # A second launch hands over the project it was started with (see main()).
         path = Path(json.loads(body.decode('utf-8')).get('path') or '')
         if path.suffix.lower() not in PROJECT_SUFFIXES or not path.is_file():
             raise RuntimeError(f"Not a project file: {path}")
@@ -854,7 +754,7 @@ class Handler(SimpleHTTPRequestHandler):
         data = bug_report.build(
             APP_VERSION, UPLOADER_DIR, self._payload(body), packaged=PACKAGED, window=bool(APP['window']),
             signed_in=TOKEN_FILE.exists(), places_key=bool(_places_key()),
-            secrets=[EDITOR_KEY, _places_key()])
+            secrets=[EDITOR_KEY, _places_key(), (PANORAMAX.config() or {}).get('token')])
         return self._send_bytes(data, 'application/zip')
 
     # Files in the app window: only where the user picked them in the system's dialogs
@@ -877,11 +777,14 @@ class Handler(SimpleHTTPRequestHandler):
                 {'token': _file_token(p, 'file'), 'name': Path(p).name} for p in path]})
         path = Path(path)
         if kind == 'folder':
-            # Export folders are remembered (grant); a folder to import photos from isn't.
-            grant = _remember_folder(path) if payload.get('remember', True) else None
-            return self._json(200, {'ok': True, 'token': _file_token(path, 'folder'),
+            # Export folders are remembered (grant) and written to; a folder to import photos from is only read.
+            export = bool(payload.get('remember', True))
+            grant = _remember_folder(path) if export else None
+            return self._json(200, {'ok': True, 'token': _file_token(path, 'folder', write=export),
                                     'name': path.name or str(path), 'grant': grant})
-        return self._json(200, {'ok': True, 'token': _file_token(path, 'file'), 'name': path.name})
+        # Picked in a save dialog: the user chose to write there.
+        token = _file_token(path, 'file', write=True if kind == 'save' else None)
+        return self._json(200, {'ok': True, 'token': token, 'name': path.name})
 
     def _post_files_photos(self, parsed, body):
         # The photos in a folder the user picked (import): a token for each.
@@ -941,11 +844,11 @@ class Handler(SimpleHTTPRequestHandler):
     # Google sign-in
     def _post_set_credentials(self, parsed, body):
         payload = json.loads(body.decode('utf-8'))
-        _save_credentials(payload.get('client_id'), payload.get('client_secret'))
+        GOOGLE.save_client(payload.get('client_id'), payload.get('client_secret'))
         return self._json(200, {'ok': True})
 
     def _post_clear_credentials(self, parsed, body):
-        _clear_credentials()
+        GOOGLE.clear()
         return self._json(200, {'ok': True})
 
     def _post_login(self, parsed, body):
@@ -974,14 +877,6 @@ class Handler(SimpleHTTPRequestHandler):
         finally:
             UPLOAD_PROGRESS.pop(job, None)
         return self._json(200, {'ok': True, 'photoId': photo_id})
-
-    def _post_connect(self, parsed, body):
-        payload = json.loads(body.decode('utf-8'))
-        creds = self._creds()
-        if not creds:
-            return self._not_signed_in()
-        results = _connect_photos(creds, payload.get('name_to_id', {}), payload.get('connects', {}))
-        return self._json(200, {'ok': True, 'results': results})
 
     def _post_google_photo(self, parsed, body):
         # A photo's bytes from Google ("Photos from Google"): as a file, or an error as JSON.
@@ -1061,6 +956,43 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(200, {'ok': False, 'error': e.message, 'status': e.status, 'step': e.step})
         return self._json(200, {'ok': True, 'places': places, 'fetched': fetched})
 
+    # Panoramax (the instance's token stays here, as the Places key does)
+    def _post_panoramax(self, parsed, body):
+        payload = self._payload(body)
+        action = parsed.path.rsplit('/', 1)[-1]
+        try:
+            if action == 'connect':  # a new token, claimed by the user in the browser
+                return self._json(200, {'ok': True, 'claim': PANORAMAX.start_sign_in(payload.get('instance'))})
+            if action == 'check':
+                return self._json(200, {'ok': True, 'done': PANORAMAX.finish_sign_in(), **PANORAMAX.info()})
+            if action == 'token':
+                PANORAMAX.use_token(payload.get('instance'), payload.get('token'))
+            elif action == 'forget':
+                PANORAMAX.forget()
+            elif action == 'start':
+                return self._json(200, {'ok': True, 'set': PANORAMAX.create_set(str(payload.get('title') or ''), payload.get('count') or 1)})
+            elif action == 'complete':
+                PANORAMAX.complete(str(payload.get('set') or ''))
+            elif action == 'status':
+                return self._json(200, {'ok': True, **PANORAMAX.status(str(payload.get('set') or ''))})
+            return self._json(200, {'ok': True, **PANORAMAX.info()})
+        except RuntimeError as e:
+            if str(e) == 'not_signed_in':
+                return self._json(401, {'ok': False, 'error': 'not_signed_in'})
+            raise
+
+    def _post_panoramax_file(self, parsed, body):
+        # One photo, already carrying its position and north (written by the editor).
+        qs = parse_qs(parsed.query)
+        try:
+            out = PANORAMAX.add_file(qs.get('set', [''])[0], Path(qs.get('name', ['photo.jpg'])[0]).name, body,
+                                     qs.get('blurred', ['0'])[0] == '1')
+        except RuntimeError as e:
+            if str(e) == 'not_signed_in':
+                return self._json(401, {'ok': False, 'error': 'not_signed_in'})
+            raise
+        return self._json(200, {'ok': True, **out})
+
     def _save_places_key(self, payload, lang):
         key = str(payload.get('key') or '').strip()
         if not key:
@@ -1108,7 +1040,6 @@ POST_ROUTES = {
     '/api/clear-credentials': '_post_clear_credentials',
     '/api/login': '_post_login',
     '/api/upload-photo': '_post_upload_photo',
-    '/api/connect': '_post_connect',
     '/api/google-photo': '_post_google_photo',
     '/api/list-photos': '_post_photos',
     '/api/delete-photos': '_post_photos',
@@ -1120,6 +1051,15 @@ POST_ROUTES = {
     '/api/video/list': '_post_video',
     '/api/video/delete': '_post_video',
     '/api/places': '_post_places',
+    '/api/panoramax': '_post_panoramax',
+    '/api/panoramax/connect': '_post_panoramax',
+    '/api/panoramax/check': '_post_panoramax',
+    '/api/panoramax/token': '_post_panoramax',
+    '/api/panoramax/forget': '_post_panoramax',
+    '/api/panoramax/start': '_post_panoramax',
+    '/api/panoramax/complete': '_post_panoramax',
+    '/api/panoramax/status': '_post_panoramax',
+    '/api/panoramax/file': '_post_panoramax_file',
     '/api/places/key': '_post_places',
     '/api/places/nearby': '_post_places',
     '/api/places/geocode': '_post_places',

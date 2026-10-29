@@ -410,9 +410,8 @@ class WindowsAppWindow(AppWindow):
         except (AttributeError, OSError):
             pass
         try:
-            # The editor is always dark; pywebview would follow the Windows light/dark setting.
+            # The frame follows the editor's theme; pywebview would follow the Windows setting.
             from webview.platforms import winforms
-            # The frame follows the editor's theme, not the Windows setting.
             winforms.BrowserView.BrowserForm.is_dark_theme = lambda form: self.dark
         except Exception:
             pass

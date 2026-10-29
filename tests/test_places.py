@@ -102,9 +102,12 @@ def test_places_per_tour_and_per_photo(make_editor, tmp_path):
     assert page.inner_text('#place-line') == 'Place on Google Maps: Kiosk · building or business · 146 m (chosen)'
 
     run_upload(page)
-    assert google.uploads == [('Museum1.jpg', 'ChIJmuseum0000000000'), ('Museum2.jpg', 'ChIJmuseum0000000000'),
-                              ('Museum3.jpg', 'ChIJmuseum0000000000'), ('Allee1.jpg', 'BADkiosk00000000000000'),
-                              ('Allee1.jpg', None), ('Allee2.jpg', 'ChIJaddr10.1420'), ('Allee3.jpg', 'ChIJallee000000000000')]
+    # a few at a time: the order they arrive in may vary
+    assert sorted(google.uploads, key=str) == sorted([
+        ('Museum1.jpg', 'ChIJmuseum0000000000'), ('Museum2.jpg', 'ChIJmuseum0000000000'), ('Museum3.jpg', 'ChIJmuseum0000000000'),
+        ('Allee1.jpg', 'BADkiosk00000000000000'), ('Allee1.jpg', None), ('Allee2.jpg', 'ChIJaddr10.1420'),
+        ('Allee3.jpg', 'ChIJallee000000000000')], key=str)
+    assert google.uploads.index(('Allee1.jpg', 'BADkiosk00000000000000')) < google.uploads.index(('Allee1.jpg', None))
     assert 'did not accept the place "Kiosk"' in page.inner_text('#up-notice')
     assert page.inner_text('#up-list .up-row >> nth=3 >> .up-pl') == '→ position only - Google did not take the place'
     page.click('#up-finish')

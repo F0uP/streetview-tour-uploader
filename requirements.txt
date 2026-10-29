@@ -1,7 +1,6 @@
 # Google sign-in and the Street View Publish API
 google-auth>=2.62.0
 google-auth-oauthlib>=1.5.0
-google-api-python-client>=2.201.0
 requests>=2.34.2
 # The editor in its own window: WebView2 (Windows), WKWebView (macOS) or
 # WebKitGTK (Linux - needs the system's python3-gi and gir1.2-webkit2-4.1).

@@ -25,7 +25,7 @@ SECRET_PATTERNS = [
     (re.compile(r'(?i)"(access_token|refresh_token|client_secret|id_token|token|key|api_key)"\s*:\s*"[^"]*"'), r'"\1": "<removed>"'),
     (re.compile(r'(?i)(Bearer\s+)[\w.\-]+'), r'\1<removed>'),
 ]
-LIBRARIES = ['pywebview', 'requests', 'google-auth', 'google-auth-oauthlib', 'google-api-python-client',
+LIBRARIES = ['pywebview', 'requests', 'google-auth', 'google-auth-oauthlib',
              'Pillow', 'pystray', 'pythonnet', 'pyobjc-core', 'PyGObject']
 LOG_TAIL = 1_000_000  # the last MB of the log is plenty
 

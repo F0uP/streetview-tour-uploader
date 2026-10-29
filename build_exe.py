@@ -68,7 +68,6 @@ BUNDLE_ID = "io.github.f0up.streetviewtoureditor"
 DIST_DIR = ROOT / "dist"
 BUILD_DIR = ROOT / "build"
 ICONS = ROOT / "packaging" / "icons"
-HOOKS = ROOT / "packaging" / "pyinstaller-hooks"
 ISS = ROOT / "installer" / f"{APP_NAME}.iss"
 ENTITLEMENTS = ROOT / "packaging" / "macos" / "entitlements.plist"
 VERSION_MODULE = ROOT / "_app_version.py"
@@ -122,8 +121,6 @@ def pyinstaller(name, icon, extra):
         "--name", name,
         "--icon", str(icon),
         "--add-data", f"{ROOT / 'editor'}{os.pathsep}editor",
-        # Only the Street View Publish part of the Google API client's data.
-        "--additional-hooks-dir", str(HOOKS),
         # Other pywebview backends would pull in Qt / GTK / CEF if installed.
         "--exclude-module", "webview.platforms.qt",
         "--exclude-module", "webview.platforms.gtk",

@@ -152,6 +152,7 @@ class FakeGoogle:
 
     def __init__(self, page, reject_place=lambda pid: False):
         self.uploads, self.updates, self.deleted, self.queries = [], [], [], []
+        self.bodies = {}  # file name -> the bytes uploaded
         self.views = {}  # photo id -> view count Google reports
         self.ids = iter(f'g{i}' for i in range(1000))
         self.reject_place = reject_place
@@ -173,6 +174,7 @@ class FakeGoogle:
         self.queries.append({k: v[0] for k, v in q.items()})
         place = q.get('place_id', [None])[0]
         self.uploads.append((q['filename'][0], place))
+        self.bodies[q['filename'][0]] = route.request.post_data_buffer
         if place and self.reject_place(place):
             return route.fulfill(json={'ok': False, 'error': f'Invalid place id: {place}', 'status': 400, 'step': 'create', 'kind': 'place'})
         route.fulfill(json={'ok': True, 'photoId': next(self.ids)})
