@@ -40,6 +40,17 @@ def test_bug_report_keeps_secrets_out(tmp_path):
     assert json.loads(text['editor-page.json'])['messages'][0]['text'] == 'Saved x.vrtour'
 
 
+
+def test_bug_report_reaches_into_the_log_before(tmp_path):
+    """Just after the log was started over, the end of the one before goes along too."""
+    (tmp_path / 'editor.log.1').write_text('older: the upload failed\n', encoding='utf-8')
+    (tmp_path / 'editor.log').write_text('newer: started again\n', encoding='utf-8')
+    data = bug_report.build('1.2.3', tmp_path, {}, packaged=True, window=True, signed_in=False, places_key=False)
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        log = z.read('editor.log').decode()
+    assert log.index('older: the upload failed') < log.index('newer: started again')
+
+
 ASSETS = {name: f'https://github.com/F0uP/streetview-tour-uploader/releases/download/v2.0.0/{name}' for name in [
     'StreetviewTourEditor-2.0.0-Setup.exe', 'StreetviewTourEditor-2.0.0-macos-arm64.dmg', 'StreetviewTourEditor-2.0.0-macos-x64.dmg',
     'StreetviewTourEditor-2.0.0-windows-x64-portable.zip', 'streetview-tour-editor_2.0.0_all.deb']}

@@ -45,14 +45,15 @@ them to Google.
 | 📥 **A whole walk in one go** | Drop a folder (or many photos) and the **import** places them by GPS, links them in the order you walked, turns them to north from the walking direction and checks the tour. One Ctrl+Z takes it all back. |
 | 🗺️ **Plan on a map** | Edit on a street or satellite map: link photos by right-clicking, or let **auto-connect** chain them in the order you walked. **Several tours** on one map – add projects next to each other, export each tour on its own. |
 | 📍 **Places on Google Maps** | Optional, recommended: every photo tied to its building, house number or street, by a rule you can see and change before anything is uploaded. |
-| 🧭 **Get north right** | A **view cone on the map** shows where the panorama looks – drag its tip onto what you see and north is set, right on the satellite map. Let the others follow – from the **walking direction**, by **comparing the photos with each other** or, on sunny days, **from the sun** alone. Fine-tune by ±1°/±10°/180°; the preview shows the result exactly as visitors will see it. |
-| 📍 **No GPS? No problem** | Place photos from a **GPX track** recorded on your phone, or type exact coordinates. GPS a few metres off? **Move or turn the whole tour**, or **snap it to the paths** on OpenStreetMap. |
-| 🙈 **Privacy built in** | **Blur or pixelate faces and licence plates** before uploading: the editor checks **all photos at once** for faces and vehicles – on your computer – and you go through the findings one by one. **Cover the tripod** at the bottom of every photo with the ground around it, a colour or your logo. The Street View Publish API does not blur anything itself. |
-| ✅ **Catch problems early** | The **steps** of each tour (photos, links, north, privacy, places, publishing) show what is left, each with its tools; a **tour check** finds what Google would reject (not 2:1, not a JPEG) and what looks wrong (the same photo twice, north that disagrees with the neighbours), and a **review before publishing** says exactly what goes public. |
-| ☁️ **One-click publishing** | Upload a few photos at a time with a live progress view, readable errors, automatic retries and linking once Google has processed the photos; photos over Google's 75 MB are made smaller on the way. Later changes are **pushed without re-uploading**; the Google status and **view counts** show on every point. **Floors** for tours inside buildings. **Photos already on Google** can be loaded into the editor to fix their links, position or direction. Also on **[Panoramax](https://panoramax.fr)**, the open street-level photo platform. |
+| 🧭 **Get north right** | A **view cone on the map** shows where the panorama looks – drag its tip onto what you see and north is set, right on the satellite map. Let the others follow – from the **walking direction**, by **comparing the photos with each other** or, on sunny days, **from the sun** alone. Fine-tune by ±1°/±10°/180°; the preview shows the result exactly as visitors will see it. Camera not held straight? **Level the horizon** by hand – Google gets it too. |
+| 📍 **No GPS? No problem** | Place photos from a **GPX track** recorded on your phone, **along a path you draw** on the map (spaced by their capture times), or on a **floor plan** of the building laid on the map – one per floor. Or type exact coordinates. GPS a few metres off? **Move or turn the whole tour**, or **snap it to the paths** on OpenStreetMap. |
+| 🙈 **Privacy built in** | **Blur or pixelate faces and licence plates** before uploading: the editor checks **all photos at once** for faces and vehicles – on your computer – and you go through the findings one after the other, <kbd>Enter</kbd> by <kbd>Enter</kbd>. **Cover the tripod** at the bottom of every photo with the ground around it, a colour or your logo. The Street View Publish API does not blur anything itself. |
+| ✅ **Catch problems early** | The **steps** of each tour (photos, links, north, privacy, places, publishing) show what is left, each with its tools; a **tour check** finds what Google would reject (not 2:1, not a JPEG) and what looks wrong (the same photo twice, north that disagrees with the neighbours, **blurred, overexposed or very dark photos**), and a **review before publishing** says exactly what goes public. |
+| ☁️ **One-click publishing** | Upload a few photos at a time with a live progress view, readable errors, automatic retries and linking once Google has processed the photos; photos over Google's 75 MB are made smaller on the way. Later changes are **pushed without re-uploading**; the Google status and **view counts** show on every point, with **views over time**. **Re-shot a place?** The new photos take the place of the old ones on Google, links and place included. **Floors** for tours inside buildings. **Photos already on Google** can be loaded into the editor to fix their links, position or direction. Also on **[Panoramax](https://panoramax.fr)**, the open street-level photo platform. |
 | 🎥 **360° videos** | Upload a 360° video with its GPS track and Google makes the Street View photos from it. The editor checks the video and the track first, goes on after a broken connection – even after a restart – and shows how far Google got. |
-| 🌐 **Share it anywhere** | Export a **ready-to-host website** of the tour (with info points and a minimap) and get the **code to embed it** in another page, a **QR code** for the website or the tour on Google Maps, **KML** for Google Earth, **GPX** for GPS apps, or the **photos with their position and north** written into them for Mapillary and other platforms. |
+| 🌐 **Share it anywhere** | Export a **ready-to-host website** of the tour (with info points, a minimap, your **title and logo**, slow turning by itself, **looking around by turning the phone**, and opening the way you set), a **tour report** for clients (figures, plan, views over time, every photo – print it as a PDF), and get the **code to embed it** in another page, a **QR code** for the website or the tour on Google Maps, **KML** for Google Earth, **GPX** for GPS apps, or the **photos with their position and north** written into them for Mapillary and other platforms. |
 | 💾 **Never lose work** | Autosave, a restore prompt after a crash, and `.vrtour` project files with all photos inside. **Ctrl+S** saves back into the open project; **recent projects** are one click away. |
+| 👥 **Work on it together** | Keep the project in a **OneDrive**, Dropbox, Google Drive or Nextcloud folder and open it on several computers: what one of you saves reaches the others and is merged into their tour, point by point, instead of overwriting it. The app shows who has the project open and merges the copies a cloud folder keeps when two saved at the same time. |
 | 🖥️ **A real desktop app** | For **Windows, macOS and Linux** (also ARM). Its own window, no browser needed, **works offline** (only the map and Google need the internet); a calm **light and dark design**, a short **introduction on first start** and a **sample tour** to try things, a **panorama focus mode**, a **strip of the tour's photos** along the map and a side panel you can make wider, the system's own open and save dialogs, `.vrtour` file association, installers, in-app updates on Windows and update hints on macOS and Linux (or updates through **apt**). English and German user interface. |
 
 <table>
@@ -201,6 +202,16 @@ alone (<kbd>Tab</kbd> goes round inside it, <kbd>Esc</kbd> closes it).
 - **No GPS?** Record a track with any GPS logger app while shooting and give it to
   the import, or use **Tools → Place photos from GPX track…** later (there you
   can also set the camera clock's time zone if the photos don't land on the track).
+- **No GPS and no track?** **Tools → Place photos along a path…** – click the
+  way you walked on the map (<kbd>Backspace</kbd> takes the last point back,
+  double-click or <kbd>Enter</kbd> finishes). The selected photos, or those of the
+  tour, or all without GPS, are spread along it in the order they were taken –
+  by their capture times (walking at an even pace) or evenly – and, if you like,
+  linked in that order and turned to north from the path.
+- **Inside a building?** **Tools → Floor plans…** lays a plan of it (any image)
+  on the map: fit it to the satellite picture with its two handles – the middle
+  moves it, the corner turns and scales it – then place the points on it. A plan
+  with a floor number shows with that floor only. Plans are saved in the project.
 - **Double-click** the map for an empty point; **Replace Photo** in the side
   panel swaps a node's photo.
 - **GPS a few metres off?** **Tools → Move or turn a tour…** shifts the whole tour
@@ -248,6 +259,12 @@ way and you look backwards after a jump.
   the panorama. For sunny photos with the camera's time zone set (most cameras save
   it; else set it in the dialog).
 
+- **Horizon:** a camera not held quite level gives a wavy horizon. In the side
+  panel (*Horizon*), turn the photo's **tilt** and **roll** until the dashed line
+  lies on the horizon all round. Google gets the values with the photo (or as an
+  update, without uploading again), and the exported tour is levelled too.
+  **Camera values** goes back to what the camera saved.
+
 > [!TIP]
 > In the **Preview**, walk through the tour. If a photo looks turned after a jump,
 > use the buttons under the viewer: they turn the photo you are standing in, live.
@@ -256,8 +273,11 @@ way and you look backwards after a jump.
 
 **Tools → Check all photos for faces & plates…** looks through every photo – on
 your computer, nothing is sent anywhere – and lists those with faces or vehicles.
-**Review** opens each in the blur tool with the suggestions marked; after applying –
-or **Nothing to blur** – you are back at the list. Just closing it leaves the photo
+**Review** opens each in the blur tool with the suggestions marked. <kbd>Enter</kbd>
+is done with a photo – it blurs the marked areas, or counts it as *Nothing to
+blur* when none are left – and opens the next photo with findings;
+<kbd>Backspace</kbd> takes the last box back, **Skip** leaves a photo for later.
+After the last one you are back at the list. Just closing it leaves the photo
 open, and a click beside the blur tool never closes it. Photos that were checked stay
 checked – they are kept as checked in the project, and the next check skips them. A face or car on the seam
 of the panorama (where its right edge meets the left one) is found whole and
@@ -284,9 +304,11 @@ unblurred version on Google.
 - **Tools → Check tour…** lists errors (block the upload) and warnings, each with
   a **Show** button – also the same photo at two points. **Compare north with the
   neighbours** there compares the horizons of linked photos and lists those whose
-  north disagrees.
+  north disagrees; **Sharpness and exposure** finds photos blurred by motion and
+  ones mostly white (against the sun) or black.
 - **Preview** shows the tour exactly as it will look, including info points and the
-  minimap.
+  minimap. **Start here, looking this way** makes the photo you stand in the
+  tour's start, opening the way the preview looks.
 - Press <kbd>F</kbd> (or the expand button under the panorama) to see the selected
   photo over the **whole window**, with a small map of the tour. <kbd>↑</kbd> walks
   to the linked point you look at, <kbd>↓</kbd> back, <kbd>←</kbd> <kbd>→</kbd> turn;
@@ -311,7 +333,8 @@ Good to know:
 - **Only what changed is sent.** Running the upload again uploads new photos only;
   moved, turned or re-linked photos are **updated on Google without re-uploading**.
   Links on Google to photos that are not in the project (e.g. loaded for a part of
-  the map only) stay.
+  the map only) stay. A point you delete whose photo is on Google loses its links;
+  the upload offers to delete its photo on Google too.
 - Photos Google hasn't finished yet get their links **automatically in the
   background** while the editor is open.
 - **Tools → Compare with Google** (also in the upload dialog) reads every photo
@@ -326,7 +349,13 @@ Good to know:
   again. A point without its photo (when Google offers no download) can still be
   moved, turned and linked.
 - **Tools → Views on Google…** shows how often each photo has been viewed on
-  Google Maps, per tour.
+  Google Maps, per tour. Each time you look, the counts are noted in the project,
+  so from the second day on a chart shows how they grew.
+- **Re-shot a place?** Import the new photos, then **Tools → Replace photos on
+  Google with new ones…**: each new photo is matched with the nearest photo on
+  Google (up to a distance you set) and takes its place – with its links, its
+  place on Google Maps and, if you like, its old position. The next upload sends
+  the new photos, links them like the old ones and deletes the old ones.
 - **Places on Google Maps** (optional, recommended): see below. Without it you can
   still type a **Place ID** by hand; Google's free
   [Place ID Finder](https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder)
@@ -409,7 +438,8 @@ on Google** shows how far each got, or why Google refused it.
 | | |
 |---|---|
 | **Project → Save** (<kbd>Ctrl</kbd>+<kbd>S</kbd>) | A `.vrtour` file: one zip with the tour and all photos. Once saved or opened, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves straight back into it (in the browser: Chrome/Edge; Firefox downloads a copy). Double-click a `.vrtour` to open it in the app. |
-| **Project → Website with photos** | `index.html` + photos in a `.zip`, ready for any web space. |
+| **Project → Website with photos** | `index.html` + photos in a `.zip`, ready for any web space. Asks first for a title and a logo (kept for the next time), whether the tour turns slowly by itself until someone looks around, and whether phones look around by turning them. |
+| **Project → Tour report for clients** | One HTML page: what is on Google and where, a plan of the tour, the views over time, the link with a QR code and every photo – to send, or print as a PDF from the browser. |
 | **Project → Viewer files** | `tour-viewer.html` + `tour-config.json`, to place next to your photos. Also in the preview. |
 | **Project → CSV** | `tour.csv` for the [command-line uploader](#command-line-tools). |
 | **Project → KML / GPX** | The points (with their Street View links once published) and the links between them, for Google Earth and My Maps, or as waypoints and a track for GPS apps. |
@@ -433,6 +463,48 @@ asks for a new file, so the files you opened stay as they were.
 The editor also **autosaves** as you work. After a crash it offers to restore
 the last session.
 
+#### Working on one project together
+
+Put the `.vrtour` in a folder a cloud service shares – OneDrive, Dropbox, Google
+Drive, Nextcloud – and open **that file** on each computer. There is no server of
+ours in between: the cloud service copies the file, the editor does the rest.
+**Project → Working together…** shows the state of it and sets your name.
+
+The editor looks at the file every few seconds. When someone else saved, the
+changes come into your tour, also while you have unsaved changes of your own, and a
+message says who changed what. Saving merges first too, so nobody saves over
+anybody else. It waits while you are in the middle of something (a dialog, an
+upload, typing, dragging).
+
+| Both of you… | What happens |
+|---|---|
+| changed different points, or different things on one point (one the position, the other north) | Both changes stay. |
+| changed the same thing on one point | Each keeps their own version until one of you saves, and is told so. The last one to save decides. |
+| added a point | Both points stay. |
+| – one deleted a point, the other changed it | The point stays, with its links, and you are told. |
+| – one uploaded a photo, the other blurred or replaced it | The uploaded photo counts as out of date: the next upload sends the new one and deletes it on Google. |
+
+Good to know:
+
+- **Changes reach the others when you save.** Or tick *Save into the project file by
+  itself* in **Working together…**: it then saves a few seconds after each change.
+- **Undo starts anew** when changes from someone else came in: going back further
+  would take their changes out again.
+- **Who is there** (in the app): the top bar shows who else has the project open. For
+  this each editor keeps a small file next to the project
+  (`.tour.vrtour.….editing`, with your name), which the cloud folder shares too. It
+  goes when you close the project; one left by a crash counts for 3 minutes.
+- **Copies** (in the app): when two saved at the same time before the cloud
+  service could copy the file, it keeps both (`tour-LAPTOP.vrtour`, `tour (1).vrtour`).
+  The editor recognises them by their project id, offers to merge them and moves
+  the copy to the recycle bin. **Save as…** starts a project of its own.
+- In **Chrome and Edge** in the browser, changes are merged the same way, without *who
+  is there* and *copies*. Firefox can only download copies, so it can't take part.
+- Each save writes the whole file, photos included, so with a big project it takes
+  the cloud service a while to pass it on. The photos stay in the same place in the
+  file, which helps services that send only what changed. All of you should use the same version
+  of the editor: an older one leaves out what it doesn't know yet when it saves.
+
 ### Keyboard shortcuts
 
 | Action | Shortcut |
@@ -451,6 +523,8 @@ the last session.
 | Panorama over the whole window | <kbd>F</kbd>; in it <kbd>↑</kbd> <kbd>↓</kbd> walk, <kbd>←</kbd> <kbd>→</kbd> turn |
 | Next / previous photo of the tour | <kbd>J</kbd> / <kbd>K</kbd> |
 | Next photo without north | <kbd>N</kbd> |
+| Blur tool: done with this photo / last box back | <kbd>Enter</kbd> / <kbd>Backspace</kbd> |
+| Drawing a path: finish / last point back / cancel | double-click or <kbd>Enter</kbd> / <kbd>Backspace</kbd> / <kbd>Esc</kbd> |
 | Cancel / deselect | <kbd>Esc</kbd> |
 | All shortcuts | <kbd>?</kbd> |
 
@@ -600,8 +674,8 @@ run from source, its sign-in.
 
 | Script | What it does |
 |---|---|
-| `upload_tour.py` | Upload a folder of photos. Without a manifest it links them in file order; with `--manifest tour.csv` it uses your links. It waits for Google to take the photos in before linking (`--wait`, minutes); `--connect-only` sets the links later. `--place-id`, `--dry-run`. |
-| `gen_tour_csv.py` | Build `tour.csv` from an exported `tour-config.json` plus the photos' EXIF GPS. |
+| `upload_tour.py` | Upload a folder of photos. Without a manifest it links them in file order; with `--manifest tour.csv` it uses your links. It waits for Google to take the photos in before linking (`--wait`, minutes); `--connect-only` sets the links later. `--place-id`, `--dry-run`. With `--project tour.vrtour` it uploads a project saved by the editor: its photos not on Google yet, with position, north, place, floor and horizon as set there, then the links – and writes the new photo IDs back into the project, so the editor carries on from there (close the project in the editor first). `--delete-old` deletes the old versions of photos replaced in the editor. |
+| `gen_tour_csv.py` | Build `tour.csv` from an exported `tour-config.json`: its positions, headings and links (the photos' EXIF GPS where it has no position). |
 | `retry_failed.py` | Re-upload only the photos that failed, then redo the links. |
 | `restore_xmp.py` / `restore_exif.py` | Copy 360° metadata / GPS back into photos an image editor stripped. |
 | `find_place_id.py` | Look up a Place ID by name (needs a Google Maps API key). |
@@ -609,6 +683,7 @@ run from source, its sign-in.
 ```bash
 python uploader/gen_tour_csv.py --config tour-config.json --folder photos --out photos/tour.csv
 python uploader/upload_tour.py  --folder photos --manifest photos/tour.csv --dry-run
+python uploader/upload_tour.py  --project tour.vrtour
 ```
 
 See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID for a whole folder).
@@ -634,6 +709,10 @@ See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID fo
 - Closing the window quits the app; nothing keeps running in the background. In
   browser mode the app quits about 15 seconds after the last editor tab is
   closed, and at the latest 5 minutes after no editor page has been heard from.
+- Working on a project together goes only through the cloud folder you chose: the
+  editor sends nothing anywhere for it. Whoever can see that folder sees the name you
+  set in **Working together…**, in the project file and in the note next to it (in the
+  app, your user name on this computer unless you set another).
 - Photos and projects stay on your computer until you upload them; uploads go
   directly to Google's Street View Publish API (or, if you choose, to the Panoramax
   instance you connected; its token stays on your computer). Face and vehicle detection runs on
@@ -669,7 +748,11 @@ editor/js/                the editor as native ES modules, no build step: editor
                           photos), exports.js (photos, KML, GPX), panoramax-dialog.js, video.js and
                           video-dialog.js (360° videos), share.js (QR codes, embed code), notices.js
                           (messages), report.js (bug report), a11y.js (dialogs for the keyboard),
-                          viewer.js, gpx.js, zip.js, util.js
+                          floorplan.js (floor plans), path-place.js (photos along a path),
+                          horizon.js (levelling), quality.js (sharpness, exposure), reshoot.js
+                          (new photos for ones on Google), tour-report.js (views over time, the
+                          report), merge.js (two versions of a project put together), collab.js
+                          (working together), viewer.js, gpx.js, zip.js, util.js
 editor/sample/            the sample tour (made by packaging/make_sample.py)
 editor/vendor/            third-party libraries, fetched and checked by packaging/vendor.py
 run_editor.py             local server, its API endpoints, desktop-app entry point

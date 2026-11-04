@@ -23,6 +23,8 @@ export const VIEWER_LIBS = {
   'psv/markers-plugin/index.module.js': 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.11.5/index.module.js',
   'psv/virtual-tour-plugin/index.css': 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/virtual-tour-plugin@5.11.5/index.css',
   'psv/virtual-tour-plugin/index.module.js': 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/virtual-tour-plugin@5.11.5/index.module.js',
+  'psv/gyroscope-plugin/index.module.js': 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/gyroscope-plugin@5.11.5/index.module.js',
+  'psv/autorotate-plugin/index.module.js': 'https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/autorotate-plugin@5.11.5/index.module.js',
 };
 
 // Where the page may load scripts from: its own scripts (with the nonce) and its libraries.
@@ -36,13 +38,22 @@ function scriptSources(libBase) {
 // as HTML (the arrows' and the minimap's tooltips), so the page gets them escaped
 // (name; label is the plain text), and a Content-Security-Policy lets only the page's
 // own scripts run.
-export function genViewer(startId, nodes, { editable = false, libBase = null, title = null, lang = 'en', mapLabel = 'Map' } = {}) {
+// autorotate: turns slowly by itself until touched; gyroscope: turns with the phone; logo: its
+// address next to the page, shown in a corner. The start point opens looking the way set for
+// it (startView, a compass direction), else at the photo's centre.
+export function genViewer(startId, nodes, { editable = false, libBase = null, title = null, lang = 'en', mapLabel = 'Map',
+  autorotate = false, gyroscope = false, logo = null } = {}) {
   const sn = nodes.find(n => n.id === startId) || nodes[0];
   const closeScript = '<' + '/script>';
   const hasMap = nodes.filter(n => n.lat != null && n.lng != null).length > 1;
   const lib = path => (libBase == null ? VIEWER_LIBS[path] : libBase + path);
   const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
   const pageNodes = nodes.map(n => ({ ...n, name: escapeHtml(n.name), label: n.name }));
+  const startYaw = sn.startView != null ? sn.startView : sn.heading;
+  const plugins = ['MarkersPlugin', '[VirtualTourPlugin,{nodes:NODES,startNodeId:START,arrowStyle:{scale:[0.5,2]}}]',
+    ...(autorotate ? ["[AutorotatePlugin,{autostartDelay:2500,autostartOnIdle:true,autorotateSpeed:'1rpm',autorotatePitch:0}]"] : []),
+    ...(gyroscope ? ['[GyroscopePlugin,{touchmove:true}]'] : [])];
+  const buttons = ['zoom', 'move', ...(autorotate ? ['autorotate'] : []), ...(gyroscope ? ['gyroscope'] : []), 'fullscreen'];
   return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
@@ -60,6 +71,7 @@ ${hasMap ? `<link rel="stylesheet" href="${lib('leaflet/leaflet.css')}">` : ''}
 .psv-panel-content h2{font-family:system-ui,sans-serif;margin-bottom:10px}.psv-panel-content p{font-family:system-ui,sans-serif;line-height:1.6;margin-bottom:10px}.psv-panel-content a{color:#c4b5fd}
 #mm{position:fixed;left:12px;bottom:52px;width:240px;height:170px;border-radius:10px;overflow:hidden;border:2px solid rgba(255,255,255,.7);box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:10;transition:height .2s,width .2s}
 #mm.small{width:44px;height:44px}#mm.small .leaflet-control-container,#mm.small .leaflet-pane{display:none}
+#logo{position:fixed;top:12px;left:12px;max-height:52px;max-width:200px;z-index:10;pointer-events:none;filter:drop-shadow(0 1px 6px rgba(0,0,0,.45))}
 #mm .leaflet-control-attribution{font:9px/1.4 system-ui,sans-serif;padding:0 4px;background:rgba(255,255,255,.75)}
 #mm-t{position:absolute;right:4px;top:4px;z-index:1000;border:none;border-radius:6px;background:rgba(0,0,0,.65);color:#fff;font:600 11px system-ui,sans-serif;padding:3px 7px;cursor:pointer}
 #mm.small #mm-t{inset:0;width:100%;height:100%;border-radius:8px;font-size:18px}
@@ -69,6 +81,7 @@ ${hasMap ? `<link rel="stylesheet" href="${lib('leaflet/leaflet.css')}">` : ''}
 <body>
 <div id="viewer"></div>
 <div id="badge">${escapeHtml(sn.name)}</div>
+${logo ? `<img id="logo" src="${escapeHtml(logo)}" alt="">` : ''}
 ${hasMap ? `<div id="mm"><button id="mm-t" title="${escapeHtml(mapLabel)}">✕</button></div>
 <script nonce="${nonce}" src="${lib('leaflet/leaflet.js')}">${closeScript}` : ''}
 <script type="importmap" nonce="${nonce}">${JSON.stringify({ imports: {
@@ -76,15 +89,17 @@ ${hasMap ? `<div id="mm"><button id="mm-t" title="${escapeHtml(mapLabel)}">✕</
   '@photo-sphere-viewer/core': lib('psv/core/index.module.js'),
   '@photo-sphere-viewer/virtual-tour-plugin': lib('psv/virtual-tour-plugin/index.module.js'),
   '@photo-sphere-viewer/markers-plugin': lib('psv/markers-plugin/index.module.js'),
+  ...(gyroscope ? { '@photo-sphere-viewer/gyroscope-plugin': lib('psv/gyroscope-plugin/index.module.js') } : {}),
+  ...(autorotate ? { '@photo-sphere-viewer/autorotate-plugin': lib('psv/autorotate-plugin/index.module.js') } : {}),
 } })}${closeScript}
 <script type="module" nonce="${nonce}">
 import { Viewer } from '@photo-sphere-viewer/core';
 import { VirtualTourPlugin } from '@photo-sphere-viewer/virtual-tour-plugin';
 import { MarkersPlugin } from '@photo-sphere-viewer/markers-plugin';
-const NODES=${JSON.stringify(pageNodes).replace(/</g, '\\u003c')};
+${gyroscope ? "import { GyroscopePlugin } from '@photo-sphere-viewer/gyroscope-plugin';\n" : ''}${autorotate ? "import { AutorotatePlugin } from '@photo-sphere-viewer/autorotate-plugin';\n" : ''}const NODES=${JSON.stringify(pageNodes).replace(/</g, '\\u003c')};
 const EDIT=${editable ? 'true' : 'false'};
 const START=${JSON.stringify(startId)};
-const viewer=new Viewer({container:document.getElementById('viewer'),panoData:()=>({poseHeading:0}),panorama:NODES.find(n=>n.id===START)?.panorama??NODES[0].panorama,navbar:['zoom','move','fullscreen'],defaultZoomLvl:0,defaultYaw:${sn.heading != null ? +degToRad(sn.heading).toFixed(4) : 0},plugins:[MarkersPlugin,[VirtualTourPlugin,{nodes:NODES,startNodeId:START,arrowStyle:{scale:[0.5,2]}}]]});
+const viewer=new Viewer({container:document.getElementById('viewer'),panoData:()=>({poseHeading:0}),panorama:NODES.find(n=>n.id===START)?.panorama??NODES[0].panorama,navbar:${JSON.stringify(buttons)},defaultZoomLvl:0,defaultYaw:${startYaw != null ? +degToRad(startYaw).toFixed(4) : 0},plugins:[${plugins.join(',')}]});
 const tour=viewer.getPlugin(VirtualTourPlugin);
 const mmEl=document.getElementById('mm');
 let mark=()=>{};

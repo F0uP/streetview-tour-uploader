@@ -4,7 +4,7 @@ import exifr from '../vendor/exifr/full.esm.js';
 import { Viewer } from '@photo-sphere-viewer/core';
 import { MarkersPlugin } from '@photo-sphere-viewer/markers-plugin';
 import { DE, DE_RX, DE_HTML } from './i18n-de.js';
-import { buildZip, readZip } from './zip.js';
+import { buildZip, readZip, zipFile } from './zip.js';
 import { parseGpx, parseOffsetHours, positionAt } from './gpx.js';
 import { degToRad, escapeHtml, normalizeRad, radToDeg } from './util.js';
 import { bearingDeg, distanceMeters, formatDistance, fromLocal, headingDiff, normalizeHeading, offsetEast, toLocal } from './geo.js';
@@ -15,6 +15,12 @@ import { exportGpx, exportKml, exportPhotos, initExports } from './exports.js';
 import { initViewCone, updateViewCone } from './viewcone.js';
 import { initFilmstrip, renderFilmstrip, stepFilmstrip } from './filmstrip.js';
 import { initPanoramax, openPanoramax } from './panoramax-dialog.js';
+import { LIMITS, photoQuality } from './quality.js';
+import { ZERO_POSE, hasOwnPose, horizonOpen, initHorizon, levelCorrection, renderHorizon, tourCorrection, xmpPose } from './horizon.js';
+import { initPathPlace, isDrawingPath, openPathPlace } from './path-place.js';
+import { initFloorPlans, openFloorPlans, renderPlans } from './floorplan.js';
+import { initReshoot, openReshoot } from './reshoot.js';
+import { exportReport, initTourReport, logViews, viewsChart, viewsSeries } from './tour-report.js';
 import { VIEWER_LIBS, VIEWER_LICENSES, genViewer as viewerPage } from './viewer.js';
 import { bestShift, headingFromShift, isClearMatch, photoFeatures, walkWeights } from './align.js';
 import { findFaces, findPlates, overlap } from './detect.js';
@@ -24,6 +30,8 @@ import { initVideoDialog, isVideoFile, openVideo, setVideoFile } from './video-d
 import { initReport, openReport } from './report.js';
 import { initNotices, logNotice, notices } from './notices.js';
 import { initDialogs } from './a11y.js';
+import { mergeProjects, reportIsEmpty } from './merge.js';
+import { collabClient, collabEdited, collabName, collabProjectChanged, initCollab, openCollab } from './collab.js';
 
 // ── Connection to the local app ───────────────────
 // The app opens this page with its secret key in the URL fragment (#k=…). The
@@ -153,7 +161,10 @@ class AppFileHandle {
     return new File([await r.blob()], this.name);
   }
   async createWritable() {
-    return appWritable(`/api/files/write?token=${encodeURIComponent(this.token)}`, blob => { this.written = blob; });
+    return appWritable(`/api/files/write?token=${encodeURIComponent(this.token)}`, (blob, j) => {
+      this.written = blob;
+      this.writtenStat = j.mtime != null ? { mtime: j.mtime, size: j.size } : null; // the file as saved here
+    });
   }
   async queryPermission() { return 'granted'; }
   async requestPermission() { return 'granted'; }
@@ -183,7 +194,7 @@ function appWritable(url, onSaved) {
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
-      onSaved?.(blob);
+      onSaved?.(blob, j);
     },
   };
 }
@@ -353,10 +364,13 @@ const S = {
   nxt: 1,
   compareTargetByNode: {},
   multiSel: new Set(),
+  gsvRemoved: [], // photos on Google of points removed from the tour: unlinked, and deleted there if the user wants
+  plans: [],      // floor plans on the map (floorplan.js)
 };
 
 let saveDirHandle = null;
 let appHasWindow = false; // the editor runs in the app's own window, not in a browser tab
+let appUser = ''; // the computer's user name: the name others see when working on a project together
 const uid = () => `n${S.nxt++}`;
 const cuid = () => `c${S.nxt++}`;
 // Points by id and their place in the list, kept until the list changes.
@@ -516,7 +530,7 @@ document.getElementById('qm-copy').onclick = () => {
     name: `${n.name} copy`,
     // The copy is a new photo spot: not on Google yet, and its info points are its own.
     gsvPhotoId: null, gsvStatus: null, gsvShareLink: null, gsvSig: null,
-    gsvConfirmed: false, gsvUploadedAt: null, gsvObsolete: [], gsvRemote: null, pmx: null,
+    gsvConfirmed: false, gsvUploadedAt: null, gsvObsolete: [], gsvRemote: null, pmx: null, gsvViews: null, viewsLog: [], startView: null,
     hotspots: (n.hotspots || []).map(h => ({ ...h, id: `h${S.nxt++}` })),
   };
   S.nodes.push(copy);
@@ -536,6 +550,7 @@ document.getElementById('qm-del').onclick = () => {
 };
 
 map.on('click', () => {
+  if (isDrawingPath()) return;
   if (S.connFrom) { cancelConnect(); return; }
   if (S.multiSel.size) clearMultiSel();
   S.selId = null;
@@ -544,7 +559,7 @@ map.on('click', () => {
   hideQuickMenu();
 });
 
-map.on('dblclick', e => addEmptyNode(e.latlng.lat, e.latlng.lng));
+map.on('dblclick', e => { if (isDrawingPath()) return; const p = e.latlng.wrap(); addEmptyNode(p.lat, p.lng); });
 
 map.on('mousemove', e => {
   if (!S.connFrom || !connectLine) return;
@@ -687,7 +702,7 @@ function commitLatLng() {
   if (lat === n.lat && lng === n.lng) return;
   pushUndo();
   n.lat = Math.max(-90, Math.min(90, lat));
-  n.lng = lng;
+  n.lng = ((lng + 180) % 360 + 360) % 360 - 180;
   n.marker?.setLatLng([n.lat, n.lng]);
   refreshConnLines();
   refreshCompareUi(n);
@@ -732,6 +747,10 @@ document.getElementById('bh-reset').onclick = () => {
 function removeNodeById(id) {
   const n = gn(id);
   if (!n) return;
+  // Its photo (and old versions of it) stay on Google: remembered, so links to them go and
+  // the upload can delete them.
+  const onGoogle = [n.gsvPhotoId, ...(n.gsvObsolete || [])].filter(Boolean);
+  S.gsvRemoved = [...new Set([...S.gsvRemoved, ...onGoogle])];
   if (S.starts.has(n.id)) {
     // The start moves to another point of its tour (or, with none left, of the map).
     const next = tourOf(n.id)?.nodes.find(x => x.id !== n.id);
@@ -859,6 +878,7 @@ function projectData(nodes = S.nodes) {
       photoName: n.photoName,
       photoPath: n.photoFile ? photoPathOf(n) : null,
       photoType: n.photoFile?.type || null,
+      photoSize: n.photoFile?.size ?? null,
       captureTime: n.captureTime ?? null,
       captureOffset: n.captureOffset ?? null,
       blurred: !!n.blurred,
@@ -881,22 +901,39 @@ function projectData(nodes = S.nodes) {
       level: n.level, // missing: never set; null: none
       gsvViews: n.gsvViews ?? null,
       pmx: n.pmx ?? null, // on Panoramax: { instance, at }
+      pitch: n.pitch ?? null, // levelled by hand (else the photo's own XMP values)
+      roll: n.roll ?? null,
+      viewsLog: n.viewsLog || [], // [[day, views on Google], ...]
+      startView: n.startView ?? null, // the compass direction the tour opens with, at its start
     })),
     conns: S.conns.filter(c => ids.has(c.from) && ids.has(c.to)).map(c => ({ id: c.id, from: c.from, to: c.to })),
     startId: starts[0] ?? null,
     startIds: starts,
+    gsvRemoved: nodes === S.nodes ? S.gsvRemoved : [],
+    plans: S.plans.map(planData),
     tours,
     nxt: S.nxt,
   };
 }
 
-async function packProject(nodes = S.nodes) {
-  const data = projectData(nodes);
-  const entries = [{ name: 'project.json', data: new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }) }];
-  data.nodes.forEach(nd => {
-    if (nd.photoPath) entries.push({ name: nd.photoPath, data: gn(nd.id).photoFile });
-  });
-  return buildZip(entries);
+// The photos first, in the order the points were made, project.json last: saved again,
+// the file changes at its end and where photos changed - a cloud folder that sends only
+// the changed parts of a file has little to send.
+async function packProject(nodes = S.nodes, meta = null) {
+  const data = { ...projectData(nodes), ...meta };
+  const idNumber = id => Number(String(id).slice(1)) || 0;
+  const entries = data.nodes.filter(nd => nd.photoPath).sort((a, b) => idNumber(a.id) - idNumber(b.id))
+    .map(nd => ({ name: nd.photoPath, data: gn(nd.id).photoFile }));
+  S.plans.forEach(plan => entries.push({ name: planPathOf(plan), data: plan.image }));
+  entries.push({ name: 'project.json', data: new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }) });
+  return { zip: await buildZip(entries), data };
+}
+
+// A floor plan in the project file: its image under plans/<id>/.
+const planPathOf = plan => `plans/${plan.id}/${(plan.image.name || 'plan.png').replace(/[^\w.\-]+/g, '_')}`;
+function planData(plan) {
+  const { image, ...rest } = plan;
+  return { ...rest, imagePath: planPathOf(plan), imageType: image.type || null, imageSize: image.size };
 }
 
 // ── Current project file (Ctrl+S) ─────────────────
@@ -922,7 +959,7 @@ function updateTitle() {
 function markDirty() { if (!projectDirty) { projectDirty = true; updateTitle(); } }
 function markClean() { projectDirty = false; updateTitle(); }
 
-async function saveProject({ saveAs = false } = {}) {
+async function saveProject({ saveAs = false, quiet = false } = {}) {
   if (!S.nodes.length) {
     alert('No nodes found.');
     return;
@@ -937,8 +974,16 @@ async function saveProject({ saveAs = false } = {}) {
     }
   }
   try {
+    // Into the file it was opened from: what others saved there meanwhile comes in first.
+    const same = !!handle && handle === projectHandle && !!fileVersion;
+    if (same) await pullSharedChanges({ now: true });
     setSaveStatus('saving', 'Packing project…');
-    const zip = await packProject();
+    const { zip, data } = await packProject(S.nodes, {
+      projectId: same ? projectMeta.projectId : newProjectId(), // saved as a new file: a project of its own
+      rev: newRev(),
+      revs: same ? projectMeta.revs.slice(-50) : [],
+      savedBy: { name: collabName(), client: collabClient(), at: Date.now() },
+    });
     if (handle) {
       const writable = await handle.createWritable();
       await writable.write(zip);
@@ -946,8 +991,12 @@ async function saveProject({ saveAs = false } = {}) {
       projectHandle = handle;
       projectName = handle.name;
       await rebindPhotos(await handle.getFile(), handle);
-      toast(`Saved ${handle.name}`);
-      rememberRecent(handle);
+      noteFileVersion(data, handle.writtenStat || await statOf(handle).catch(() => null));
+      if (!quiet) toast(`Saved ${handle.name}`);
+      if (!same) {
+        rememberRecent(handle);
+        collabProjectChanged();
+      }
     } else {
       await saveTextFile(projectName || PROJECT_FILE, zip);
     }
@@ -956,7 +1005,7 @@ async function saveProject({ saveAs = false } = {}) {
   } catch (err) {
     console.error(err);
     setSaveStatus(null, 'Project save failed');
-    alert(`Saving the project failed: ${err.message || err}`);
+    (quiet ? toast : alert)(`Saving the project failed: ${err.message || err}`);
   }
 }
 
@@ -972,6 +1021,13 @@ async function rebindPhotos(file, handle = null) {
     const fresh = new File([slice], n.photoName || 'photo.jpg', { type: n.photoFile.type || 'image/jpeg' });
     notePhotoSource(fresh, handle);
     swap.set(n.photoFile, fresh);
+  });
+  S.plans.forEach(plan => {
+    const slice = entries[planPathOf(plan)];
+    if (!slice) return;
+    const fresh = new File([slice], plan.image.name, { type: plan.image.type });
+    notePhotoSource(fresh, handle);
+    swap.set(plan.image, fresh);
   });
   swapPhotoFiles(swap);
   // In the app window: the autosave refers to the freshly written file from now on.
@@ -995,9 +1051,14 @@ function swapPhotoFiles(swap) {
     if (n.photoUrl) URL.revokeObjectURL(n.photoUrl);
     n.photoUrl = URL.createObjectURL(fresh);
   });
-  [...undoStack, ...redoStack].forEach(snap => snap.nodes.forEach(n => {
-    if (swap.has(n.photoFile)) n.photoFile = swap.get(n.photoFile);
-  }));
+  [...undoStack, ...redoStack].forEach(snap => {
+    snap.nodes.forEach(n => { if (swap.has(n.photoFile)) n.photoFile = swap.get(n.photoFile); });
+    (snap.plans || []).forEach(plan => { if (swap.has(plan.image)) plan.image = swap.get(plan.image); });
+  });
+  if (S.plans.some(plan => swap.has(plan.image))) {
+    S.plans = S.plans.map(plan => (swap.has(plan.image) ? { ...plan, image: swap.get(plan.image) } : plan));
+    renderPlans();
+  }
 }
 
 // In Chrome and Edge, photos of an opened .vrtour are read from that file on
@@ -1017,12 +1078,307 @@ async function detachPhotosFrom(target) {
   if (!same.length) return;
   const files = new Set();
   S.nodes.forEach(n => { if (n.photoFile) files.add(n.photoFile); });
-  [...undoStack, ...redoStack].forEach(snap => snap.nodes.forEach(n => { if (n.photoFile) files.add(n.photoFile); }));
+  S.plans.forEach(plan => files.add(plan.image));
+  [...undoStack, ...redoStack].forEach(snap => {
+    snap.nodes.forEach(n => { if (n.photoFile) files.add(n.photoFile); });
+    (snap.plans || []).forEach(plan => files.add(plan.image));
+  });
   const swap = new Map();
   for (const f of files) {
     if (same.includes(photoSource.get(f))) swap.set(f, new File([await f.arrayBuffer()], f.name, { type: f.type }));
   }
   swapPhotoFiles(swap);
+}
+
+// ── The project file, shared ──────────────────────
+// In a cloud folder (OneDrive, Dropbox, ...) and open on several computers, the project
+// file is changed by others too. Each save is a version (rev) that names the versions
+// before it (revs). The editor keeps the version it last read or wrote (fileVersion) and
+// merges a newer one into the tour (merge.js) when it sees it, and before saving over it.
+let fileVersion = null; // { data: project.json, stat: { mtime, size } } of the open project file
+let projectMeta = { projectId: null, revs: [] }; // the project's id and the versions it came from
+const newRev = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+const newProjectId = () => (crypto.randomUUID ? crypto.randomUUID() : newRev());
+const sameStat = (a, b) => !!a && !!b && a.mtime === b.mtime && a.size === b.size;
+
+// The version of the file the tour is now based on. One read from someone else adds to the
+// line of versions.
+function noteFileVersion(data, stat, { pulled = false } = {}) {
+  fileVersion = { data, stat };
+  projectMeta = {
+    projectId: data.projectId || projectMeta.projectId || newProjectId(),
+    revs: [...new Set([...(pulled ? projectMeta.revs : []), ...(data.revs || []), ...(data.rev ? [data.rev] : [])])].slice(-60),
+  };
+  cacheVersion(data);
+}
+
+async function statOf(handle) {
+  if (handle instanceof AppFileHandle) {
+    const j = await (await fetch(`/api/files/stat?token=${encodeURIComponent(handle.token)}`, { cache: 'no-store' })).json();
+    return j.ok ? { mtime: j.mtime, size: j.size } : null;
+  }
+  const file = await handle.getFile();
+  return { mtime: file.lastModified, size: file.size };
+}
+
+// A version of a project file: its project.json and, when asked for, its photos. In the
+// app one entry at a time (the file can be big); a version that is written again while
+// it is read throws - it is read again next time.
+async function readVersion(handle) {
+  if (handle instanceof AppFileHandle) {
+    const get = async name => {
+      const r = await fetch(`/api/files/entry?token=${encodeURIComponent(handle.token)}&name=${encodeURIComponent(name)}`, { cache: 'no-store' });
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return { blob: await r.blob(), stat: { mtime: Number(r.headers.get('X-File-Mtime')), size: Number(r.headers.get('X-File-Size')) } };
+    };
+    const head = await get('project.json');
+    if (!head) throw new Error('project.json missing - not a .vrtour file');
+    return {
+      data: JSON.parse(await head.blob.text()), stat: head.stat, source: null,
+      async entry(name) {
+        const e = await get(name);
+        if (e && !sameStat(e.stat, head.stat)) throw new Error('changed');
+        return e?.blob || null;
+      },
+    };
+  }
+  const file = await handle.getFile();
+  const entries = await readZip(file);
+  if (!entries['project.json']) throw new Error('project.json missing - not a .vrtour file');
+  return {
+    data: JSON.parse(await entries['project.json'].text()), stat: { mtime: file.lastModified, size: file.size }, source: handle,
+    async entry(name) { return entries[name] || null; },
+  };
+}
+
+// Versions read or written, kept a while: the base for a version that didn't start from
+// the last one this editor had (a copy a cloud folder kept).
+async function cacheVersion(data) {
+  if (!data?.rev) return;
+  try {
+    const db = await openSaveDb();
+    try {
+      const store = db.transaction('kv', 'readwrite').objectStore('kv');
+      const index = (await idbRequest(store.get('projectRevs'))) || [];
+      if (!index.includes(data.rev)) {
+        store.put(JSON.stringify(data), `rev:${data.rev}`);
+        index.push(data.rev);
+        index.splice(0, Math.max(0, index.length - 40)).forEach(rev => store.delete(`rev:${rev}`));
+        store.put(index, 'projectRevs');
+      }
+    } finally {
+      db.close();
+    }
+  } catch (err) {
+    console.warn('keeping a project version failed', err);
+  }
+}
+async function cachedVersion(rev) {
+  try {
+    const db = await openSaveDb();
+    try {
+      const text = await idbRequest(db.transaction('kv').objectStore('kv').get(`rev:${rev}`));
+      return text ? JSON.parse(text) : null;
+    } finally {
+      db.close();
+    }
+  } catch { return null; }
+}
+
+// What both started from: the version the tour is based on, if theirs came from it; else
+// the last version both have (if it is still kept); else none (then nothing is deleted).
+async function baseFor(theirs) {
+  const mine = fileVersion?.data;
+  if (!mine) return null;
+  if (!theirs.rev || !mine.rev || theirs.rev === mine.rev || (theirs.revs || []).includes(mine.rev)) return mine;
+  const theirRevs = new Set([...(theirs.revs || []), theirs.rev]);
+  const common = [...projectMeta.revs].reverse().find(rev => theirRevs.has(rev));
+  return common ? cachedVersion(common) : null;
+}
+
+// While something is in the middle of work, changes from others wait a moment.
+function sharedMergeBlocked() {
+  const typing = document.activeElement?.matches?.('input:not([type=range]):not([type=checkbox]):not([type=radio]), textarea, select');
+  return busyWith.size > 0 || !!document.querySelector('.modal-back.show') || isDrawingPath() || !!S.connFrom || typing
+    || !document.getElementById('plan-adjust-bar').hidden || document.body.classList.contains('leaflet-dragging');
+}
+
+// What someone else saved into the open project file, merged into the tour; true if the
+// file had changed. Before saving (now) it doesn't wait for anything.
+let pulling = null;
+async function pullSharedChanges({ now = false } = {}) {
+  while (pulling) await pulling.catch(() => {});
+  pulling = pullOnce(now);
+  try { return await pulling; } finally { pulling = null; }
+}
+async function pullOnce(now) {
+  const handle = projectHandle;
+  if (!handle || !fileVersion) return false;
+  for (let attempt = 1; ; attempt++) {
+    const stat = await statOf(handle).catch(() => null);
+    if (!stat || sameStat(stat, fileVersion.stat) || (!now && sharedMergeBlocked())) return false;
+    if (handle instanceof AppFileHandle) handle.written = null; // what was saved here is not what the file holds now
+    try {
+      const version = await readVersion(handle);
+      if (handle !== projectHandle) return false;
+      const theirs = upgradeProject(version.data, handle.name);
+      await mergeIn(theirs, version, await baseFor(theirs), { refs: handle });
+      noteFileVersion(theirs, version.stat, { pulled: true });
+      return true;
+    } catch (err) {
+      // The cloud folder is replacing the file just now. Nothing has changed here yet: it
+      // is read again - and it is not saved over, or what is in it would be lost.
+      console.warn('reading the project file failed', err);
+      if (!now) return false;
+      if (attempt === 5) throw new Error(t('The project file is being changed right now - try again in a moment.'));
+      await new Promise(resolve => setTimeout(resolve, 700));
+    }
+  }
+}
+
+// Another copy of the project (one a cloud folder kept) merged in, saved into the project
+// file and moved to the recycle bin.
+async function mergeCopy(copy) {
+  try {
+    await pullSharedChanges({ now: true });
+    const version = await readVersion(new AppFileHandle(copy.token, copy.name));
+    const theirs = upgradeProject(version.data, copy.name);
+    await mergeIn(theirs, version, await baseFor(theirs), { dirty: true });
+    projectMeta.revs = [...new Set([...projectMeta.revs, ...(theirs.revs || []), ...(theirs.rev ? [theirs.rev] : [])])].slice(-60);
+    await saveProject({ quiet: true });
+    if (projectDirty) return; // not saved: the copy stays
+    const j = await (await fetch('/api/files/trash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: copy.token }) })).json();
+    toast(j.ok ? t('{copy} is merged into {file} and in the recycle bin now.', { copy: copy.name, file: projectName })
+      : t('{copy} is merged into {file}; it could not be moved to the recycle bin ({msg}).', { copy: copy.name, file: projectName, msg: j.error }));
+  } catch (err) {
+    alert(t('Merging {copy} failed: {msg}', { copy: copy.name, msg: err.message || err }));
+  }
+}
+
+const unreadable = async file => { try { await file.slice(0, 1).arrayBuffer(); return false; } catch { return true; } };
+
+// A photo as the autosave stored it (for one Chrome or Edge can't read any more: the file it
+// was read from was written over by the cloud folder).
+async function autosavedPhoto(file) {
+  const key = photoKeys.get(file);
+  if (!key || unsavedPhotos.has(key)) return null;
+  try {
+    const db = await openSaveDb();
+    try {
+      const blob = await idbRequest(db.transaction('kv').objectStore('kv').get(key));
+      return blob ? new File([blob], file.name, { type: file.type }) : null;
+    } finally {
+      db.close();
+    }
+  } catch { return null; }
+}
+
+// The photo of a merged point: this side's (unless it can't be read any more), or the file's.
+async function mergedPhoto(nd, mine, from, version, swap, lost) {
+  if (!nd.photoPath) return null;
+  const own = mine?.photoFile || null;
+  const fromFile = async name => {
+    const blob = await version.entry(name); // a read that fails stops the merge, before anything changed
+    if (!blob) return null;
+    const file = zipFile(blob, nd.photoName || 'photo.jpg', nd.photoType || 'image/jpeg');
+    notePhotoSource(file, version.source);
+    return file;
+  };
+  if (own && from !== 'theirs') {
+    if (!(await unreadable(own))) return own;
+    // Chrome and Edge read it from the file as it was: the same photo in the file now, or the autosave's copy.
+    const again = await fromFile(photoPathOf(mine));
+    const fresh = again && again.size === own.size ? again : await autosavedPhoto(own);
+    if (fresh) { swap.set(own, fresh); return fresh; }
+    lost.push(nd.name || nd.id);
+    return null;
+  }
+  const file = await fromFile(nd.photoPath);
+  if (file) return file;
+  if (own && !(await unreadable(own))) return own;
+  if (nd.photoName) lost.push(nd.name || nd.id);
+  return null;
+}
+
+// Puts another version of the project (theirs) together with the tour and shows the result.
+// refs: the app's project file the photos are references to (for the autosave) from now on;
+// dirty: the result is to be saved (merged from a copy).
+async function mergeIn(theirs, version, base, { refs = null, dirty = false } = {}) {
+  const { data, report } = mergeProjects(base, projectData(), theirs);
+  const wasDirty = projectDirty;
+  const live = new Map(S.nodes.map(n => [n.id, n]));
+  const oldIdOf = new Map([...report.renamed].map(([from, to]) => [to, from]));
+  const swap = new Map(), lost = [];
+  const nodes = [];
+  for (const nd of data.nodes) {
+    const mine = live.get(oldIdOf.get(nd.id) || nd.id);
+    nodes.push(snapNode(nd, await mergedPhoto(nd, mine, report.photos.get(nd.id), version, swap, lost)));
+  }
+  const plans = [];
+  for (const pd of data.plans || []) {
+    const mine = S.plans.find(plan => plan.id === pd.id);
+    if (mine && report.plans.get(pd.id) !== 'theirs' && !(await unreadable(mine.image))) {
+      const { imagePath, imageType, imageSize, ...rest } = pd;
+      plans.push({ ...rest, image: mine.image });
+      continue;
+    }
+    const blob = await version.entry(pd.imagePath);
+    if (!blob) continue;
+    const plan = snapPlan(pd, blob);
+    notePhotoSource(plan.image, version.source);
+    if (mine) swap.set(mine.image, plan.image);
+    plans.push(plan);
+  }
+  const sel = report.renamed.get(S.selId) || S.selId;
+  applySnapshot({
+    nodes, conns: data.conns.map(c => ({ id: c.id, from: c.from, to: c.to })),
+    selId: nodes.some(n => n.id === sel) ? sel : null,
+    starts: data.startIds, tourNames: data.tours || {}, nxt: Math.max(data.nxt || 1, S.nxt), gsvRemoved: data.gsvRemoved || [], plans,
+  });
+  swapPhotoFiles(swap);
+  const visible = !reportIsEmpty(report);
+  if (visible) {
+    // Undo goes back to states without the others' changes: saved, they would be gone from the file.
+    undoStack = [];
+    redoStack = [];
+    updateUndoRedoButtons();
+  }
+  // In the app: the photos that are the file's are references to it for the autosave.
+  const [ref] = (await fileRefs(refs ? [refs] : [])) || [];
+  if (ref) {
+    S.nodes.forEach(n => {
+      const from = report.photos.get(n.id);
+      if (n.photoFile && (from === 'theirs' || from === 'same')) photoRefs.set(n.photoFile, { ref, entry: photoPathOf(n), type: n.photoFile.type });
+    });
+  }
+  if (dirty || wasDirty || report.renamed.size || report.retired.length || report.restored.length) markDirty();
+  else markClean();
+  scheduleAutosave({ edit: false });
+  if (visible || report.conflicts.length || lost.length) reportMerge(report, theirs.savedBy?.name, lost);
+}
+
+const MERGE_PARTS = {
+  position: 'position', north: 'north', photo: 'photo', google: 'upload to Google', place: 'place', horizon: 'horizon',
+  name: 'name', hotspots: 'info points', level: 'floor', tourId: 'tour', startView: 'start view', pmx: 'Panoramax', 'floor plan': 'floor plan',
+};
+function reportMerge(report, who, lost) {
+  const parts = [];
+  if (report.added.length) parts.push(t('{n} point(s) added', { n: report.added.length }));
+  if (report.changed.length) parts.push(t('{n} changed', { n: report.changed.length }));
+  if (report.removed.length) parts.push(t('{n} removed', { n: report.removed.length }));
+  if (!parts.length && [...report.plans.values()].includes('theirs')) parts.push(t('floor plans'));
+  toast(t('{who} saved changes - now here too: {what}.', { who: who || t('Someone'), what: parts.join(', ') || t('details') }));
+  const notes = [];
+  if (report.conflicts.length) {
+    notes.push(t('Changed on both computers - your version is kept: {list}', {
+      list: report.conflicts.map(c => `${c.name} (${c.what.map(w => t(MERGE_PARTS[w] || w)).join(', ')})`).join('; '),
+    }));
+  }
+  if (report.restored.length) notes.push(t('Deleted on one computer, changed on the other - kept: {names}', { names: report.restored.join(', ') }));
+  if (report.retired.length) notes.push(t('The photo on Google is out of date now - the next upload replaces it: {names}', { names: report.retired.join(', ') }));
+  if (lost.length) notes.push(t('These photos could not be kept - add them again: {names}', { names: lost.join(', ') }));
+  notes.forEach(note => toast(note));
 }
 
 document.getElementById('bsave').onclick = () => saveProject();
@@ -1082,44 +1438,23 @@ async function readProjectFile(file, handle = null) {
     throw new Error(t('It was saved by a newer version of the editor - update the editor to open it.'));
   }
   data = upgradeProject(data, file.name);
-  const tourNames = { ...data.tours };
-  const tourIdOf = nd => nd.tourId || null;
   const snap = {
       nodes: data.nodes.map(nd => {
         const blob = nd.photoPath && photos[nd.photoPath];
-        return {
-          id: nd.id, name: nd.name, lat: nd.lat, lng: nd.lng,
-          heading: nd.heading ?? null, origHeading: nd.origHeading ?? null,
-          viewYaw: nd.viewYaw ?? 0, origViewYaw: nd.origViewYaw ?? 0,
-          headingSource: nd.headingSource || 'manual', hasGps: !!nd.hasGps,
-          photoName: nd.photoName ?? null,
-          photoFile: blob ? new File([blob], nd.photoName || 'photo.jpg', { type: nd.photoType || 'image/jpeg' }) : null,
-          captureTime: nd.captureTime ?? undefined,
-          captureOffset: nd.captureOffset ?? null,
-          blurred: !!nd.blurred,
-          privacyChecked: !!nd.privacyChecked,
-          gsvPhotoId: nd.gsvPhotoId ?? null,
-          gsvStatus: nd.gsvStatus ?? null,
-          gsvShareLink: nd.gsvShareLink ?? null,
-          gsvSig: nd.gsvSig ?? null,
-          gsvConfirmed: !!nd.gsvConfirmed,
-          gsvUploadedAt: nd.gsvUploadedAt ?? null,
-          gsvObsolete: Array.isArray(nd.gsvObsolete) ? nd.gsvObsolete : [],
-          hotspots: Array.isArray(nd.hotspots) ? nd.hotspots : [],
-          tourId: tourIdOf(nd),
-          placeId: nd.placeId, placeName: nd.placeName ?? null, placeAuto: !!nd.placeAuto,
-          placeKind: nd.placeKind ?? null, placeDist: nd.placeDist ?? null, placeFor: nd.placeFor ?? null,
-          level: nd.level, gsvViews: nd.gsvViews ?? null, pmx: nd.pmx ?? null,
-        };
+        return snapNode(nd, blob ? zipFile(blob, nd.photoName || 'photo.jpg', nd.photoType || 'image/jpeg') : null);
       }),
       conns: (data.conns || []).map(c => ({ id: c.id, from: c.from, to: c.to })),
       selId: null,
       starts: Array.isArray(data.startIds) ? data.startIds : (data.startId ? [data.startId] : []),
-      tourNames,
+      tourNames: { ...data.tours },
       nxt: data.nxt ?? 1,
+      gsvRemoved: Array.isArray(data.gsvRemoved) ? data.gsvRemoved : [],
+      plans: (Array.isArray(data.plans) ? data.plans : []).filter(pd => photos[pd.imagePath]).map(pd => snapPlan(pd, photos[pd.imagePath])),
       legacyJson,
+      data, // project.json as it is in the file
   };
   snap.nodes.forEach(n => { if (n.photoFile) notePhotoSource(n.photoFile, handle); });
+  snap.plans.forEach(plan => notePhotoSource(plan.image, handle));
   const [ref] = (await fileRefs(handle ? [handle] : [])) || [];
   if (ref) {
     snap.nodes.forEach((n, i) => {
@@ -1127,6 +1462,39 @@ async function readProjectFile(file, handle = null) {
     });
   }
   return snap;
+}
+
+// A point of project.json as the tour keeps it.
+function snapNode(nd, photoFile) {
+  return {
+    id: nd.id, name: nd.name, lat: nd.lat, lng: nd.lng,
+    heading: nd.heading ?? null, origHeading: nd.origHeading ?? null,
+    viewYaw: nd.viewYaw ?? 0, origViewYaw: nd.origViewYaw ?? 0,
+    headingSource: nd.headingSource || 'manual', hasGps: !!nd.hasGps,
+    photoName: nd.photoName ?? null,
+    photoFile,
+    captureTime: nd.captureTime ?? undefined,
+    captureOffset: nd.captureOffset ?? null,
+    blurred: !!nd.blurred,
+    privacyChecked: !!nd.privacyChecked,
+    gsvPhotoId: nd.gsvPhotoId ?? null,
+    gsvStatus: nd.gsvStatus ?? null,
+    gsvShareLink: nd.gsvShareLink ?? null,
+    gsvSig: nd.gsvSig ?? null,
+    gsvConfirmed: !!nd.gsvConfirmed,
+    gsvUploadedAt: nd.gsvUploadedAt ?? null,
+    gsvObsolete: Array.isArray(nd.gsvObsolete) ? nd.gsvObsolete : [],
+    hotspots: Array.isArray(nd.hotspots) ? nd.hotspots : [],
+    tourId: nd.tourId || null,
+    placeId: nd.placeId, placeName: nd.placeName ?? null, placeAuto: !!nd.placeAuto,
+    placeKind: nd.placeKind ?? null, placeDist: nd.placeDist ?? null, placeFor: nd.placeFor ?? null,
+    level: nd.level, gsvViews: nd.gsvViews ?? null, pmx: nd.pmx ?? null,
+    pitch: nd.pitch ?? null, roll: nd.roll ?? null, viewsLog: Array.isArray(nd.viewsLog) ? nd.viewsLog : [], startView: nd.startView ?? null,
+  };
+}
+// A floor plan of project.json with its image.
+function snapPlan({ imagePath, imageType, imageSize, ...pd }, blob) {
+  return { ...pd, image: zipFile(blob, imagePath.split('/').pop(), imageType || 'image/png') };
 }
 
 async function openProjectFile(file, handle = null, { ask = true } = {}) {
@@ -1138,6 +1506,10 @@ async function openProjectFile(file, handle = null, { ask = true } = {}) {
     scheduleAutosave();
     projectHandle = snap.legacyJson ? null : handle;
     projectName = snap.legacyJson ? file.name.replace(/\.json$/i, '.vrtour') : file.name;
+    projectMeta = { projectId: null, revs: [] };
+    fileVersion = null;
+    if (projectHandle) noteFileVersion(snap.data, handle instanceof AppFileHandle ? await statOf(handle).catch(() => null) : { mtime: file.lastModified, size: file.size });
+    collabProjectChanged();
     markClean();
     if (projectHandle) rememberRecent(projectHandle);
     const missing = snap.nodes.filter(n => n.photoName && !n.photoFile).length;
@@ -1189,8 +1561,10 @@ async function exportCsv(scope = null) {
   await saveTextFile(scope ? `${fileBase(scope.name)}.csv` : 'tour.csv', csv);
 }
 
-// PSV turns a panorama by -pan, so pan = -heading puts the photo's centre at its heading.
+// PSV turns a panorama by -pan, so pan = -heading puts the photo's centre at its heading;
+// a photo levelled by hand is turned by its pitch and roll as well (horizon.js).
 function sphereCorrectionOf(n) {
+  if (hasOwnPose(n)) return tourCorrection(n.heading ?? 0, n.pitch, n.roll);
   return { pan: +normalizeRad(-degToRad(n.heading ?? 0)).toFixed(4) };
 }
 
@@ -1214,7 +1588,9 @@ function buildTourConfig(nodes = S.nodes) {
       lat: n.lat,
       lng: n.lng,
       heading: n.heading,
-      ...(n.heading != null ? { sphereCorrection: sphereCorrectionOf(n) } : {}),
+      ...(n.heading != null || hasOwnPose(n) ? { sphereCorrection: sphereCorrectionOf(n) } : {}),
+      ...(hasOwnPose(n) ? { panoData: { poseHeading: 0, posePitch: 0, poseRoll: 0 } } : {}),
+      ...(n.startView != null ? { startView: n.startView } : {}),
       links,
       ...(n.hotspots?.length ? { markers: hotspotMarkers(n) } : {}),
     };
@@ -1343,6 +1719,7 @@ function staticCommands() {
     { icon: ICONS.upload, label: 'Upload to Google Street View', run: () => document.getElementById('bupload').click() },
     { icon: ICONS.save, label: 'Save project', hint: 'Ctrl S', run: () => saveProject() },
     { icon: ICONS.save, label: 'Save project as…', hint: 'Ctrl Shift S', run: () => saveProject({ saveAs: true }) },
+    { icon: ICONS.link, label: 'Working together…', run: () => openCollab() },
     { icon: ICONS.folder, label: 'Open project (.vrtour)', hint: 'Ctrl O', run: pickAndOpenProject },
     { icon: ICONS.folder, label: 'Add project to the map…', hint: 'Ctrl Shift O', run: pickAndAddProjects },
     { icon: ICONS.link, label: 'Auto-connect nodes…', run: openAutoConnect },
@@ -1359,6 +1736,10 @@ function staticCommands() {
     { icon: ICONS.eye, label: 'Cover the tripod…', run: () => openNadir() },
     { icon: ICONS.upload, label: 'Publish on Panoramax…', run: () => openPanoramax() },
     { icon: ICONS.download, label: 'Export photos with position and north (.zip)', run: () => runExport('photos') },
+    { icon: ICONS.target, label: 'Place photos along a path…', run: () => openPathPlace() },
+    { icon: ICONS.grid, label: 'Floor plans…', run: () => openFloorPlans() },
+    { icon: ICONS.upload, label: 'Replace photos on Google with new ones…', run: () => openReshoot() },
+    { icon: ICONS.download, label: 'Tour report…', run: () => runExport('report') },
     { icon: ICONS.grid, label: 'Check tour…', run: () => openTourCheck() },
     { icon: ICONS.upload, label: 'Compare with Google…', run: () => openGoogleCompare() },
     { icon: ICONS.eye, label: 'Views on Google…', run: () => openViews() },
@@ -1594,9 +1975,32 @@ function refreshUploadSummary() {
   const obsolete = S.nodes.reduce((sum, n) => sum + (n.gsvObsolete?.length || 0), 0);
   document.getElementById('upl-delete-old-row').hidden = !obsolete;
   document.getElementById('upl-delete-old-label').textContent = t('Delete the old versions of replaced or blurred photos on Google ({n})', { n: obsolete });
-  uplStart.disabled = !fresh && !changed;
+  const removed = S.gsvRemoved.length;
+  document.getElementById('upl-delete-removed-row').hidden = !removed;
+  document.getElementById('upl-delete-removed-label').textContent = t('Also delete the photos of {n} point(s) removed from the tour on Google', { n: removed });
+  uplStart.disabled = !fresh && !changed && !(removed && document.getElementById('upl-delete-removed').checked);
 }
 document.getElementById('upl-reupload').addEventListener('change', refreshUploadSummary);
+document.getElementById('upl-delete-removed').addEventListener('change', refreshUploadSummary);
+
+// Photo IDs on Google that no point of the tour stands for any more: links to them go, and
+// they are never taken for a point's photo again.
+const gsvGone = () => new Set([...S.gsvRemoved, ...S.nodes.flatMap(n => n.gsvObsolete || [])]);
+
+async function deleteRemovedGooglePhotos() {
+  try {
+    const r = await fetch('/api/delete-photos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: S.gsvRemoved }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'failed');
+    const done = new Set(j.results.filter(x => x.ok).map(x => x.id));
+    S.gsvRemoved = S.gsvRemoved.filter(id => !done.has(id));
+    if (done.size) uplLine(t('{n} photo(s) of removed points deleted on Google', { n: done.size }));
+    j.results.filter(x => !x.ok).forEach(x => uplLine(t('could not delete the photo of a removed point on Google: {msg}', { msg: x.error })));
+    scheduleAutosave();
+  } catch (err) {
+    uplLine(t('could not delete the photo of a removed point on Google: {msg}', { msg: err.message }));
+  }
+}
 
 // ── Places on Google Maps ─────────────────────────
 // Optional, recommended. With an API key of the user's own (kept by the app,
@@ -2130,6 +2534,7 @@ function uploadOne(n, placeId, onBytes, file = n.photoFile) {
     if (n.heading != null) params.set('heading', n.heading);
     if (placeId) params.set('place_id', placeId);
     if (n.level) { params.set('level', n.level.number); params.set('level_name', n.level.name || ''); }
+    if (hasOwnPose(n)) { params.set('pitch', n.pitch || 0); params.set('roll', n.roll || 0); }
     const total = file.size;
     let local = 0, remote = 0, phase = 'local', finished = false;
     // A progress poll still in flight when the upload ends must not report anymore.
@@ -2177,7 +2582,7 @@ async function adoptExistingGooglePhotos(nodes) {
     if (!j.ok) return [];
     photos = j.photos.filter(p => p.id && p.lat != null);
   } catch { return []; }
-  const used = new Set(S.nodes.filter(n => n.gsvConfirmed && n.gsvPhotoId).map(n => n.gsvPhotoId));
+  const used = new Set([...S.nodes.filter(n => n.gsvConfirmed && n.gsvPhotoId).map(n => n.gsvPhotoId), ...gsvGone()]);
   const adopted = [];
   nodes.forEach(n => {
     let best = null, bestD = 1; // within 1 m
@@ -2211,9 +2616,15 @@ async function pushGoogleChanges(nodes = S.nodes) {
   // Without knowing Google's links (offline), a photo whose links changed waits for the next try.
   items = items.filter(n => !gsvLinksChanged(n) || n.gsvRemote);
   if (!items.length) return { ok: 0, failed: 0, items };
-  const known = new Set(S.nodes.map(n => n.gsvPhotoId).filter(Boolean));
+  const known = new Set([...S.nodes.map(n => n.gsvPhotoId).filter(Boolean), ...gsvGone()]);
   const sent = new Map(items.map(n => [n, gsvLinksChanged(n)
     ? [...gsvLinksOf(n), ...(n.gsvRemote.connections || []).filter(id => !known.has(id))] : null]));
+  // Levelled by hand before, and no longer (undone): Google keeps a pose until told another one - the camera's.
+  const pose = new Map();
+  for (const n of items) {
+    if (hasOwnPose(n)) pose.set(n, { pitch: n.pitch || 0, roll: n.roll || 0 });
+    else if (n.gsvSig?.includes('"pose ')) pose.set(n, await xmpPose(n.photoFile));
+  }
   const r = await fetch('/api/update-photos', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2223,6 +2634,7 @@ async function pushGoogleChanges(nodes = S.nodes) {
         ...(sent.get(n) ? { connections: sent.get(n) } : {}),
         ...(n.placeId !== undefined ? { placeId: n.placeId } : {}),
         ...(n.level !== undefined ? { level: n.level } : {}),
+        ...(pose.get(n) || {}),
       })),
     }),
   });
@@ -2281,12 +2693,22 @@ uplStart.onclick = async () => {
 };
 
 // The app window asks before closing while this is set (the question comes from here, translated).
-function setAppBusy(busy, question) {
+// Several things can run at once (an upload, a video, Panoramax): each says so under its own key.
+const busyWith = new Map();
+function setAppBusy(busy, question, key = 'upload') {
+  if (busy) busyWith.set(key, question || t('An upload to Google is still running. Quit anyway? Photos that are not uploaded yet stay in your tour and can be uploaded later.'));
+  else busyWith.delete(key);
   fetch('/api/busy', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question: busy ? (question || t('An upload to Google is still running. Quit anyway? Photos that are not uploaded yet stay in your tour and can be uploaded later.')) : null }),
+    body: JSON.stringify({ question: [...busyWith.values()][0] || null }),
   }).catch(() => {});
 }
+// In a browser tab: closing it while something is still being sent asks first (the app window asks itself).
+window.addEventListener('beforeunload', e => {
+  if (!busyWith.size || appHasWindow) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
 
 async function runUpload() {
   const nodes = uploadCandidates();
@@ -2358,7 +2780,7 @@ async function runUpload() {
       const j = await (await fetch('/api/list-photos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
       if (j.ok) photos = j.photos;
     } catch {}
-    const used = new Set(S.nodes.filter(n => n.gsvConfirmed && n.gsvPhotoId).map(n => n.gsvPhotoId));
+    const used = new Set([...S.nodes.filter(n => n.gsvConfirmed && n.gsvPhotoId).map(n => n.gsvPhotoId), ...gsvGone()]);
     const matches = findNearbyGooglePhotos(fresh, photos, used);
     if (matches.size && confirm(t('{n} of the photos to upload seem to be on Google already, at exactly the same spot (probably an earlier upload). Link them to those instead of uploading them again?', { n: matches.size }))) {
       matches.forEach((near, n) => {
@@ -2384,6 +2806,7 @@ async function runUpload() {
   const sendOne = async n => {
     if (uploadCancel) { setRow(n, 'skipped', t('Cancelled')); return; }
     begun++;
+    const sentPhoto = n.photoFile;
     setRow(n, 'uploading', t('Uploading…'), 0);
     setOverall({ title: t('Uploading photo {a} of {b}', { a: begun, b: todo.length }), pct: totalBytes ? (sentSoFar() / totalBytes) * 100 : 0 });
     let file;
@@ -2432,8 +2855,21 @@ async function runUpload() {
       }
       j = retry;
     }
-    sentBytes.set(n, Math.min(n.photoFile.size, GOOGLE_MAX));
+    sentBytes.set(n, Math.min(sentPhoto.size, GOOGLE_MAX));
+    // Undo or redo in between gives the tour new point objects: the one that counts is the live one.
+    const live = gn(n.id);
+    if (j.ok && (!live || live.photoFile !== sentPhoto)) {
+      // Removed, or its photo changed (e.g. blurred) while this one went up: the uploaded photo is
+      // out of date - deleted with the old versions, never taken as the point's photo.
+      if (live) live.gsvObsolete = [...(live.gsvObsolete || []), j.photoId];
+      else S.gsvRemoved = [...S.gsvRemoved, j.photoId];
+      setRow(n, 'skipped', t('Changed while uploading - it goes up again next time'), 100);
+      uplLine(`${n.photoName}: ${t('changed while uploading - the version just uploaded counts as an old version')}`);
+      scheduleAutosave();
+      return;
+    }
     if (j.ok) {
+      n = live;
       Object.assign(n, { gsvPhotoId: j.photoId, gsvUploadedAt: Date.now(), gsvConfirmed: false, gsvStatus: 'pending', gsvSig: null, gsvShareLink: null });
       uploaded++;
       setRow(n, 'processing', t('Uploaded - Google is processing it'), 100);
@@ -2465,14 +2901,22 @@ async function runUpload() {
 
   // 2) Wait for Google to accept the new photos, 3) then set links and positions.
   await finishGoogleSync(nodes, { uploaded, failed, waitMs: uploaded ? 150000 : 20000 });
+  // Only now: until the neighbours are updated, the removed photos' IDs say which links go.
+  if (document.getElementById('upl-delete-removed').checked && S.gsvRemoved.length) {
+    await deleteRemovedGooglePhotos();
+    refreshUploadSummary();
+  }
 }
 
-async function finishGoogleSync(nodes, { uploaded = 0, failed = 0, waitMs = 20000 } = {}) {
+async function finishGoogleSync(nodesThen, { uploaded = 0, failed = 0, waitMs = 20000 } = {}) {
+  // The points as they are now (undo and redo replace them).
+  let nodes = nodesThen.map(n => gn(n.id)).filter(Boolean);
   setUploadStep('process');
   const deadline = Date.now() + waitMs;
   const pendingNodes = () => nodes.filter(n => n.gsvPhotoId && !n.gsvConfirmed);
   while (true) {
     await refreshGoogleStatus({ quiet: true });
+    nodes = nodesThen.map(n => gn(n.id)).filter(Boolean);
     nodes.filter(n => n.gsvPhotoId && n.gsvConfirmed).forEach(n => {
       const row = upList.querySelector(`.up-row[data-node="${n.id}"]`);
       if (row?.dataset.state === 'processing') setRow(n, 'processing', t('Google has it - setting links next'), 100);
@@ -2556,8 +3000,13 @@ document.getElementById('upl-refresh-status').onclick = () => openGoogleCompare(
 let gsvSyncTimer = null;
 function startGoogleBackgroundSync() {
   if (gsvSyncTimer) return;
+  let busy = false; // a big tour can take longer to update than the minute between tries
   gsvSyncTimer = setInterval(async () => {
-    if (uploadRunning) return;
+    if (uploadRunning || busy) return;
+    busy = true;
+    try { await syncWithGoogle(); } finally { busy = false; }
+  }, 60000);
+  async function syncWithGoogle() {
     const waiting = S.nodes.filter(n => n.gsvPhotoId && (!n.gsvConfirmed || gsvChanged(n)) && n.gsvStatus !== 'missing');
     if (!waiting.length) { clearInterval(gsvSyncTimer); gsvSyncTimer = null; return; }
     const counts = await refreshGoogleStatus({ quiet: true });
@@ -2567,7 +3016,7 @@ function startGoogleBackgroundSync() {
       if (res.ok) toast(t('Google is ready: links set for {n} photo(s)', { n: res.ok }));
     } catch {}
     refreshUploadSummary();
-  }, 60000);
+  }
 }
 
 function parseHeadingInput(v) {
@@ -2584,6 +3033,7 @@ function parseHeadingInput(v) {
 // pitch/roll levelling, but never its heading. As a function it applies to every
 // panorama the viewer loads, not just the first one.
 const IGNORE_XMP_HEADING = () => ({ poseHeading: 0 });
+let panoOwnPose = false; // the panorama shown is levelled by the node's pitch/roll (not by its XMP)
 
 function northYaw(n) {
   return normalizeRad(-degToRad(n.heading));
@@ -2881,7 +3331,8 @@ function createMarker(n, { animate = true } = {}) {
   mk.on('dblclick', e => L.DomEvent.stopPropagation(e));
   mk.on('dragend', () => {
     pushUndo();
-    const p = mk.getLatLng();
+    const p = mk.getLatLng().wrap();
+    mk.setLatLng(p);
     n.lat = p.lat;
     n.lng = p.lng;
     refreshConnLines();
@@ -3136,6 +3587,7 @@ floorControl.onAdd = () => {
     renderFloors();
     refreshAllMarkers();
     paintFloorLinks();
+    renderPlans();
   });
   return el;
 };
@@ -3145,7 +3597,7 @@ function renderFloors() {
   const floors = [...new Map(S.nodes.filter(n => n.level).map(n => [n.level.number, n.level])).values()].sort((a, b) => b.number - a.number);
   if (!floors.length) {
     if (floorControlShown) { floorControl.remove(); floorControlShown = false; }
-    if (floorView !== null) { floorView = null; refreshAllMarkers(); paintFloorLinks(); }
+    if (floorView !== null) { floorView = null; refreshAllMarkers(); paintFloorLinks(); renderPlans(); }
     return;
   }
   if (!floorControlShown) { floorControl.addTo(map); floorControlShown = true; }
@@ -3205,12 +3657,15 @@ async function ensurePanoViewer(n) {
     panoNodeId = n.id;
     const yaw = walkArrivalYaw ?? getNodeEditorYaw(n);
     walkArrivalYaw = null;
+    panoOwnPose = hasOwnPose(n);
     await panoViewer.setPanorama(n.photoUrl, {
       transition: false,
       position: { yaw, pitch: 0 },
+      panoData: panoOwnPose ? ZERO_POSE : IGNORE_XMP_HEADING,
+      sphereCorrection: panoOwnPose ? levelCorrection(n) : undefined,
     });
   }
-  if (S.selId === n.id) refreshPanoMarkers(n);
+  if (S.selId === n.id) { refreshPanoMarkers(n); if (horizonOpen()) renderHorizon(n); }
   updateViewCone();
   if (panoFocus) { renderFocusBar(n); updateFocusMap(n); }
 }
@@ -3437,9 +3892,12 @@ function snapshotState() {
       hotspots: (n.hotspots || []).map(h => ({ ...h })), tourId: n.tourId ?? null,
       placeId: n.placeId, placeName: n.placeName ?? null, placeAuto: !!n.placeAuto, placeKind: n.placeKind ?? null, placeDist: n.placeDist ?? null, placeFor: n.placeFor ?? null,
       level: n.level, gsvViews: n.gsvViews ?? null, pmx: n.pmx ?? null,
+      pitch: n.pitch ?? null, roll: n.roll ?? null, viewsLog: n.viewsLog || [], startView: n.startView ?? null,
     })),
     conns: S.conns.map(c => ({ id: c.id, from: c.from, to: c.to })),
     selId: S.selId, starts: [...S.starts], startId: [...S.starts][0] ?? null, tourNames: { ...S.tourNames }, nxt: S.nxt,
+    gsvRemoved: [...S.gsvRemoved],
+    plans: S.plans.map(plan => ({ ...plan })),
   };
 }
 
@@ -3480,6 +3938,8 @@ function applySnapshot(snap, { refit = false, keepGoogle = false } = {}) {
   S.selId = snap.selId ?? null;
   S.starts = new Set(snap.starts ?? (snap.startId ? [snap.startId] : []));
   S.tourNames = { ...(snap.tourNames || {}) };
+  S.gsvRemoved = [...(snap.gsvRemoved || [])];
+  S.plans = (snap.plans || []).map(plan => ({ ...plan }));
   toursVersion++;
   S.nxt = snap.nxt ?? S.nxt;
   // Never hand out an ID that is already in use (older projects had no counter).
@@ -3496,6 +3956,7 @@ function applySnapshot(snap, { refit = false, keepGoogle = false } = {}) {
 
   S.nodes.forEach(n => createMarker(n, { animate: false }));
   S.conns.forEach(c => drawConn(c, { animate: false }));
+  renderPlans();
   updateSb();
   updateMultiBar();
   updateStats();
@@ -3673,6 +4134,7 @@ const nodeListEl = document.getElementById('node-list');
 
 function renderNodeList() {
   const q = nodeSearchEl.value.trim().toLowerCase();
+  const scrolled = nodeListEl.scrollTop;
   nodeListEl.innerHTML = '';
   const filtered = S.nodes
     .map((n, i) => ({ n, i }))
@@ -3722,6 +4184,7 @@ function renderNodeList() {
     });
     nodeListEl.appendChild(row);
   });
+  nodeListEl.scrollTop = scrolled;
 }
 
 function reorderNode(draggedId, targetId) {
@@ -3754,7 +4217,7 @@ function setSaveStatus(mode, text) {
 let autosaveDue = false;
 // edit: false for what isn't the user's change (news from Google): saved, but the project isn't "unsaved".
 function scheduleAutosave({ edit = true } = {}) {
-  if (edit) markDirty();
+  if (edit) { markDirty(); collabEdited(); }
   queueChecklist(); // every change passes here: the checklist follows
   clearTimeout(autosaveTimer);
   autosaveDue = true;
@@ -3798,7 +4261,11 @@ function referencedPhotoKeys() {
   const keys = new Set();
   const add = f => { const k = f && photoKeys.get(f); if (k) keys.add(k); };
   S.nodes.forEach(n => add(n.photoFile));
-  [...undoStack, ...redoStack].forEach(snap => snap.nodes.forEach(n => add(n.photoFile)));
+  S.plans.forEach(plan => add(plan.image));
+  [...undoStack, ...redoStack].forEach(snap => {
+    snap.nodes.forEach(n => add(n.photoFile));
+    (snap.plans || []).forEach(plan => add(plan.image));
+  });
   restorePendingKeys.forEach(k => keys.add(k));
   return keys;
 }
@@ -3835,6 +4302,7 @@ async function saveSessionOnce() {
         photoRef: (n.photoFile && photoRefs.get(n.photoFile)) || null,
         photoKey: n.photoFile && !photoRefs.has(n.photoFile) ? photoKeyOf(n.photoFile) : null,
       })),
+      plans: snap.plans.map(plan => ({ ...plan, image: null, imageKey: photoKeyOf(plan.image) })),
     };
     const writes = [...unsavedPhotos];
     const db = await openSaveDb();
@@ -3897,6 +4365,16 @@ async function loadSavedSession() {
         restorePendingKeys.add(n.photoKey);
         delete n.photoKey;
       }
+      const plans = [];
+      for (const plan of snap.plans || []) {
+        const image = plan.imageKey && await idbRequest(store.get(plan.imageKey));
+        if (!image) continue;
+        photoKeys.set(image, plan.imageKey);
+        restorePendingKeys.add(plan.imageKey);
+        const { imageKey, ...rest } = plan;
+        plans.push({ ...rest, image });
+      }
+      snap.plans = plans;
     }
     db.close();
     return snap || null;
@@ -4088,6 +4566,10 @@ document.querySelectorAll('details.sec').forEach(sec => {
   sec.addEventListener('toggle', () => {
     storageSet(key, sec.open ? '1' : '0');
     if (sec.dataset.sec === 'compare' && sec.open) refreshCompareUi(gn(S.selId));
+    if (sec.dataset.sec === 'horizon') {
+      panoWrap.classList.toggle('horizon', sec.open);
+      if (sec.open && gn(S.selId)) renderHorizon(gn(S.selId));
+    }
   });
 });
 
@@ -4264,6 +4746,7 @@ const TOOL_ACTIONS = {
   shortcuts: () => cheatBack.classList.add('show'),
   updates: () => checkForUpdates({ force: true, quiet: false }),
   saveas: () => saveProject({ saveAs: true }),
+  collab: () => openCollab(),
   walkheadings: () => openWalkHeadings(),
   northmatch: () => openNorthMatch(),
   check: () => openTourCheck(),
@@ -4275,6 +4758,10 @@ const TOOL_ACTIONS = {
   sunnorth: () => openSunNorth(),
   panoramax: () => openPanoramax(),
   photos: () => runExport('photos'),
+  tourreport: () => runExport('report'),
+  floorplans: () => openFloorPlans(),
+  pathplace: () => openPathPlace(),
+  reshoot: () => openReshoot(),
 };
 
 // ── Capture time (EXIF) ───────────────────────────
@@ -4575,6 +5062,12 @@ async function openBlurTool(id, { presets = null, batch = false } = {}) {
   blur.node = n;
   blur.rects = (presets || []).map(r => ({ ...r, auto: true }));
   blur.batch = batch;
+  // Where the check of all photos stands: how many with findings are still to look at.
+  const left = batch ? S.nodes.filter(x => { const r = privacy.results.get(x.id); return r?.boxes.length && !r.done && !x.privacyChecked; }).length : 0;
+  document.getElementById('blur-batch').textContent = batch ? t('{n} photo(s) with findings still to look at', { n: left }) : '';
+  document.getElementById('blur-skip').hidden = !batch;
+  document.getElementById('blur-title-name').textContent = n.name;
+  document.activeElement?.blur?.(); // Enter and Backspace are the blur tool's, not a button's still focused behind it
   openModal('blur-back');
   requestAnimationFrame(() => { fitBlurView(); drawBlur(); });
 }
@@ -4672,8 +5165,37 @@ document.getElementById('blur-none').onclick = () => {
   if (blur.rects.length && !confirm(t('Close without blurring? The {n} marked area(s) are not applied.', { n: blur.rects.length }))) return;
   blur.rects = [];
   if (n && !n.privacyChecked) { n.privacyChecked = true; scheduleAutosave(); updateSb(); }
-  closeModal('blur-back');
+  nextInBatch(n);
 };
+// In the check of all photos: on to the next photo with findings that is still open (from
+// this one on, then from the beginning); back to the list when none is left.
+async function nextInBatch(n, { skip = false } = {}) {
+  if (!blur.batch) { closeModal('blur-back'); return; }
+  const open = S.nodes.filter(x => {
+    const r = privacy.results.get(x.id);
+    return x.photoFile && r?.boxes.length && !r.done && !x.privacyChecked && !(skip && x === n);
+  });
+  const pos = indexNodes().pos;
+  const next = open.find(x => pos.get(x.id) > pos.get(n?.id)) || open[0];
+  if (!next) { closeModal('blur-back'); return; }
+  await openBlurTool(next.id, { presets: privacy.results.get(next.id).boxes, batch: true });
+}
+document.getElementById('blur-skip').onclick = () => {
+  if (blur.rects.some(r => !r.auto) && !confirm(t('Close without blurring? The {n} marked area(s) are not applied.', { n: blur.rects.length }))) return;
+  nextInBatch(blur.node, { skip: true });
+};
+// Enter: done with this photo (blur the marked areas, or nothing to blur); Backspace: the last box back.
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('blur-back').classList.contains('show') || e.target.closest?.('input, select, textarea, button')) return;
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    document.getElementById(blur.rects.length ? 'blur-apply' : 'blur-none').click();
+  } else if (e.key === 'Backspace' || e.key === 'Delete') {
+    e.preventDefault();
+    blur.rects.pop();
+    drawBlur();
+  }
+});
 // Closing with marked areas that are not applied asks first (they would be lost).
 function mayCloseBlur() {
   return !blur.rects.length || confirm(t('Close without blurring? The {n} marked area(s) are not applied.', { n: blur.rects.length }));
@@ -4696,9 +5218,9 @@ document.getElementById('blur-apply').onclick = async () => {
     refreshMarker(n);
     scheduleAutosave();
     if (blur.batch && privacy.results.has(n.id)) privacy.results.get(n.id).done = true;
-    blur.rects = [];
-    closeModal('blur-back');
     toast(`Blurred ${blur.rects.length} area(s) in ${n.name}`);
+    blur.rects = [];
+    await nextInBatch(n);
   } catch (err) {
     alert(`Blurring failed: ${err.message || err}`);
   } finally {
@@ -4747,7 +5269,7 @@ function safeFileName(name) {
   return (name || 'photo.jpg').replace(/[^\w.\-]+/g, '_');
 }
 
-async function exportTourWebsite(scope = null) {
+async function exportTourWebsite(scope = null, { title = null, autorotate = false, gyroscope = false, logo = null } = {}) {
   const all = scope?.nodes || S.nodes;
   const withPhoto = all.filter(n => n.photoFile);
   if (!withPhoto.length) { alert('None of the nodes has a photo loaded.'); return; }
@@ -4780,8 +5302,10 @@ async function exportTourWebsite(scope = null) {
       if (!r.ok) throw new Error(`vendor/${path}: HTTP ${r.status}`);
       return { name: `lib/${path}`, data: await r.blob() };
     }));
+    const logoName = logo ? `logo.${(/\.(\w+)$/.exec(logo.name || '') || [])[1]?.toLowerCase() || 'png'}` : null;
     const entries = [
-      { name: 'index.html', data: new Blob([genViewer(start, nodes, { libBase: './lib/', title: scope?.name })], { type: 'text/html' }) },
+      { name: 'index.html', data: new Blob([genViewer(start, nodes, { libBase: './lib/', title: title || scope?.name, autorotate, gyroscope, logo: logoName })], { type: 'text/html' }) },
+      ...(logo ? [{ name: logoName, data: logo }] : []),
       { name: 'tour-config.json', data: new Blob([JSON.stringify({ startNodeId: start, nodes }, null, 2)], { type: 'application/json' }) },
       { name: 'README.txt', data: new Blob([readme], { type: 'text/plain' }) },
       ...libs,
@@ -4798,7 +5322,75 @@ async function exportTourWebsite(scope = null) {
     alert(`Export failed: ${err.message || err}`);
   }
 }
-document.getElementById('preview-website').onclick = () => { previewBack.classList.remove('show'); exportTourWebsite(previewScope); };
+document.getElementById('preview-website').onclick = () => { previewBack.classList.remove('show'); openSiteOptions(previewScope); };
+
+// The tour starts here, looking the way the preview looks now (website and preview).
+document.getElementById('preview-startview').onclick = () => {
+  const n = gn(previewAlignId);
+  const view = previewFrame.contentWindow?.psv?.viewer?.getPosition();
+  if (!n || !view) return;
+  pushUndo();
+  setTourStart(n.id);
+  n.startView = normalizeHeading(radToDeg(view.yaw));
+  refreshAllMarkers();
+  scheduleAutosave();
+  toast(t('{name} is the start now, looking {d}°.', { name: n.name, d: Math.round(n.startView) }));
+};
+
+// ── Website options: title, logo, turning ─────────
+// The logo is kept for the next exports (in this browser's / the app's storage).
+let siteScope = null, siteLogo = null;
+async function siteLogoDb(blob) {
+  const db = await openSaveDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction('kv', blob === undefined ? 'readonly' : 'readwrite');
+      const store = tx.objectStore('kv');
+      const req = blob === undefined ? store.get('siteLogo') : blob ? store.put(blob, 'siteLogo') : store.delete('siteLogo');
+      tx.oncomplete = () => resolve(blob === undefined ? req.result || null : blob);
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+function showSiteLogo() {
+  const img = document.getElementById('site-logo-img');
+  img.hidden = !siteLogo;
+  if (siteLogo) img.src = URL.createObjectURL(siteLogo);
+  document.getElementById('site-logo-remove').hidden = !siteLogo;
+}
+async function openSiteOptions(scope) {
+  closeMenus();
+  siteScope = scope;
+  document.getElementById('site-title').value = scope?.name || projectName?.replace(/\.vrtour$/i, '') || '';
+  document.getElementById('site-autorotate').checked = storageGet('siteAutorotate') !== '0';
+  document.getElementById('site-gyro').checked = storageGet('siteGyro') !== '0';
+  try { siteLogo = await siteLogoDb(); } catch { siteLogo = null; }
+  showSiteLogo();
+  openModal('site-back');
+}
+document.getElementById('site-logo').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  siteLogo = file;
+  try { await siteLogoDb(file); } catch {}
+  showSiteLogo();
+});
+document.getElementById('site-logo-remove').onclick = async () => {
+  siteLogo = null;
+  try { await siteLogoDb(null); } catch {}
+  showSiteLogo();
+};
+document.getElementById('site-go').onclick = () => {
+  const autorotate = document.getElementById('site-autorotate').checked;
+  const gyroscope = document.getElementById('site-gyro').checked;
+  storageSet('siteAutorotate', autorotate ? '1' : '0');
+  storageSet('siteGyro', gyroscope ? '1' : '0');
+  closeModal('site-back');
+  exportTourWebsite(siteScope, { title: document.getElementById('site-title').value.trim(), autorotate, gyroscope, logo: siteLogo });
+};
 
 // ── Google setup wizard ───────────────────────────
 const wizSteps = [...document.querySelectorAll('#wiz .wiz-step')];
@@ -4838,6 +5430,7 @@ async function initAppInfo() {
     const j = await (await fetch('/api/app-info')).json();
     document.getElementById('app-version').textContent = `Streetview Tour Editor ${j.version === 'dev' ? 'dev' : j.version}`;
     appHasWindow = !!j.window;
+    appUser = j.user || '';
     if (appHasWindow) {
       useAppFileDialogs();
       updateSaveHint();
@@ -5082,7 +5675,7 @@ function bindMarkerTip(n) {
 
 // ── Google status (published / processing / rejected) ─
 // What happened on Google (and Panoramax): undo and redo leave it as it is.
-const GSV_FIELDS = ['gsvPhotoId', 'gsvStatus', 'gsvShareLink', 'gsvSig', 'gsvConfirmed', 'gsvUploadedAt', 'gsvObsolete', 'pmx'];
+const GSV_FIELDS = ['gsvPhotoId', 'gsvStatus', 'gsvShareLink', 'gsvSig', 'gsvConfirmed', 'gsvUploadedAt', 'gsvObsolete', 'pmx', 'gsvViews', 'viewsLog'];
 
 // The photo of a node was replaced (new file, blurred): it has to be uploaded
 // again, and the version already on Google becomes obsolete - remember it so the
@@ -5105,7 +5698,8 @@ const GSV_LABELS = {
 // is pushed to Google. Links only count once the target photo exists on Google.
 function gsvSignature(n) {
   const links = getLinkedNodes(n.id).filter(o => o.gsvConfirmed && o.gsvPhotoId).map(o => o.gsvPhotoId).sort();
-  return JSON.stringify([n.lat.toFixed(7), n.lng.toFixed(7), n.heading == null ? null : n.heading.toFixed(2), links, ...(n.placeId ? [n.placeId] : []), ...(n.level ? [`level ${n.level.number} ${n.level.name || ''}`] : [])]);
+  return JSON.stringify([n.lat.toFixed(7), n.lng.toFixed(7), n.heading == null ? null : n.heading.toFixed(2), links, ...(n.placeId ? [n.placeId] : []), ...(n.level ? [`level ${n.level.number} ${n.level.name || ''}`] : []),
+    ...(hasOwnPose(n) ? [`pose ${(n.pitch || 0).toFixed(1)} ${(n.roll || 0).toFixed(1)}`] : [])]);
 }
 
 function gsvChanged(n) {
@@ -5169,7 +5763,7 @@ async function refreshGoogleStatus({ quiet = false } = {}) {
         n.gsvConfirmed = true;
         n.gsvShareLink = s.shareLink || null;
         n.gsvRemote = { lat: s.lat, lng: s.lng, heading: s.heading, connections: s.connections || [] };
-        if (s.viewCount != null) n.gsvViews = s.viewCount;
+        if (s.viewCount != null) { n.gsvViews = s.viewCount; if (logViews(n, s.viewCount)) changed = true; }
         // Keep the form of the ID Google actually answers to.
         if (s.resolvedId && s.resolvedId !== n.gsvPhotoId) n.gsvPhotoId = s.resolvedId;
       }
@@ -5238,7 +5832,7 @@ async function openGoogleCompare() {
   }
 
   const nodes = S.nodes.filter(n => n.photoFile || n.gsvPhotoId);
-  const used = new Set(S.nodes.filter(n => n.gsvPhotoId && n.gsvConfirmed).map(n => n.gsvPhotoId));
+  const used = new Set([...S.nodes.filter(n => n.gsvPhotoId && n.gsvConfirmed).map(n => n.gsvPhotoId), ...gsvGone()]);
   const nearby = findNearbyGooglePhotos(nodes, photos, used);
   const plan = { adopt: new Map(), push: new Set(), dupes: [] };
   const rows = [];
@@ -5251,7 +5845,7 @@ async function openGoogleCompare() {
       const r = n.gsvRemote;
       const expected = new Set(getLinkedNodes(n.id).filter(o => o.gsvConfirmed && o.gsvPhotoId).map(o => o.gsvPhotoId));
       const remote = new Set(r.connections || []);
-      const known = new Set(S.nodes.map(x => x.gsvPhotoId).filter(Boolean));
+      const known = new Set([...S.nodes.map(x => x.gsvPhotoId).filter(Boolean), ...gsvGone()]);
       const missing = [...expected].filter(id => !remote.has(id)).length;
       const extra = [...remote].filter(id => !expected.has(id) && known.has(id)).length;
       const outside = [...remote].filter(id => !known.has(id)).length;
@@ -5415,7 +6009,8 @@ document.getElementById('walkh-go').onclick = async () => {
 // With several tours on the map (or points selected), each export asks which
 // tour it is for; with a single tour it goes straight ahead as before.
 const EXPORTERS = {
-  website: scope => exportTourWebsite(scope),
+  website: scope => openSiteOptions(scope),
+  report: scope => exportReport(scope),
   viewer: scope => exportViewerFiles(scope),
   csv: scope => exportCsv(scope),
   project: scope => exportTourProject(scope),
@@ -5478,7 +6073,7 @@ async function exportTourProject(scope = null) {
   try {
     setSaveStatus('saving', 'Packing project…');
     if (handle) await detachPhotosFrom(handle);
-    const zip = await packProject(nodes);
+    const { zip } = await packProject(nodes, { projectId: newProjectId(), rev: newRev(), revs: [], savedBy: { name: collabName(), client: collabClient(), at: Date.now() } });
     if (handle) {
       const writable = await handle.createWritable();
       await writable.write(zip);
@@ -5622,10 +6217,13 @@ async function addProjectsToMap(items) {
       if (ids.has(c.from) && ids.has(c.to)) S.conns.push({ id: cuid(), from: ids.get(c.from), to: ids.get(c.to), poly: null, xMark: null });
     });
     snap.starts.forEach(id => { if (ids.has(id)) S.starts.add(ids.get(id)); });
+    S.gsvRemoved = [...new Set([...S.gsvRemoved, ...snap.gsvRemoved])];
+    S.plans = [...S.plans, ...snap.plans.map(plan => ({ ...plan, id: `p${S.nxt++}` }))];
   }
   toursVersion++;
   added.forEach(n => createMarker(n, { animate: false }));
   S.conns.slice(before).forEach(c => drawConn(c, { animate: false }));
+  renderPlans();
   updateSb();
   updateStats();
   fitAll();
@@ -5634,6 +6232,8 @@ async function addProjectsToMap(items) {
   const base = name => name.replace(/\.(vrtour|zip|json)$/i, '');
   const names = accepted.map(r => base(r.file.name));
   projectHandle = null;
+  fileVersion = null;
+  collabProjectChanged();
   projectName = `${[...(wasEmpty ? [] : [base(projectName || t('Untitled'))]), ...names].join(' + ')}.vrtour`;
   updateTitle();
   accepted.forEach(({ handle }) => { if (handle) rememberRecent(handle); });
@@ -6103,6 +6703,7 @@ async function openViews() {
   const sum = document.getElementById('views-sum');
   const list = document.getElementById('views-list');
   list.innerHTML = '';
+  document.getElementById('views-chart').innerHTML = '';
   openModal('views-back');
   if (!S.nodes.some(n => n.gsvPhotoId)) { sum.textContent = t('No photos uploaded yet'); return; }
   sum.textContent = t('Asking Google…');
@@ -6111,6 +6712,9 @@ async function openViews() {
   const groups = manyTours() ? getTours().map(g => ({ name: tourName(g), nodes: g.nodes })) : [{ name: null, nodes: S.nodes }];
   const total = S.nodes.reduce((a, n) => a + (n.gsvViews || 0), 0);
   sum.textContent = t('{n} views in total.', { n: fmt(total) });
+  document.getElementById('views-chart').innerHTML = viewsChart(viewsSeries(S.nodes.filter(n => n.gsvPhotoId)), {
+    width: 760, height: 150, label: t('Views on Google over time'), locale: currentLang === 'de' ? 'de-DE' : 'en-GB',
+  });
   groups.forEach(g => {
     const nodes = g.nodes.filter(n => n.gsvPhotoId).sort((a, b) => (b.gsvViews || 0) - (a.gsvViews || 0));
     if (!nodes.length) return;
@@ -6220,6 +6824,7 @@ document.getElementById('mn-apply').onclick = () => {
   if (!chosen.length) return;
   pushUndo();
   chosen.forEach(r => {
+    r.node = gn(r.node.id) || r.node; // undo in between gives new point objects
     r.node.heading = normalizeHeading(r.heading);
     r.node.headingSource = 'match';
     r.node.viewYaw = normalizeRad(-degToRad(r.node.heading));
@@ -6328,6 +6933,32 @@ function renderCheckRows(issues) {
   });
 }
 document.getElementById('check-rerun').onclick = () => openTourCheck({ onContinue: checkContinue });
+document.getElementById('check-quality').onclick = async () => {
+  const btn = document.getElementById('check-quality');
+  const status = document.getElementById('check-north-status');
+  const nodes = S.nodes.filter(n => n.photoFile);
+  btn.disabled = true;
+  const found = [];
+  try {
+    for (const [i, n] of nodes.entries()) {
+      status.textContent = t('Looking at the photos… {i}', { i: `${i + 1}/${nodes.length}` });
+      const q = await photoQuality(n.photoFile);
+      if (q.sharpness < LIMITS.sharpness) found.push({ id: n.id, level: 'warn', msg: t('Looks blurred (sharpness {s}) - have a look before uploading', { s: Math.round(q.sharpness) }) });
+      if (q.bright > LIMITS.bright) found.push({ id: n.id, level: 'warn', msg: t('Overexposed: {p} % of it is white', { p: Math.round(q.bright * 100) }) });
+      if (q.dark > LIMITS.dark) found.push({ id: n.id, level: 'warn', msg: t('Very dark: {p} % of it is black', { p: Math.round(q.dark * 100) }) });
+    }
+    const photos = new Set(found.map(f => f.id)).size;
+    status.textContent = photos ? t('{n} photo(s) that may be blurred or badly exposed.', { n: photos }) : t('All photos look sharp and well exposed.');
+    if (found.length) {
+      document.querySelector('#check-list .check-ok')?.remove();
+      renderCheckRows(found);
+    }
+  } catch (err) {
+    status.textContent = t('Comparing failed: {msg}', { msg: err.message || err });
+  } finally {
+    btn.disabled = false;
+  }
+};
 document.getElementById('check-north').onclick = async () => {
   const btn = document.getElementById('check-north');
   const status = document.getElementById('check-north-status');
@@ -6736,6 +7367,9 @@ function afterSidebarResize() {
   cmpOverlayViewer?.autoSize?.();
   updateViewCone();
 }
+addEventListener('resize', () => {
+  if (sidebar.style.width && sidebar.getBoundingClientRect().width > innerWidth - 420) { setSidebarWidth(innerWidth - 420); afterSidebarResize(); }
+});
 (() => {
   const handle = document.getElementById('sb-resize');
   const saved = Number(storageGet('sbWidth'));
@@ -6949,12 +7583,14 @@ function checklistChips(f) {
 
 // The tools of each step, under the steps for the one chosen (or the first still open).
 const STEP_TOOLS = {
-  photos: [['Import photos…', () => openImport()], ['Place photos from GPX track…', () => openGpx()], ['Move or turn a tour…', () => openShift()]],
+  photos: [['Import photos…', () => openImport()], ['Place photos from GPX track…', () => openGpx()], ['Place photos along a path…', () => openPathPlace()],
+    ['Floor plans…', () => openFloorPlans()], ['Move or turn a tour…', () => openShift()]],
   links: [['Auto-connect nodes…', () => openAutoConnect()]],
   north: [['Headings from walking direction…', () => openWalkHeadings()], ['North from the photos…', () => openNorthMatch()], ['North from the sun…', () => openSunNorth()]],
   privacy: [['Check all photos for faces & plates…', () => openPrivacy()], ['Cover the tripod…', () => openNadir()]],
   places: [['Places on Google Maps…', () => openPlacesSetup()]],
-  publish: [['Check tour…', () => openTourCheck()], ['Preview', () => openExportPreview()], ['Upload', () => document.getElementById('bupload').click()], ['Publish on Panoramax…', () => openPanoramax()]],
+  publish: [['Check tour…', () => openTourCheck()], ['Preview', () => openExportPreview()], ['Upload', () => document.getElementById('bupload').click()],
+    ['Replace photos on Google with new ones…', () => openReshoot()], ['Publish on Panoramax…', () => openPanoramax()], ['Tour report…', () => runExport('report')]],
 };
 let checklistStep = null;
 
@@ -7019,8 +7655,10 @@ async function openReview(nodes) {
   const fresh = nodes.filter(n => goesUp(n, reupload)).length;
   const changed = nodes.filter(n => !goesUp(n, reupload) && n.gsvPhotoId && (gsvChanged(n) || !n.gsvConfirmed)).length;
   const old = document.getElementById('upl-delete-old').checked ? S.nodes.reduce((sum, n) => sum + (n.gsvObsolete?.length || 0), 0) : 0;
+  const removed = document.getElementById('upl-delete-removed').checked ? S.gsvRemoved.length : 0;
   const parts = [t('{n} new photo(s)', { n: fresh }), t('{n} update(s) of photos on Google', { n: changed })];
   if (old) parts.push(t('{n} old version(s) deleted', { n: old }));
+  if (removed) parts.push(t('{n} photo(s) of removed points deleted', { n: removed }));
   document.getElementById('review-sum').textContent = parts.join(' · ');
   const strip = document.getElementById('review-thumbs');
   const going = nodes.filter(n => goesUp(n, reupload));
@@ -7169,7 +7807,7 @@ function reportPageInfo() {
 initNotices({ t, lang: () => currentLang });
 initReport({ t, closeMenus, openModal, saveTextFile, pageInfo: reportPageInfo });
 initVideoDialog({
-  t, lang: () => currentLang, toast, openModal, closeMenus, setAppBusy, storageGet, storageSet,
+  t, lang: () => currentLang, toast, openModal, closeMenus, setAppBusy: (busy, q) => setAppBusy(busy, q, 'video'), storageGet, storageSet,
   formatBytes, formatEta, formatDistance, editorKey: EDITOR_KEY,
 });
 initViewCone({
@@ -7193,8 +7831,57 @@ initFilmstrip({
   group: () => { const tours = getTours(); const g = (S.selId && tourOf(S.selId)) || (tours.length === 1 ? tours[0] : null); return g?.index != null ? g : null; },
 });
 initPanoramax({
-  t, toast, openModal, closeMenus, setAppBusy, scheduleAutosave, photoWithPose, isSample: isSamplePhoto, scopes: tourScopes,
+  t, toast, openModal, closeMenus, setAppBusy: (busy, q) => setAppBusy(busy, q, 'panoramax'), scheduleAutosave, photoWithPose, isSample: isSamplePhoto, scopes: tourScopes,
   ensureTimes: async () => { for (const n of S.nodes) if (n.photoFile) await ensureCaptureTime(n); },
+});
+initHorizon({
+  t, pushUndo, node: () => gn(S.selId), apply: n => applyPose(n),
+  changed: n => { refreshMarker(n); scheduleAutosave(); },
+});
+initPathPlace({
+  map, t, toast, closeMenus, pushUndo, ensureCaptureTime, tourChanged, refreshConnLines,
+  scope: () => {
+    if (S.multiSel.size >= 2) return { nodes: S.nodes.filter(n => S.multiSel.has(n.id)), label: t('{n} selected points', { n: S.multiSel.size }) };
+    const g = tourOf(S.selId);
+    if (g?.index != null) return { nodes: g.nodes, label: tourName(g) };
+    const loose = S.nodes.filter(n => !n.hasGps);
+    return loose.length >= 2 ? { nodes: loose, label: t('{n} points without GPS', { n: loose.length }) } : { nodes: S.nodes.slice(), label: t('All points') };
+  },
+  link: (a, b) => {
+    if (a === b || gcbs(a.id, b.id).length) return;
+    const c = { id: cuid(), from: a.id, to: b.id, poly: null, xMark: null };
+    S.conns.push(c);
+    drawConn(c, { animate: false });
+  },
+});
+initFloorPlans({ map, S, t, toast, closeMenus, openModal, closeModal, pushUndo, scheduleAutosave, floorView: () => floorView });
+initReshoot({
+  S, t, toast, closeMenus, openModal, closeModal, pushUndo, tourChanged, refreshConnLines, isSample: isSamplePhoto,
+  retire: retireGooglePhoto, removeNode: removeNodeById, resetPanorama: () => { panoNodeId = null; },
+  moveLinks: (from, to) => {
+    S.conns.forEach(c => { if (c.from === from) c.from = to; if (c.to === from) c.to = to; });
+    const seen = new Set();
+    S.conns = S.conns.filter(c => {
+      const key = [c.from, c.to].sort().join('|');
+      if (c.from !== c.to && !seen.has(key)) { seen.add(key); return true; }
+      if (c.poly) map.removeLayer(c.poly);
+      if (c.xMark) map.removeLayer(c.xMark);
+      return false;
+    });
+  },
+});
+initCollab({
+  t, toast, openModal, closeModal, closeMenus, storageGet, storageSet, choose,
+  isApp: () => appHasWindow, handle: () => projectHandle, fileName: () => projectName,
+  pull: () => pullSharedChanges(), save: () => saveProject({ quiet: true }), dirty: () => projectDirty,
+  blocked: sharedMergeBlocked, mergeCopy, defaultName: () => appUser,
+});
+initTourReport({
+  S, t, gn, saveTextFile, fileBase, setSaveStatus, tourLength, lang: () => currentLang,
+  projectBase: () => projectName?.replace(/\.vrtour$/i, ''),
+  links: nodes => { const ids = new Set(nodes.map(n => n.id)); return S.conns.filter(c => ids.has(c.from) && ids.has(c.to)).map(c => [gn(c.from), gn(c.to)]); },
+  statusOf: n => gsvLabel(n) || t('not on Google yet'),
+  placeOf: n => n.placeName || '',
 });
 initPhotoTools({
   S, t, toast, closeMenus, openModal, closeModal, storageGet, storageSet, tourScopes, defaultScope, isSample: isSamplePhoto, pushUndo,
@@ -7224,6 +7911,24 @@ function renderHotspots(n) {
     list.appendChild(row);
   });
   document.getElementById('hs-add').disabled = !n.photoUrl;
+}
+
+// Levelled by hand: the panorama shown turns by the node's pitch and roll.
+async function applyPose(n) {
+  if (!panoViewer || panoNodeId !== n.id) return;
+  const own = hasOwnPose(n);
+  if (own !== panoOwnPose) { // levelled by the photo's XMP until now, or back to it: loaded again
+    panoOwnPose = own;
+    await panoViewer.setPanorama(n.photoUrl, {
+      transition: false,
+      position: panoViewer.getPosition(),
+      panoData: own ? ZERO_POSE : IGNORE_XMP_HEADING,
+      sphereCorrection: own ? levelCorrection(n) : undefined,
+    });
+    refreshPanoMarkers(n);
+  } else if (own) {
+    panoViewer.setOption('sphereCorrection', levelCorrection(n));
+  }
 }
 
 function refreshPanoMarkers(n) {

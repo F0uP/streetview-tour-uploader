@@ -49,8 +49,10 @@ def test_two_projects_on_one_map(editor, tmp_path):
     page.click('button[data-run=website]')
     assert page.locator('#exp-tour option').all_inner_texts() == ['Holstenstrasse · 3 point(s)', 'Rathaus · 3 point(s)', 'Everything on the map · 6 point(s)']
     page.select_option('#exp-tour', index=1)
+    page.click('#exp-go')
+    assert page.input_value('#site-title') == 'Rathaus'
     with page.expect_download() as dl:
-        page.click('#exp-go')
+        page.click('#site-go')
     assert dl.value.suggested_filename == 'Rathaus-website.zip'
     z = zipfile.ZipFile(io.BytesIO(open(dl.value.path(), 'rb').read()))
     assert sorted(n for n in z.namelist() if n.startswith('photos/')) == ['photos/n40-Rathaus1.jpg', 'photos/n41-Rathaus2.jpg', 'photos/n42-Rathaus3.jpg']

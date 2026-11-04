@@ -47,6 +47,10 @@ FILES = {
     **{f"psv/{part}/{name}": f"{PSV}/{part}@{PSV_VERSION}/{name}"
        for part in ("core", "markers-plugin", "virtual-tour-plugin")
        for name in ("index.module.js", "index.css", "LICENSE")},
+    # The exported tour website: turning with the phone, and turning by itself until touched.
+    **{f"psv/{part}/{name}": f"{PSV}/{part}@{PSV_VERSION}/{name}"
+       for part in ("gyroscope-plugin", "autorotate-plugin")
+       for name in ("index.module.js", "LICENSE")},
     "exifr/full.esm.js": f"{NPM}/exifr@7.1.3/dist/full.esm.js",
     "exifr/LICENSE": f"{NPM}/exifr@7.1.3/LICENSE",
     # Face detection for the blur tool. Only the SIMD build of the WebAssembly:

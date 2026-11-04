@@ -9,6 +9,10 @@ const CRC_TABLE = (() => {
   return t;
 })();
 
+// The CRC-32 of photos already known - read from a zip's directory, or computed when it was
+// written - so saving a big project again doesn't read every unchanged photo once more.
+const knownCrc = new WeakMap(); // Blob -> CRC-32
+
 async function crc32(blob) {
   let crc = 0xFFFFFFFF;
   const CHUNK = 8 * 1024 * 1024;
@@ -28,7 +32,8 @@ export async function buildZip(entries) {
     const name = enc.encode(e.name);
     const size = e.data.size;
     if (offset + size >= 0xFFFFFFFF) throw new Error('Project too large (over 4 GB)');
-    const crc = await crc32(e.data);
+    const crc = knownCrc.get(e.data) ?? await crc32(e.data);
+    knownCrc.set(e.data, crc);
     const local = new DataView(new ArrayBuffer(30));
     local.setUint32(0, 0x04034b50, true);
     local.setUint16(4, 20, true);
@@ -80,6 +85,7 @@ export async function readZip(file) {
   for (let i = 0; i < count; i++) {
     if (cen.getUint32(p, true) !== 0x02014b50) throw new Error('Corrupt zip directory');
     const method = cen.getUint16(p + 10, true);
+    const crc = cen.getUint32(p + 16, true);
     const size = cen.getUint32(p + 20, true);
     const nameLen = cen.getUint16(p + 28, true);
     const extraLen = cen.getUint16(p + 30, true);
@@ -91,6 +97,17 @@ export async function readZip(file) {
     const lh = new DataView(await file.slice(localOff, localOff + 30).arrayBuffer());
     const dataStart = localOff + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
     out[name] = file.slice(dataStart, dataStart + size);
+    knownCrc.set(out[name], crc);
   }
   return out;
 }
+
+// An entry of a zip as a File of its own (a photo), its CRC-32 still known.
+export function zipFile(blob, name, type) {
+  const file = new File([blob], name, { type });
+  if (knownCrc.has(blob)) knownCrc.set(file, knownCrc.get(blob));
+  return file;
+}
+
+// The CRC-32 of a Blob if known (an entry of a zip read or written), else undefined.
+export const knownCrcOf = blob => knownCrc.get(blob);

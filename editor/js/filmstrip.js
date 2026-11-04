@@ -5,6 +5,7 @@ import { escapeHtml } from './util.js';
 
 let ctx; // from the editor: { group(), order(nodes), selId(), jump(id), thumb(n), storageGet, storageSet, t }
 let shown = []; // the nodes in the strip, in order
+let scrolledTo = null; // the selected point the strip last scrolled to
 const strip = () => document.getElementById('filmstrip');
 const list = () => document.getElementById('fs-list');
 
@@ -31,6 +32,7 @@ export function renderFilmstrip() {
   document.getElementById('fs-count').textContent = `${shown.length}`;
   if (el.classList.contains('closed')) return;
   const sel = ctx.selId();
+  const left = list().scrollLeft;
   list().innerHTML = shown.map((n, i) => {
     const src = ctx.thumb(n);
     const open = [n.photoFile && n.heading == null && ctx.t('no north'), n.photoFile && !n.blurred && !n.privacyChecked && ctx.t('faces & plates not checked')].filter(Boolean);
@@ -38,7 +40,12 @@ export function renderFilmstrip() {
       + (n.photoFile ? `<img data-thumb="${escapeHtml(n.id)}" alt=""${src ? ` src="${src}"` : ' hidden'}>` : '<span class="fs-none"></span>')
       + `<span class="fs-i">${i + 1}</span></button>`;
   }).join('');
-  list().querySelector('.fs-item.sel')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  list().scrollLeft = left;
+  // Only for a new selection: a redraw (e.g. news from Google) leaves the strip where the user scrolled it.
+  if (sel !== scrolledTo) {
+    scrolledTo = sel;
+    list().querySelector('.fs-item.sel')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
 }
 
 // The next (delta 1) or previous (-1) point of the strip; the first one if none is selected.

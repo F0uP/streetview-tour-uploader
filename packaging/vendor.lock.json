@@ -94,6 +94,16 @@
   "sha256": "8da277a733926eacd0474b8704b36742d6ec3231c57a860c5b889dff8f1df886",
   "size": 11756954
  },
+ "psv/autorotate-plugin/LICENSE": {
+  "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/autorotate-plugin@5.11.5/LICENSE",
+  "sha256": "eca62e66214ee9f00c6ba9b7e790f9dc83dcfea508e3c81ab9ad14f9f81ae187",
+  "size": 1125
+ },
+ "psv/autorotate-plugin/index.module.js": {
+  "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/autorotate-plugin@5.11.5/index.module.js",
+  "sha256": "9b44425d4fbde6c2b677340d905602d5b3ad4456f957a6ff4dfc4b860a51918f",
+  "size": 17393
+ },
  "psv/core/LICENSE": {
   "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/LICENSE",
   "sha256": "eca62e66214ee9f00c6ba9b7e790f9dc83dcfea508e3c81ab9ad14f9f81ae187",
@@ -108,6 +118,16 @@
   "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.11.5/index.module.js",
   "sha256": "675846a09bd38666bb1289ceeefcf815172d23782167d82bd218351fa5d71f45",
   "size": 201209
+ },
+ "psv/gyroscope-plugin/LICENSE": {
+  "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/gyroscope-plugin@5.11.5/LICENSE",
+  "sha256": "eca62e66214ee9f00c6ba9b7e790f9dc83dcfea508e3c81ab9ad14f9f81ae187",
+  "size": 1125
+ },
+ "psv/gyroscope-plugin/index.module.js": {
+  "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/gyroscope-plugin@5.11.5/index.module.js",
+  "sha256": "65efe5a3d5fbca7d3a2c1722cab3da3a17812dee407c1e0d75c02f7db472c88b",
+  "size": 13378
  },
  "psv/markers-plugin/LICENSE": {
   "url": "https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.11.5/LICENSE",

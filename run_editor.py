@@ -27,6 +27,8 @@ Usage:
 
 import argparse
 import ctypes
+import getpass
+import glob
 import hashlib
 import hmac
 import json
@@ -34,10 +36,12 @@ import os
 import re
 import secrets
 import shutil
+import subprocess
 import sys
 import threading
 import time
 import webbrowser
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -222,6 +226,13 @@ FOLDER_GRANTS_FILE = UPLOADER_DIR / "folders.json"
 BAD_NAME_CHARS = set('<>:"/\\|?*')
 
 
+def _user_name():
+    try:
+        return getpass.getuser()
+    except Exception:
+        return ''
+
+
 def _file_token(path, kind, write=None):
     """A token for a file or folder; write: may the page write to it (default: folders and projects)."""
     path = Path(path)
@@ -232,6 +243,125 @@ def _file_token(path, kind, write=None):
     while len(FILES) > FILES_MAX:
         FILES.pop(next(iter(FILES)))
     return token
+
+
+# ── Working on one project together ───────────────
+# Two people open the same .vrtour in a shared cloud folder (OneDrive, Dropbox, Google
+# Drive, Nextcloud). The editor notices when the file changes and merges it in (merge.js);
+# here it reads what it needs of the file, notes who has it open - a small file next to
+# it, shared by the cloud folder as well - and finds the copies a cloud folder keeps
+# when two saved at the same time.
+PRESENCE_STALE = 180  # s without a sign of life: that editor was closed (or the computer went to sleep)
+PRESENCE_GONE = 86400  # s: a note left behind by an editor that crashed is removed
+CLIENT_ID = re.compile(r'^[A-Za-z0-9_-]{6,40}$')
+
+
+def _file_stat(path):
+    st = Path(path).stat()
+    return {'mtime': st.st_mtime_ns // 1_000_000, 'size': st.st_size}
+
+
+def _zip_entry(path, name):
+    """One entry of a project file (stored, as the editor writes them) and the file's stat."""
+    stat = _file_stat(path)
+    with zipfile.ZipFile(path) as z:
+        data = z.read(name)
+    if _file_stat(path) != stat:  # written again while it was read
+        raise RuntimeError('changed')
+    return data, stat
+
+
+def _presence_files(project):
+    return [f for f in project.parent.glob(f'.{glob.escape(project.name)}.*.editing') if f.is_file()]
+
+
+def _presence(project, client, name, leave=False):
+    """Note that this editor has `project` open (or not any more) and return the others who do.
+    A plain file, not a hidden one: whether every cloud folder shares hidden files is not documented."""
+    mine = project.with_name(f'.{project.name}.{client}.editing')
+    now = int(time.time() * 1000)
+    if leave:
+        mine.unlink(missing_ok=True)
+    else:
+        try:
+            since = json.loads(mine.read_text(encoding='utf-8')).get('since', now)
+        except (OSError, ValueError):
+            since = now
+        try:
+            mine.write_text(json.dumps({'client': client, 'name': name[:60], 'since': since, 'beat': now}), encoding='utf-8')
+        except OSError:
+            pass  # e.g. the cloud folder has the file open just now: next time
+    others = []
+    for f in _presence_files(project):
+        if f == mine:
+            continue
+        try:
+            note = json.loads(f.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        age = (now - int(note.get('beat') or 0)) / 1000
+        if age > PRESENCE_GONE:
+            f.unlink(missing_ok=True)
+        elif age <= PRESENCE_STALE and note.get('client') != client:
+            others.append({'name': str(note.get('name') or '')[:60], 'since': note.get('since'), 'client': note.get('client')})
+    return others
+
+
+def _project_identity(path):
+    """The projectId and savedBy of a project file, or (None, None)."""
+    try:
+        with zipfile.ZipFile(path) as z:
+            data = json.loads(z.read('project.json'))
+        return data.get('projectId'), data.get('savedBy')
+    except Exception:
+        return None, None
+
+
+def _other_versions(project):
+    """Other files of the same project in its folder: the copies a cloud folder keeps when
+    two people saved at the same time ("tour-LAPTOP.vrtour", "tour (1).vrtour", ...)."""
+    pid, _ = _project_identity(project)
+    if not pid:
+        return []
+    out = []
+    for f in sorted(project.parent.glob('*.vrtour'))[:200]:
+        if f == project or f.name.startswith('.') or not f.is_file():
+            continue
+        other, saved_by = _project_identity(f)
+        if other == pid:
+            out.append({'path': f, 'name': f.name, 'savedBy': saved_by, **_file_stat(f)})
+    return out
+
+
+def _to_trash(path):
+    """Into the recycle bin (Trash), where the user can get it back."""
+    path = Path(path)
+    if sys.platform == 'win32':
+        from ctypes import wintypes
+
+        class SHFILEOPSTRUCTW(ctypes.Structure):
+            _fields_ = [('hwnd', wintypes.HWND), ('wFunc', wintypes.UINT), ('pFrom', wintypes.LPCWSTR),
+                        ('pTo', wintypes.LPCWSTR), ('fFlags', ctypes.c_ushort), ('fAnyOperationsAborted', wintypes.BOOL),
+                        ('hNameMappings', ctypes.c_void_p), ('lpszProgressTitle', wintypes.LPCWSTR)]
+        # FO_DELETE with FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI; pFrom ends in two nulls.
+        op = SHFILEOPSTRUCTW(None, 3, str(path) + '\0', None, 0x40 | 0x10 | 0x4 | 0x400, False, None, None)
+        result = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+        if result or op.fAnyOperationsAborted:
+            raise OSError(f'Could not move {path.name} to the recycle bin (error {result}).')
+        return
+    if sys.platform == 'darwin':
+        trash = Path.home() / '.Trash'
+        target = trash / path.name
+        n = 1
+        while target.exists():
+            target = trash / f'{path.stem} {n}{path.suffix}'
+            n += 1
+        shutil.move(str(path), str(target))
+        return
+    gio = shutil.which('gio')
+    if gio and subprocess.run([gio, 'trash', str(path)], capture_output=True, timeout=20).returncode == 0:
+        return
+    path.unlink()
 
 
 def _folder_grants():
@@ -529,6 +659,7 @@ class Handler(SimpleHTTPRequestHandler):
                 'installed': app_update.is_installed(),
                 'dataDir': str(UPLOADER_DIR),
                 'window': bool(APP['window']),
+                'user': _user_name(),
             })
         if parsed.path == '/api/update/check':
             if APP_VERSION == 'dev':
@@ -560,6 +691,28 @@ class Handler(SimpleHTTPRequestHandler):
             if not APP['window'] or not entry or entry['kind'] != 'file' or not entry['path'].is_file():
                 return self._json(404, {'ok': False, 'error': 'file_not_found'})
             return self._send_file(entry['path'])
+        if parsed.path in ('/api/files/stat', '/api/files/entry'):  # the open project, changed by someone else?
+            query = parse_qs(parsed.query)
+            entry = FILES.get((query.get('token') or [''])[0])
+            if not APP['window'] or not entry or entry['kind'] != 'file' or not entry['path'].is_file():
+                return self._json(404, {'ok': False, 'error': 'file_not_found'})
+            if parsed.path == '/api/files/stat':
+                return self._json(200, {'ok': True, **_file_stat(entry['path'])})
+            try:
+                data, stat = _zip_entry(entry['path'], (query.get('name') or [''])[0])
+            except KeyError:
+                return self._json(404, {'ok': False, 'error': 'no_such_entry'})
+            except Exception as e:  # being written just now, or not a project
+                return self._json(409, {'ok': False, 'error': str(e)})
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/octet-stream')
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-File-Mtime', str(stat['mtime']))
+            self.send_header('X-File-Size', str(stat['size']))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         return super().do_GET()
 
     def _send_pending_project(self):
@@ -596,7 +749,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(400, {'ok': False, 'error': f'Not a valid file name: {name}'})
             target = target / name
         length = int(self.headers.get('Content-Length') or 0)
-        tmp = target.with_name(f'.{target.name}.{secrets.token_hex(4)}.part')
+        # .tmp: cloud folders leave those alone, instead of starting to upload half a project.
+        tmp = target.with_name(f'.{target.name}.{secrets.token_hex(4)}.tmp')
         try:
             with open(tmp, 'wb') as f:
                 remaining = length
@@ -606,11 +760,18 @@ class Handler(SimpleHTTPRequestHandler):
                         raise ConnectionError("The data stopped arriving - nothing was saved.")
                     f.write(chunk)
                     remaining -= len(chunk)
-            os.replace(tmp, target)
+            for attempt in range(8):
+                try:
+                    os.replace(tmp, target)
+                    break
+                except PermissionError:  # a cloud folder (OneDrive) or a virus scanner has it open a moment
+                    if attempt == 7:
+                        raise
+                    time.sleep(0.25 * (attempt + 1))
         except Exception as e:
             tmp.unlink(missing_ok=True)
             return self._json(500, {'ok': False, 'error': str(e)})
-        return self._json(200, {'ok': True, 'size': length})
+        return self._json(200, {'ok': True, **_file_stat(target)})
 
     def _video_chunk(self, parsed):
         """One piece of a 360° video, streamed on to Google's resumable upload."""
@@ -815,6 +976,33 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(200, {'ok': False, 'error': 'changed'})
         return self._json(200, {'ok': True, 'token': _file_token(path, 'file'), 'name': path.name})
 
+    def _post_files_shared(self, parsed, body):
+        """Working on the open project together: who else has it open, and its other versions."""
+        payload = self._payload(body)
+        entry = FILES.get(str(payload.get('token') or ''))
+        if not APP['window'] or not entry or entry['kind'] != 'file':
+            return self._json(404, {'ok': False, 'error': 'file_not_found'})
+        path = entry['path']
+        if parsed.path == '/api/files/trash':  # a copy that has been merged in
+            if not entry.get('copy') or not path.is_file():
+                return self._json(403, {'ok': False, 'error': 'not_a_copy'})
+            _to_trash(path)
+            return self._json(200, {'ok': True})
+        if not path.is_file():
+            return self._json(404, {'ok': False, 'error': 'file_not_found'})
+        if parsed.path == '/api/files/presence':
+            client = str(payload.get('client') or '')
+            if not CLIENT_ID.match(client):
+                raise RuntimeError('Not a client id')
+            others = _presence(path, client, str(payload.get('name') or '').strip() or _user_name(), leave=bool(payload.get('leave')))
+            return self._json(200, {'ok': True, 'others': others})
+        versions = []
+        for v in _other_versions(path):
+            token = _file_token(v.pop('path'), 'file', write=False)
+            FILES[token]['copy'] = True
+            versions.append({'token': token, **v})
+        return self._json(200, {'ok': True, 'versions': versions})
+
     def _post_files_folder(self, parsed, body):
         # The export folder picked in an earlier run (the page keeps only the grant id).
         path = _folder_grants().get(str(self._payload(body).get('grant') or ''))
@@ -862,6 +1050,8 @@ class Handler(SimpleHTTPRequestHandler):
         lat = float(qs['lat'][0])
         lng = float(qs['lng'][0])
         heading = float(qs['heading'][0]) if qs.get('heading', [''])[0] else None
+        pitch = float(qs['pitch'][0]) if qs.get('pitch', [''])[0] else None
+        roll = float(qs['roll'][0]) if qs.get('roll', [''])[0] else None
         place_id = qs.get('place_id', [''])[0] or None
         job = qs.get('job', [''])[0] or None
         level = ({'number': int(qs['level'][0]), 'name': qs.get('level_name', [''])[0][:3]}
@@ -870,7 +1060,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not creds:
             return self._not_signed_in()
         try:
-            photo_id = _upload_photo(creds, body, filename, lat, lng, heading, place_id, job, level)
+            photo_id = _upload_photo(creds, body, filename, lat, lng, heading, place_id, job, level, pitch=pitch, roll=roll)
         except GoogleError as e:
             return self._json(200, {'ok': False, 'error': e.message, 'status': e.status,
                                     'step': e.step, 'kind': e.kind})
@@ -1033,6 +1223,9 @@ POST_ROUTES = {
     '/api/files/ref': '_post_files_ref',
     '/api/files/ref/open': '_post_files_ref',
     '/api/files/folder': '_post_files_folder',
+    '/api/files/presence': '_post_files_shared',
+    '/api/files/versions': '_post_files_shared',
+    '/api/files/trash': '_post_files_shared',
     '/api/recent/add': '_post_recent',
     '/api/recent/open': '_post_recent',
     '/api/recent/remove': '_post_recent',
@@ -1164,6 +1357,9 @@ def main():
     ThreadingHTTPServer.allow_reuse_address = os.name != 'nt'
     # Don't wait for open requests (e.g. a pending Google sign-in) when quitting.
     ThreadingHTTPServer.daemon_threads = True
+    # The page loads its modules and libraries all at once: with the default queue of 5,
+    # Windows refuses the connections beyond it (a library missing, the editor not starting).
+    ThreadingHTTPServer.request_queue_size = 128
     try:
         httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     except OSError as e:

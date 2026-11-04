@@ -84,12 +84,15 @@ def build(app_version, data_dir, page, *, packaged, window, signed_in, places_ke
         f'Profile folder: {data_dir}',
         *_profile(data_dir),
     ]
-    log = data_dir / 'editor.log'
+    # The end of the log - of the one before too (editor.log.1), when the current one was just started.
     log_text = ''
-    if log.is_file():
+    for log in (data_dir / 'editor.log', data_dir / 'editor.log.1'):
+        room = LOG_TAIL - len(log_text)
+        if room <= 0 or not log.is_file():
+            continue
         with open(log, 'rb') as f:
-            f.seek(max(0, log.stat().st_size - LOG_TAIL))
-            log_text = f.read().decode('utf-8', errors='replace')
+            f.seek(max(0, log.stat().st_size - room))
+            log_text = f.read().decode('utf-8', errors='replace') + log_text
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
         z.writestr('report.txt', scrub('\n'.join(summary) + '\n', secrets))

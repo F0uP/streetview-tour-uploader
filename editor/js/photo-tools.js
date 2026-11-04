@@ -185,7 +185,8 @@ document.getElementById('sun-apply').onclick = () => {
     .filter(r => r?.heading != null);
   if (!chosen.length) return;
   pushUndo();
-  chosen.forEach(({ node: n, heading }) => {
+  chosen.forEach(({ node, heading }) => {
+    const n = S.nodes.find(x => x.id === node.id) || node; // undo in between gives new point objects
     n.heading = normalizeHeading(heading);
     n.headingSource = 'sun';
     n.viewYaw = normalizeRad(-degToRad(n.heading));

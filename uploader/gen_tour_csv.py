@@ -1,5 +1,7 @@
 """
-Generate tour.csv from a tour-config.json (connections) + EXIF GPS in the photos.
+Generate tour.csv from a tour-config.json exported by the editor: its positions,
+headings and connections. Points the config has no position for take the GPS from
+the photo's EXIF.
 
 Usage:
   python gen_tour_csv.py --config <tour-config.json> --folder <photos_dir> --out <output.csv>
@@ -56,9 +58,13 @@ def main():
         filename = node["panorama"]
         filepath = os.path.join(args.folder, filename)
 
-        lat, lng, heading = read_exif_gps(filepath)
+        # The editor's position and north (moved, snapped, turned there) come first.
+        exif_lat, exif_lng, exif_heading = read_exif_gps(filepath)
+        lat = node.get("lat") if node.get("lat") is not None else exif_lat
+        lng = node.get("lng") if node.get("lng") is not None else exif_lng
+        heading = node.get("heading") if node.get("heading") is not None else exif_heading
 
-        connects = [id_to_file[lnk["nodeId"]] for lnk in node.get("links", [])]
+        connects = [id_to_file[lnk["nodeId"]] for lnk in node.get("links", []) if lnk["nodeId"] in id_to_file]
         connects_to = ";".join(connects)
 
         rows.append({

@@ -308,7 +308,8 @@ class _ProgressReader(io.BytesIO):
         return chunk
 
 
-def _upload_photo(creds, data, filename, lat, lng, heading=None, place_id=None, job=None, level=None, altitude=None):
+def _upload_photo(creds, data, filename, lat, lng, heading=None, place_id=None, job=None, level=None, altitude=None,
+                  pitch=None, roll=None):
     requests, *_ = _google_libs()
     session = _session(creds, UPLOAD_TIMEOUT)
     if job:
@@ -335,6 +336,10 @@ def _upload_photo(creds, data, filename, lat, lng, heading=None, place_id=None, 
         pose['heading'] = heading
     if altitude is not None:
         pose['altitude'] = altitude
+    if pitch is not None:  # the camera not held level: Google straightens the horizon
+        pose['pitch'] = max(-90.0, min(90.0, pitch))
+    if roll is not None:
+        pose['roll'] = roll % 360
     if level:  # the floor, inside buildings: {'number': 1, 'name': '1st floor'}
         pose['level'] = level
     body = {'uploadReference': {'uploadUrl': upload_url}, 'pose': pose}
@@ -545,6 +550,12 @@ def _update_photos(creds, items):
         if it.get('heading') is not None:
             pose['heading'] = it['heading']
             mask.append('pose.heading')
+        if it.get('pitch') is not None:
+            pose['pitch'] = max(-90.0, min(90.0, it['pitch']))
+            mask.append('pose.pitch')
+        if it.get('roll') is not None:
+            pose['roll'] = it['roll'] % 360
+            mask.append('pose.roll')
         if 'level' in it:  # only when the floor is to change (None removes it)
             mask.append('pose.level')
             if it['level']:
