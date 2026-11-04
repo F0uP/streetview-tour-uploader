@@ -70,6 +70,40 @@ def test_website_carries_its_libraries(editor, pw, tmp_path):
     assert not errors, errors
 
 
+# The browser's storage answering late, as on a busy computer.
+SLOW_STORAGE = """() => {
+    const open = IDBFactory.prototype.open;
+    IDBFactory.prototype.open = function (...args) {
+        const answer = {};
+        setTimeout(() => {
+            const req = open.apply(this, args);
+            req.onupgradeneeded = () => { answer.result = req.result; answer.onupgradeneeded?.(); };
+            req.onsuccess = () => { answer.result = req.result; answer.onsuccess?.(); };
+            req.onerror = () => { answer.error = req.error; answer.onerror?.(); };
+        }, 700);
+        return answer;
+    };
+}"""
+
+
+def test_a_logo_just_chosen_is_not_replaced_by_the_stored_one(editor):
+    page = editor.page
+    three_linked(page)
+    page.evaluate(SLOW_STORAGE)
+    page.click('#bproject')
+    page.click('button[data-run=website]')
+    page.set_input_files('#site-logo', files=[{'name': 'firma.png', 'mimeType': 'image/png', 'buffer': PNG}])
+    with page.expect_download() as dl:
+        page.click('#site-go')
+    assert 'logo.png' in zipfile.ZipFile(dl.value.path()).namelist()
+
+    # and it is there the next time
+    page.wait_for_timeout(1000)
+    page.click('#bproject')
+    page.click('button[data-run=website]')
+    page.wait_for_function("!document.getElementById('site-logo-img').hidden")
+
+
 def test_csv_and_viewer_files(editor):
     page = editor.page
     three_linked(page)

@@ -5340,6 +5340,7 @@ document.getElementById('preview-startview').onclick = () => {
 // ── Website options: title, logo, turning ─────────
 // The logo is kept for the next exports (in this browser's / the app's storage).
 let siteScope = null, siteLogo = null;
+let siteLogoChoices = 0; // a logo chosen or removed counts over the stored one still being read
 async function siteLogoDb(blob) {
   const db = await openSaveDb();
   try {
@@ -5366,7 +5367,9 @@ async function openSiteOptions(scope) {
   document.getElementById('site-title').value = scope?.name || projectName?.replace(/\.vrtour$/i, '') || '';
   document.getElementById('site-autorotate').checked = storageGet('siteAutorotate') !== '0';
   document.getElementById('site-gyro').checked = storageGet('siteGyro') !== '0';
-  try { siteLogo = await siteLogoDb(); } catch { siteLogo = null; }
+  const choices = siteLogoChoices;
+  const stored = await siteLogoDb().catch(() => null);
+  if (choices === siteLogoChoices) siteLogo = stored;
   showSiteLogo();
   openModal('site-back');
 }
@@ -5375,11 +5378,13 @@ document.getElementById('site-logo').addEventListener('change', async e => {
   e.target.value = '';
   if (!file) return;
   siteLogo = file;
+  siteLogoChoices++;
   try { await siteLogoDb(file); } catch {}
   showSiteLogo();
 });
 document.getElementById('site-logo-remove').onclick = async () => {
   siteLogo = null;
+  siteLogoChoices++;
   try { await siteLogoDb(null); } catch {}
   showSiteLogo();
 };

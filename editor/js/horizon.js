@@ -95,6 +95,7 @@ export function initHorizon(c) {
 export async function renderHorizon(n) {
   if (!n) return;
   const camera = await xmpPose(n.photoFile);
+  if (ctx.node()?.id !== n.id) return; // another point was selected meanwhile
   const pose = hasOwnPose(n) ? { pitch: n.pitch || 0, roll: n.roll || 0 } : camera;
   el('hz-pitch').value = pose.pitch;
   el('hz-roll').value = pose.roll;
