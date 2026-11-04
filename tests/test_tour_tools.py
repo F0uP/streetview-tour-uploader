@@ -173,9 +173,9 @@ def test_a_reshoot_takes_the_place_of_the_photo_on_google(editor):
     assert page.inner_text('#upc-new') == '1'
     run_upload(page)
     assert google.uploads[-1][0] == 'new1.jpg' and len(google.uploads) == 4
-    assert google.deleted == ['g1']
+    assert google.deleted == ['g-p1']
     links = {i['id']: sorted(i['connections']) for batch in google.updates for i in batch if 'connections' in i}
-    assert links.get('g3') == ['g0', 'g2'] and links.get('g0') == ['g3'] and links.get('g2') == ['g3'], links
+    assert links.get('g-new1') == ['g-p0', 'g-p2'] and links.get('g-p0') == ['g-new1'] and links.get('g-p2') == ['g-new1'], links
 
 
 def test_the_horizon_levelled_by_hand(editor):
@@ -214,7 +214,7 @@ def test_the_horizon_levelled_by_hand(editor):
     page.wait_for_timeout(800)
     assert page.inner_text('#upc-changed') == '1'
     run_upload(page)
-    sent = [i for batch in google.updates for i in batch if i['id'] == 'g0'][-1]
+    sent = [i for batch in google.updates for i in batch if i['id'] == 'g-tilted'][-1]
     assert (sent['pitch'], sent['roll']) == (0, 0), sent
 
 
@@ -293,14 +293,14 @@ def test_views_over_time_and_the_tour_report(editor):
     page.click('#upl-close')
     # each look at the views notes them for the day: from the second day on, a chart
     page.clock.set_fixed_time('2026-10-01T10:00:00Z')
-    google.views = {'g0': 1000, 'g1': 30, 'g2': 5}
+    google.views = {'g-r0': 1000, 'g-r1': 30, 'g-r2': 5}
     page.click('#btools')
     page.click('button[data-run=views]')
     page.wait_for_function("document.getElementById('views-sum').textContent === '1,035 views in total.'")
     assert page.locator('#views-chart svg').count() == 0
     page.keyboard.press('Escape')
     page.clock.set_fixed_time('2026-10-20T10:00:00Z')
-    google.views = {'g0': 1200, 'g1': 34, 'g2': 5}
+    google.views = {'g-r0': 1200, 'g-r1': 34, 'g-r2': 5}
     page.click('#btools')
     page.click('button[data-run=views]')
     page.wait_for_function("document.getElementById('views-sum').textContent === '1,239 views in total.'")

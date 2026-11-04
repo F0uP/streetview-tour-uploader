@@ -45,7 +45,7 @@ def test_floors_are_set_filtered_and_published(editor):
     page.wait_for_timeout(800)
     assert page.inner_text('#upc-changed') == '1'
     run_upload(page)
-    pushed = [i for batch in google.updates for i in batch if i['id'] == 'g0']
+    pushed = [i for batch in google.updates for i in batch if i['id'] == 'g-f0']
     assert pushed and pushed[-1]['level'] is None
 
 
@@ -57,7 +57,7 @@ def test_views_per_tour_and_photo(editor):
     run_upload(page)
     page.click('#up-finish')
     page.click('#upl-close')
-    google.views = {'g0': 1200, 'g1': 34, 'g2': 5}
+    google.views = {'g-v0': 1200, 'g-v1': 34, 'g-v2': 5}
     page.click('#btools')
     page.click('button[data-run=views]')
     page.wait_for_timeout(1500)

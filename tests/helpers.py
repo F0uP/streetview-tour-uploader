@@ -154,7 +154,7 @@ class FakeGoogle:
         self.uploads, self.updates, self.deleted, self.queries = [], [], [], []
         self.bodies = {}  # file name -> the bytes uploaded
         self.views = {}  # photo id -> view count Google reports
-        self.ids = iter(f'g{i}' for i in range(1000))
+        self.sent = {}  # file name -> how often it went up
         self.reject_place = reject_place
         page.route('**/api/status', lambda r: r.fulfill(json={'signedIn': True, 'hasCredentials': True}))
         page.route('**/api/upload-progress*', lambda r: r.fulfill(json={}))
@@ -177,7 +177,13 @@ class FakeGoogle:
         self.bodies[q['filename'][0]] = route.request.post_data_buffer
         if place and self.reject_place(place):
             return route.fulfill(json={'ok': False, 'error': f'Invalid place id: {place}', 'status': 400, 'step': 'create', 'kind': 'place'})
-        route.fulfill(json={'ok': True, 'photoId': next(self.ids)})
+        route.fulfill(json={'ok': True, 'photoId': self.photo_id(q['filename'][0])})
+
+    def photo_id(self, filename):
+        """An id from the file name (p1.jpg: g-p1, the next time g-p1-2). Photos go up a few at
+        a time, so the order they arrive in changes from run to run: no test may depend on it."""
+        n = self.sent[filename] = self.sent.get(filename, 0) + 1
+        return f"g-{filename.rsplit('.', 1)[0]}" + (f'-{n}' if n > 1 else '')
 
     def _update(self, route):
         items = json.loads(route.request.post_data)['items']

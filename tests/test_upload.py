@@ -26,7 +26,7 @@ def test_upload_with_a_place_id_google_refuses(editor):
     assert [u[1] for u in google.uploads[2:]] == [None, None, None]
     assert 'did not accept the Place ID' in page.inner_text('#up-notice')
     links = {i['id']: sorted(i['connections']) for batch in google.updates for i in batch}
-    assert links == {'g0': ['g1'], 'g1': ['g0', 'g2'], 'g2': ['g1', 'g3'], 'g3': ['g2']}
+    assert links == {'g-p0': ['g-p1'], 'g-p1': ['g-p0', 'g-p2'], 'g-p2': ['g-p1', 'g-p3'], 'g-p3': ['g-p2']}
     page.click('#up-finish')
     assert page.locator('.leaflet-marker-icon .gs').count() == 4
 
@@ -51,5 +51,5 @@ def test_a_moved_point_is_updated_without_uploading_again(editor):
     assert page.inner_text('#upc-changed') == '1'
     run_upload(page)
     assert len(google.uploads) == uploads
-    moved = [i for batch in google.updates for i in batch if i['id'] == 'g1']
+    moved = [i for batch in google.updates for i in batch if i['id'] == 'g-p1']
     assert moved and abs(moved[-1]['lat'] - (KIEL[0] + 0.0001)) < 1e-9

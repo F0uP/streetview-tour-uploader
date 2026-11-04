@@ -117,7 +117,7 @@ def test_places_per_tour_and_per_photo(make_editor, tmp_path):
     assert page.inner_text('#upc-changed') == '3'
     google.updates.clear()
     run_upload(page)
-    assert sorted({(i['id'], i.get('placeId', '-')) for batch in google.updates for i in batch}) == [('g0', None), ('g1', None), ('g2', None)]
+    assert sorted({(i['id'], i.get('placeId', '-')) for batch in google.updates for i in batch}) == [('g-Museum1', None), ('g-Museum2', None), ('g-Museum3', None)]
     page.keyboard.press('Escape')
 
     # one place for the whole walk: its street is offered

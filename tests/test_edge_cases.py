@@ -32,7 +32,7 @@ def test_a_removed_point_loses_its_links_and_can_be_deleted_on_google(editor):
     run_upload(page)
     page.click('#up-finish')
     page.click('#upl-close')
-    assert links == {'g0': ['g1'], 'g1': ['g0', 'g2'], 'g2': ['g1']}
+    assert links == {'g-p0': ['g-p1'], 'g-p1': ['g-p0', 'g-p2'], 'g-p2': ['g-p1']}
 
     # the middle point is removed from the tour: its neighbours lose the link to it on Google
     page.click('#node-list .nrow >> nth=1')
@@ -44,8 +44,8 @@ def test_a_removed_point_loses_its_links_and_can_be_deleted_on_google(editor):
     assert page.inner_text('#upl-delete-removed-label') == 'Also delete the photos of 1 point(s) removed from the tour on Google'
     page.check('#upl-delete-removed')
     run_upload(page)
-    assert links['g0'] == [] and links['g2'] == []
-    assert google.deleted == ['g1']
+    assert links['g-p0'] == [] and links['g-p2'] == []
+    assert google.deleted == ['g-p1']
     page.click('#up-finish')
     assert page.is_hidden('#upl-delete-removed-row')  # done: nothing left to delete
 
