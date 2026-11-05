@@ -33,6 +33,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -55,6 +56,7 @@ HERE = Path(__file__).resolve().parent
 SIGN_IN = SignIn(HERE / 'token.json', HERE / 'client_secrets.json')  # the same files as the editor from source
 PHOTO_SUFFIXES = {'.jpg', '.jpeg'}
 GOOGLE_MAX = 75 * 1024 * 1024 - 256 * 1024  # larger photos: made smaller by the editor's upload
+SAMPLE_PHOTO = re.compile(r'svt-sample-\d+\.jpg')  # the sample tour's photos are drawn: never published
 
 
 # ──────────────────────────────────────────────
@@ -153,9 +155,10 @@ def wait_until_known(creds, ids, minutes):
         time.sleep(15)
 
 
-def connect(creds, name_to_id, links, wait_minutes, label=str):
+def connect(creds, name_to_id, links, wait_minutes, label=str, own_ids=None):
     """Set the links: links = {filename: [linked filename, ...]}. Photos Google doesn't know
-    yet are left out; run again with --connect-only later for them.
+    yet are left out; run again with --connect-only later for them. own_ids: the photos of a
+    project; links Google has to any other photo stay, as they do in the editor.
     Returns (what Google knows of each name's photo, the names whose links were set)."""
     if not links:
         return {}, set()
@@ -170,6 +173,9 @@ def connect(creds, name_to_id, links, wait_minutes, label=str):
             continue
         facts = known[name_to_id[name]]
         ids = [real[t] for t in targets if t in real]
+        if own_ids is not None:
+            ours = own_ids | set(name_to_id.values()) | set(real.values())
+            ids += [c for c in facts.get('connections') or [] if c not in ours]
         missing = [t for t in targets if t not in real]
         if missing:
             print(f"  {label(name)}: {', '.join(map(label, missing))} not on Google yet - left out")
@@ -268,6 +274,12 @@ def own_pose(n):
     return n.get('pitch') is not None or n.get('roll') is not None
 
 
+def needs_upload(n):
+    """As in the editor: a photo not on Google, or gone from it - but never one of the sample tour."""
+    return (bool(n.get('photoPath')) and (not n.get('gsvPhotoId') or n.get('gsvStatus') == 'missing')
+            and not SAMPLE_PHOTO.fullmatch(n.get('photoName') or ''))
+
+
 def js_fixed(x, digits):
     """JavaScript's x.toFixed(digits): rounded on the exact value of the float, halves away
     from zero (Python's own formatting rounds halves to even: -1.25 gives -1.2, not -1.3)."""
@@ -287,6 +299,15 @@ def signature(n, linked_ids):
     if own_pose(n):
         sig.append(f"pose {js_fixed(n.get('pitch') or 0, 1)} {js_fixed(n.get('roll') or 0, 1)}")
     return json.dumps(sig, ensure_ascii=False, separators=(',', ':'))
+
+
+def same_but_links(old, new):
+    """Do two signatures say the same, apart from the links (their fourth part)?"""
+    try:
+        a, b = json.loads(old), json.loads(new)
+    except (TypeError, ValueError):
+        return False
+    return a[:3] + a[4:] == b[:3] + b[4:]
 
 
 def upload_project_photo(creds, n, data, place_id):
@@ -332,11 +353,11 @@ def run_project(args):
     if journal.exists():  # the last run was interrupted: what it uploaded counts
         uploaded = json.loads(journal.read_text(encoding='utf-8'))
         for nid, entry in uploaded.items():
-            if nid in by_id and not by_id[nid].get('gsvPhotoId'):
+            if nid in by_id and needs_upload(by_id[nid]):
                 by_id[nid].update(entry)
         print(f"{len(uploaded)} photo(s) uploaded by the last, interrupted run")
 
-    todo = [n for n in nodes if n.get('photoPath') and not n.get('gsvPhotoId')]
+    todo = [n for n in nodes if needs_upload(n)]
     print(f"Project: {path}  ({len(nodes)} points, {len(nodes) - len(todo)} of them on Google or without a photo)")
     with zipfile.ZipFile(path) as z:
         sizes = {i.filename: i.file_size for i in z.infolist()}
@@ -390,16 +411,20 @@ def run_project(args):
         graph = project_links(project)
         on_google = {n['id']: n['gsvPhotoId'] for n in nodes if n.get('gsvPhotoId') and n.get('gsvStatus') != 'missing'}
         links = {nid: sorted(t for t in graph.get(nid, ()) if t in on_google) for nid in on_google}
-        facts, linked = connect(get_credentials(), on_google, {k: v for k, v in links.items() if v}, args.wait, label=name)
+        own_ids = {*on_google.values(), *project.get('gsvRemoved', []), *(pid for n in nodes for pid in n.get('gsvObsolete') or [])}
+        facts, linked = connect(get_credentials(), on_google, {k: v for k, v in links.items() if v}, args.wait, label=name, own_ids=own_ids)
         for nid, f in facts.items():
             by_id[nid].update(gsvPhotoId=f['resolvedId'], gsvConfirmed=True, gsvStatus=f['status'],
                               gsvShareLink=f.get('shareLink') or by_id[nid].get('gsvShareLink'))
-        # What Google now knows of a point (linked now, or just uploaded without links):
-        # the editor sends it again only once it changes.
+        # What Google now knows of a point (linked now, or just uploaded without links): the
+        # editor sends it again only once it changes. Only links were sent here, so a point
+        # changed since it last told Google keeps its signature: the editor sends the rest.
         for nid in linked | {nid for nid in uploaded if nid in by_id and not links.get(nid)}:
             n = by_id[nid]
-            n['gsvSig'] = signature(n, [by_id[t]['gsvPhotoId'] for t in graph.get(nid, ())
-                                        if by_id[t].get('gsvConfirmed') and by_id[t].get('gsvPhotoId')])
+            sig = signature(n, [by_id[t]['gsvPhotoId'] for t in graph.get(nid, ())
+                                if by_id[t].get('gsvConfirmed') and by_id[t].get('gsvPhotoId')])
+            if nid in uploaded or same_but_links(n.get('gsvSig'), sig):
+                n['gsvSig'] = sig
     finally:
         write_project(path, project)
         journal.unlink(missing_ok=True)

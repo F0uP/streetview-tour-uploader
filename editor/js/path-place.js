@@ -14,16 +14,8 @@ export const isDrawingPath = () => draw.on;
 export function initPathPlace(c) {
   ctx = c;
   const { map } = ctx;
-  map.on('click', e => {
-    if (!draw.on) return;
-    const p = e.latlng.wrap();
-    const last = draw.pts[draw.pts.length - 1];
-    // The two clicks of a double-click: one point only.
-    if (last && map.latLngToContainerPoint(last).distanceTo(map.latLngToContainerPoint(p)) < 4) return;
-    draw.pts.push(p);
-    redraw();
-  });
-  map.on('dblclick', () => { if (draw.on) finish(); });
+  map.on('click', e => addPathPoint(e.latlng));
+  map.on('dblclick', () => { if (draw.on) finishPath(); });
   map.on('mousemove', e => {
     if (!draw.on || !draw.pts.length) return;
     const last = draw.pts[draw.pts.length - 1];
@@ -34,7 +26,7 @@ export function initPathPlace(c) {
   addEventListener('keydown', e => {
     if (!draw.on || e.target.closest?.('input, select, textarea')) return;
     if (e.key === 'Escape') cancel();
-    else if (e.key === 'Enter') finish();
+    else if (e.key === 'Enter') finishPath();
     else if (e.key === 'Backspace' || e.key === 'Delete') { draw.pts.pop(); redraw(); }
     else return;
     e.preventDefault();
@@ -42,7 +34,18 @@ export function initPathPlace(c) {
   }, true);
   el('path-undo').onclick = () => { draw.pts.pop(); redraw(); };
   el('path-cancel').onclick = cancel;
-  el('path-done').onclick = finish;
+  el('path-done').onclick = finishPath;
+}
+
+// A point of the path: clicked on the map, or on what lies on it (the editor passes those on).
+export function addPathPoint(latlng) {
+  if (!draw.on) return;
+  const p = latlng.wrap();
+  const last = draw.pts[draw.pts.length - 1];
+  // The two clicks of a double-click: one point only.
+  if (last && ctx.map.latLngToContainerPoint(last).distanceTo(ctx.map.latLngToContainerPoint(p)) < 4) return;
+  draw.pts.push(p);
+  redraw();
 }
 
 export function openPathPlace() {
@@ -91,7 +94,7 @@ function along(pts, lengths, share) {
   return { lat: a.lat + (b.lat - a.lat) * f, lng: a.lng + (b.lng - a.lng) * f, bearing: bearingDeg(a, b) };
 }
 
-async function finish() {
+export async function finishPath() {
   if (!draw.on) return;
   if (draw.pts.length < 2) { ctx.toast(ctx.t('Draw at least two points of the path.')); return; }
   const pts = draw.pts.map(p => ({ lat: p.lat, lng: p.lng }));

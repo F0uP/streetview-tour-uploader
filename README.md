@@ -483,6 +483,7 @@ upload, typing, dragging).
 | added a point | Both points stay. |
 | – one deleted a point, the other changed it | The point stays, with its links, and you are told. |
 | – one uploaded a photo, the other blurred or replaced it | The uploaded photo counts as out of date: the next upload sends the new one and deletes it on Google. |
+| – one blurred a photo, the other changed it too | The blurred photo stays, and you are told. |
 
 Good to know:
 
@@ -496,14 +497,17 @@ Good to know:
   goes when you close the project; one left by a crash counts for 3 minutes.
 - **Copies** (in the app): when two saved at the same time before the cloud
   service could copy the file, it keeps both (`tour-LAPTOP.vrtour`, `tour (1).vrtour`).
-  The editor recognises them by their project id, offers to merge them and moves
-  the copy to the recycle bin. **Save as…** starts a project of its own.
+  The editor looks at files named like the project, recognises the copies by their
+  project id, offers to merge them and moves the copy to the recycle bin. A backup of
+  a version the project already went through is left alone. **Save as…** starts a
+  project of its own.
 - In **Chrome and Edge** in the browser, changes are merged the same way, without *who
   is there* and *copies*. Firefox can only download copies, so it can't take part.
 - Each save writes the whole file, photos included, so with a big project it takes
   the cloud service a while to pass it on. The photos stay in the same place in the
   file, which helps services that send only what changed. All of you should use the same version
-  of the editor: an older one leaves out what it doesn't know yet when it saves.
+  of the editor: an older one leaves out what it doesn't know yet when it saves. A file
+  from a newer version is neither merged nor saved over; you are told to update.
 
 ### Keyboard shortcuts
 
@@ -674,7 +678,7 @@ run from source, its sign-in.
 
 | Script | What it does |
 |---|---|
-| `upload_tour.py` | Upload a folder of photos. Without a manifest it links them in file order; with `--manifest tour.csv` it uses your links. It waits for Google to take the photos in before linking (`--wait`, minutes); `--connect-only` sets the links later. `--place-id`, `--dry-run`. With `--project tour.vrtour` it uploads a project saved by the editor: its photos not on Google yet, with position, north, place, floor and horizon as set there, then the links – and writes the new photo IDs back into the project, so the editor carries on from there (close the project in the editor first). `--delete-old` deletes the old versions of photos replaced in the editor. |
+| `upload_tour.py` | Upload a folder of photos. Without a manifest it links them in file order; with `--manifest tour.csv` it uses your links. It waits for Google to take the photos in before linking (`--wait`, minutes); `--connect-only` sets the links later. `--place-id`, `--dry-run`. With `--project tour.vrtour` it uploads a project saved by the editor: its photos not on Google yet, with position, north, place, floor and horizon as set there, then the links (links on Google to photos outside the project stay) – and writes the new photo IDs back into the project, so the editor carries on from there (close the project in the editor first). Other changes to points already on Google are left for the editor to send. `--delete-old` deletes the old versions of photos replaced in the editor. |
 | `gen_tour_csv.py` | Build `tour.csv` from an exported `tour-config.json`: its positions, headings and links (the photos' EXIF GPS where it has no position). |
 | `retry_failed.py` | Re-upload only the photos that failed, then redo the links. |
 | `restore_xmp.py` / `restore_exif.py` | Copy 360° metadata / GPS back into photos an image editor stripped. |
@@ -710,9 +714,10 @@ See [`example/`](example) for the CSV format and `tour-meta.json` (a Place ID fo
   browser mode the app quits about 15 seconds after the last editor tab is
   closed, and at the latest 5 minutes after no editor page has been heard from.
 - Working on a project together goes only through the cloud folder you chose: the
-  editor sends nothing anywhere for it. Whoever can see that folder sees the name you
-  set in **Working together…**, in the project file and in the note next to it (in the
-  app, your user name on this computer unless you set another).
+  editor sends nothing anywhere for it. A project file holds a name only if you set one
+  in **Working together…**, and a tour exported as a project holds none. While a project
+  is open in the app, the note next to it shows that name, or else your user name on
+  this computer, to whoever can see the folder.
 - Photos and projects stay on your computer until you upload them; uploads go
   directly to Google's Street View Publish API (or, if you choose, to the Panoramax
   instance you connected; its token stays on your computer). Face and vehicle detection runs on

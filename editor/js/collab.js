@@ -6,7 +6,7 @@
 import { escapeHtml } from './util.js';
 
 // From the editor (initCollab): { t, toast, openModal, closeModal, closeMenus, storageGet, storageSet, choose,
-// isApp(), handle(), fileName(), pull(), save(), dirty(), blocked(), mergeCopy(copy), defaultName() }
+// isApp(), handle(), fileName(), pull(), save(), dirty(), blocked(), mergeCopy(copy), defaultName(), knownVersion(rev) }
 let ctx;
 const el = id => document.getElementById(id);
 const LOOK_EVERY = 4000; // ms: has the file changed?
@@ -20,7 +20,7 @@ let lastPresence = 0, lastVersions = 0, hinted = false;
 let saveTimer = null;
 const asked = new Set(); // copies already asked about (name and time)
 
-export function collabClient() {
+function collabClient() {
   let id = ctx.storageGet('collabClient');
   if (!id || !/^[A-Za-z0-9_-]{6,40}$/.test(id)) {
     id = `e${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
@@ -28,7 +28,10 @@ export function collabClient() {
   }
   return id;
 }
-export const collabName = () => (ctx.storageGet('collabName') || ctx.defaultName() || '').trim();
+// The name set in the dialog: the only one that goes into a project file.
+export const collabOwnName = () => (ctx.storageGet('collabName') || '').trim();
+// The name the others see while the project is open here: else the computer's user name.
+const collabName = () => collabOwnName() || (ctx.defaultName() || '').trim();
 const autoSaving = () => ctx.storageGet('collabAutosave') === '1';
 const appToken = () => (ctx.isApp() ? ctx.handle()?.token || null : null);
 
@@ -69,15 +72,17 @@ export function collabProjectChanged() {
 
 let looking = false;
 async function look() {
-  if (looking || document.visibilityState !== 'visible' || !ctx.handle()) return;
+  if (looking || !ctx.handle()) return;
   looking = true;
+  // In a minimized window the changes of others wait, but it is still there for them.
+  const visible = document.visibilityState === 'visible';
   try {
-    await ctx.pull();
+    if (visible) await ctx.pull();
     const token = appToken();
     if (!token) return;
     const now = Date.now();
     if (token !== presenceFor || now - lastPresence > PRESENCE_EVERY) await notePresence(token);
-    if (now - lastVersions > VERSIONS_EVERY && !ctx.blocked()) await checkVersions(token);
+    if (visible && now - lastVersions > VERSIONS_EVERY && !ctx.blocked()) checkVersions(token);
   } catch (err) {
     console.warn('shared project', err);
   } finally {
@@ -104,7 +109,8 @@ async function checkVersions(token) {
   const j = await post('/api/files/versions', { token });
   for (const copy of j?.versions || []) {
     const key = `${copy.name}|${copy.mtime}`;
-    if (asked.has(key) || token !== appToken()) continue;
+    // A version this project went through (a backup, say) has nothing new in it.
+    if (asked.has(key) || token !== appToken() || ctx.knownVersion(copy.rev)) continue;
     asked.add(key);
     const who = copy.savedBy?.name;
     const answer = await ctx.choose(ctx.t('A second version of this project'),

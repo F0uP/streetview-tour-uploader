@@ -15,7 +15,8 @@
 const GROUPS = new Map([
   ['position', ['lat', 'lng', 'hasGps']],
   ['north', ['heading', 'origHeading', 'viewYaw', 'origViewYaw', 'headingSource']],
-  ['photo', ['photoName', 'photoPath', 'photoType', 'photoSize', 'captureTime', 'captureOffset', 'blurred', 'privacyChecked']],
+  ['photo', ['photoName', 'photoPath', 'photoType', 'photoSize', 'blurred']],
+  ['capture', ['captureTime', 'captureOffset']],
   ['google', ['gsvPhotoId', 'gsvStatus', 'gsvShareLink', 'gsvSig', 'gsvConfirmed', 'gsvUploadedAt']],
   ['place', ['placeId', 'placeName', 'placeAuto', 'placeKind', 'placeDist', 'placeFor']],
   ['horizon', ['pitch', 'roll']],
@@ -27,6 +28,8 @@ const OWN_RULES = new Set(['id', 'gsvObsolete', 'viewsLog', 'gsvViews']);
 const MISSING_MEANS = new Set(['placeId']);
 // Always written by editors that know them: compared only where every version has them.
 const DERIVED = new Set(['photoSize']);
+// What Google reports and what is read from the photo: records, not edits of a point.
+const RECORDS = new Set(['gsvStatus', 'gsvShareLink', 'gsvSig', 'gsvConfirmed', 'gsvUploadedAt', 'gsvViews', 'viewsLog', 'captureTime', 'captureOffset', 'photoSize']);
 const NO_UPLOAD = { gsvPhotoId: null, gsvStatus: null, gsvShareLink: null, gsvSig: null, gsvConfirmed: false, gsvUploadedAt: null };
 
 // A value as text: the same text for the same content (object keys in order); a missing key: '~'.
@@ -74,6 +77,11 @@ function setKey(obj, key, value) {
   else obj[key] = value;
 }
 
+// Did someone change this point since the base (more than the records)?
+function edited(n, b) {
+  return [...new Set([...Object.keys(n), ...Object.keys(b)])].some(k => !RECORDS.has(k) && canon(val(n, k, b)) !== canon(val(b, k, b)));
+}
+
 // One point changed on both sides (base: the point before, or null).
 function mergeNode(b, o, t) {
   const out = { ...o };
@@ -91,6 +99,12 @@ function mergeNode(b, o, t) {
     if (side === 'theirs') (group ? GROUPS.get(group) : [key]).forEach(k => setKey(out, k, val(t, k, b)));
     if (side === 'conflict') conflicts.push(group || key);
   }
+  // Changed on both sides: a photo with its faces and plates hidden is never given up for one without.
+  const blurKept = sides.photo === 'conflict' && !!t.blurred && !o.blurred;
+  if (blurKept) {
+    GROUPS.get('photo').forEach(k => setKey(out, k, val(t, k, b)));
+    sides.photo = 'theirs';
+  }
   out.gsvObsolete = b ? set3(b.gsvObsolete, o.gsvObsolete, t.gsvObsolete) : set3([], o.gsvObsolete, t.gsvObsolete);
   out.viewsLog = mergeLogs(o.viewsLog || [], t.viewsLog || []);
   const views = [o.gsvViews, t.gsvViews].filter(v => v != null);
@@ -99,17 +113,23 @@ function mergeNode(b, o, t) {
   // Uploads since the base: the one that counts is that of the photo kept. One of the other
   // side's photo, or the same photo twice, is out of date - deleted on Google with the next upload.
   const photo = sides.photo === 'theirs' ? 'theirs' : sides.photo === 'same' || sides.photo === undefined ? 'same' : 'ours';
+  // What belongs to the photo goes with it.
+  if (photo !== 'same') [...GROUPS.get('capture'), 'privacyChecked'].forEach(k => setKey(out, k, val(photo === 'theirs' ? t : o, k, b)));
+  else if (!b) out.privacyChecked = !!(o.privacyChecked || t.privacyChecked);
+  const sameUpload = o.gsvPhotoId === t.gsvPhotoId;
   let retired = false;
   for (const [side, n] of [['ours', o], ['theirs', t]]) {
     const id = n.gsvPhotoId;
-    if (!id || id === b?.gsvPhotoId) continue;
+    if (!id || id === b?.gsvPhotoId || sameUpload) continue;
     if (id === out.gsvPhotoId && (photo === 'same' || photo === side)) continue;
     if (!out.gsvObsolete.includes(id)) out.gsvObsolete.push(id);
     if (id === out.gsvPhotoId) Object.assign(out, NO_UPLOAD);
     retired = true;
   }
-  // An upload out of date is reported as that, not as both sides changing what Google knows.
-  return { node: out, photo, conflicts: conflicts.filter(c => !(retired && c === 'google')), retired, theirsChanged: Object.values(sides).includes('theirs') };
+  // Not for the user to decide: what follows the photo, one upload that only reads differently on
+  // the two sides, and an upload out of date or a blurred photo kept, which are reported as that.
+  const said = conflicts.filter(c => !['capture', 'privacyChecked'].includes(c) && !(c === 'google' && (retired || sameUpload)) && !(c === 'photo' && blurKept));
+  return { node: out, photo, conflicts: said, retired, blurKept, theirsChanged: Object.values(sides).includes('theirs') };
 }
 
 // Floor plans: each as a whole (its image is its own: kept or replaced, never mixed).
@@ -128,9 +148,10 @@ const idNumber = id => Number(String(id).slice(1)) || 0;
 //   added, changed, removed, restored: names of points the other side added, changed,
 //     deleted, or deleted/changed where this side did the other,
 //   conflicts: [{ name, what: ['north', ...] }] (this side's version kept),
-//   retired: names of points whose upload on Google is out of date now.
+//   retired: names of points whose upload on Google is out of date now,
+//   blurKept: names of points where the other side's blurred photo beat a change here.
 export function mergeProjects(base, ours, theirs) {
-  const report = { photos: new Map(), plans: new Map(), renamed: new Map(), added: [], changed: [], removed: [], restored: [], conflicts: [], retired: [] };
+  const report = { photos: new Map(), plans: new Map(), renamed: new Map(), added: [], changed: [], removed: [], restored: [], conflicts: [], retired: [], blurKept: [] };
   const byId = list => new Map((list || []).map(x => [x.id, x]));
   const B = byId(base?.nodes), O = byId(ours.nodes), T = byId(theirs.nodes);
   let nxt = Math.max(ours.nxt || 1, theirs.nxt || 1,
@@ -144,7 +165,7 @@ export function mergeProjects(base, ours, theirs) {
     const t = T.get(id), b = B.get(id);
     if (!t) {
       if (!b) { merged.set(id, o); report.photos.set(id, 'ours'); continue; } // added here
-      if (canon(o) === canon(b)) { report.removed.push(name(b)); continue; } // deleted there
+      if (!edited(o, b)) { report.removed.push(name(b)); continue; } // deleted there
       merged.set(id, o); report.photos.set(id, 'ours'); report.restored.push(name(o)); restored.add(id); // deleted there, changed here
       continue;
     }
@@ -165,11 +186,12 @@ export function mergeProjects(base, ours, theirs) {
     if (m.theirsChanged) report.changed.push(name(m.node));
     if (m.conflicts.length) report.conflicts.push({ name: name(m.node), what: m.conflicts });
     if (m.retired) report.retired.push(name(m.node));
+    if (m.blurKept) report.blurKept.push(name(m.node));
   }
   for (const [id, t] of T) {
     if (O.has(id)) continue;
     const b = B.get(id);
-    if (b && canon(t) === canon(b)) continue; // deleted here
+    if (b && !edited(t, b)) continue; // deleted here
     merged.set(id, t);
     report.photos.set(id, 'theirs');
     (b ? report.restored : report.added).push(name(t)); // changed there after it was deleted here / added there
@@ -237,7 +259,9 @@ export function mergeProjects(base, ours, theirs) {
     }
   }
 
-  const gsvRemoved = base ? set3(base.gsvRemoved, ours.gsvRemoved, theirs.gsvRemoved) : set3([], ours.gsvRemoved, theirs.gsvRemoved);
+  // Photos of removed points, to delete on Google - never that of a point kept after all.
+  const inUse = new Set(nodes.map(n => n.gsvPhotoId).filter(Boolean));
+  const gsvRemoved = (base ? set3(base.gsvRemoved, ours.gsvRemoved, theirs.gsvRemoved) : set3([], ours.gsvRemoved, theirs.gsvRemoved)).filter(id => !inUse.has(id));
   const data = {
     ...theirs, ...ours, // the file's settings this editor doesn't know stay
     nodes, conns, startIds, startId: startIds[0] ?? null, tours, plans, gsvRemoved,

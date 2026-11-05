@@ -67,11 +67,12 @@ export function initHorizon(c) {
       const n = ctx.node();
       if (!n) return;
       if (!undoTaken) { ctx.pushUndo(); undoTaken = true; }
+      const value = Number(input.value); // (the slider may be redrawn while the camera's values are read)
       if (!hasOwnPose(n)) {
         const camera = await xmpPose(n.photoFile);
         if (!hasOwnPose(n)) Object.assign(n, camera); // (unless an input meanwhile did)
       }
-      n[axis] = Number(input.value);
+      n[axis] = value;
       renderHorizon(n);
       ctx.apply(n);
     });

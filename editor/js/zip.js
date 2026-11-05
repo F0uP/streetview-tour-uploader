@@ -109,5 +109,3 @@ export function zipFile(blob, name, type) {
   return file;
 }
 
-// The CRC-32 of a Blob if known (an entry of a zip read or written), else undefined.
-export const knownCrcOf = blob => knownCrc.get(blob);

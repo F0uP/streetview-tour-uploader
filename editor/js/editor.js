@@ -17,7 +17,7 @@ import { initFilmstrip, renderFilmstrip, stepFilmstrip } from './filmstrip.js';
 import { initPanoramax, openPanoramax } from './panoramax-dialog.js';
 import { LIMITS, photoQuality } from './quality.js';
 import { ZERO_POSE, hasOwnPose, horizonOpen, initHorizon, levelCorrection, renderHorizon, tourCorrection, xmpPose } from './horizon.js';
-import { initPathPlace, isDrawingPath, openPathPlace } from './path-place.js';
+import { addPathPoint, finishPath, initPathPlace, isDrawingPath, openPathPlace } from './path-place.js';
 import { initFloorPlans, openFloorPlans, renderPlans } from './floorplan.js';
 import { initReshoot, openReshoot } from './reshoot.js';
 import { exportReport, initTourReport, logViews, viewsChart, viewsSeries } from './tour-report.js';
@@ -31,7 +31,7 @@ import { initReport, openReport } from './report.js';
 import { initNotices, logNotice, notices } from './notices.js';
 import { initDialogs } from './a11y.js';
 import { mergeProjects, reportIsEmpty } from './merge.js';
-import { collabClient, collabEdited, collabName, collabProjectChanged, initCollab, openCollab } from './collab.js';
+import { collabEdited, collabOwnName, collabProjectChanged, initCollab, openCollab } from './collab.js';
 
 // ── Connection to the local app ───────────────────
 // The app opens this page with its secret key in the URL fragment (#k=…). The
@@ -142,7 +142,7 @@ async function resolvePhotoRefs(nodes) {
       data = got.zip[r.entry];
     }
     if (!data) continue;
-    n.photoFile = new File([data], n.photoName || got.file.name, { type: r.type || 'image/jpeg' });
+    n.photoFile = zipFile(data, n.photoName || got.file.name, r.type || 'image/jpeg');
     photoRefs.set(n.photoFile, r);
   }
 }
@@ -633,6 +633,7 @@ niP.addEventListener('change', async e => {
   retireGooglePhoto(n);
   n.blurred = false;
   n.privacyChecked = false; // a new photo: not checked yet
+  n.pitch = n.roll = null; // and level as the camera saved it
   panoNodeId = null; // otherwise the panorama view keeps showing the old photo
   if (meta.hasGps) {
     n.lat = meta.lat;
@@ -925,8 +926,9 @@ async function packProject(nodes = S.nodes, meta = null) {
   const entries = data.nodes.filter(nd => nd.photoPath).sort((a, b) => idNumber(a.id) - idNumber(b.id))
     .map(nd => ({ name: nd.photoPath, data: gn(nd.id).photoFile }));
   S.plans.forEach(plan => entries.push({ name: planPathOf(plan), data: plan.image }));
+  const files = new Map(entries.map(e => [e.name, e.data])); // what goes into the file, for rebindPhotos
   entries.push({ name: 'project.json', data: new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }) });
-  return { zip: await buildZip(entries), data };
+  return { zip: await buildZip(entries), data, files };
 }
 
 // A floor plan in the project file: its image under plans/<id>/.
@@ -943,6 +945,7 @@ function planData(plan) {
 let projectHandle = null;
 let projectName = null;
 let projectDirty = false;
+let projectEdits = 0; // every edit counts: a save knows what happened while it ran
 const PROJECT_PICKER_TYPES = [{ description: 'Tour project', accept: { 'application/zip': ['.vrtour'] } }];
 const PROJECT_OPEN_TYPES = [{ description: 'Tour project', accept: { 'application/zip': ['.vrtour', '.zip'], 'application/json': ['.json'] } }];
 
@@ -959,9 +962,20 @@ function updateTitle() {
 function markDirty() { if (!projectDirty) { projectDirty = true; updateTitle(); } }
 function markClean() { projectDirty = false; updateTitle(); }
 
-async function saveProject({ saveAs = false, quiet = false } = {}) {
+// One save at a time, and nothing from others comes in during it.
+let saving = null;
+async function saveProject(options) {
+  while (saving) await saving;
+  saving = saveProjectNow(options);
+  try { await saving; } finally { saving = null; }
+}
+
+// Who saved: the name set for working together, if one is. A project file gets passed on.
+const savedByMeta = () => { const name = collabOwnName(); return { ...(name ? { name } : {}), at: Date.now() }; };
+
+async function saveProjectNow({ saveAs = false, quiet = false } = {}) {
   if (!S.nodes.length) {
-    alert('No nodes found.');
+    if (!quiet) alert('No nodes found.');
     return;
   }
   let handle = saveAs ? null : projectHandle;
@@ -978,11 +992,12 @@ async function saveProject({ saveAs = false, quiet = false } = {}) {
     const same = !!handle && handle === projectHandle && !!fileVersion;
     if (same) await pullSharedChanges({ now: true });
     setSaveStatus('saving', 'Packing project…');
-    const { zip, data } = await packProject(S.nodes, {
+    const edits = projectEdits; // a change from here on is not in the file
+    const { zip, data, files } = await packProject(S.nodes, {
       projectId: same ? projectMeta.projectId : newProjectId(), // saved as a new file: a project of its own
       rev: newRev(),
       revs: same ? projectMeta.revs.slice(-50) : [],
-      savedBy: { name: collabName(), client: collabClient(), at: Date.now() },
+      savedBy: savedByMeta(),
     });
     if (handle) {
       const writable = await handle.createWritable();
@@ -990,7 +1005,7 @@ async function saveProject({ saveAs = false, quiet = false } = {}) {
       await writable.close();
       projectHandle = handle;
       projectName = handle.name;
-      await rebindPhotos(await handle.getFile(), handle);
+      await rebindPhotos(await handle.getFile(), handle, files);
       noteFileVersion(data, handle.writtenStat || await statOf(handle).catch(() => null));
       if (!quiet) toast(`Saved ${handle.name}`);
       if (!same) {
@@ -1000,7 +1015,7 @@ async function saveProject({ saveAs = false, quiet = false } = {}) {
     } else {
       await saveTextFile(projectName || PROJECT_FILE, zip);
     }
-    markClean();
+    if (edits === projectEdits) markClean();
     setSaveStatus('saved', 'Saved');
   } catch (err) {
     console.error(err);
@@ -1011,28 +1026,22 @@ async function saveProject({ saveAs = false, quiet = false } = {}) {
 
 // Photos opened from a .vrtour are slices of that file, and the browser refuses
 // to read them once the file has been overwritten. After saving in place, point
-// every photo (also those in the undo history) at the freshly written file.
-async function rebindPhotos(file, handle = null) {
+// every photo (also those in the undo history) at the freshly written file. written: the
+// files that went in - a photo changed since (blurred, say) is not in it and stays as it is.
+async function rebindPhotos(file, handle, written) {
   const entries = await readZip(file);
   const swap = new Map();
-  S.nodes.forEach(n => {
-    const slice = n.photoFile && entries[photoPathOf(n)];
-    if (!slice) return;
-    const fresh = new File([slice], n.photoName || 'photo.jpg', { type: n.photoFile.type || 'image/jpeg' });
+  written.forEach((blob, path) => {
+    if (!entries[path]) return;
+    const fresh = zipFile(entries[path], blob.name || 'photo.jpg', blob.type || 'image/jpeg');
     notePhotoSource(fresh, handle);
-    swap.set(n.photoFile, fresh);
-  });
-  S.plans.forEach(plan => {
-    const slice = entries[planPathOf(plan)];
-    if (!slice) return;
-    const fresh = new File([slice], plan.image.name, { type: plan.image.type });
-    notePhotoSource(fresh, handle);
-    swap.set(plan.image, fresh);
+    swap.set(blob, fresh);
   });
   swapPhotoFiles(swap);
   // In the app window: the autosave refers to the freshly written file from now on.
   const [ref] = (await fileRefs(handle ? [handle] : [])) || [];
-  if (ref) S.nodes.forEach(n => { if (n.photoFile && entries[photoPathOf(n)]) photoRefs.set(n.photoFile, { ref, entry: photoPathOf(n), type: n.photoFile.type }); });
+  const fresh = new Set(swap.values());
+  if (ref) S.nodes.forEach(n => { if (fresh.has(n.photoFile)) photoRefs.set(n.photoFile, { ref, entry: photoPathOf(n), type: n.photoFile.type }); });
 }
 
 // Point the tour (and its undo history) at other File objects for the same photos.
@@ -1200,9 +1209,13 @@ async function baseFor(theirs) {
 // While something is in the middle of work, changes from others wait a moment.
 function sharedMergeBlocked() {
   const typing = document.activeElement?.matches?.('input:not([type=range]):not([type=checkbox]):not([type=radio]), textarea, select');
-  return busyWith.size > 0 || !!document.querySelector('.modal-back.show') || isDrawingPath() || !!S.connFrom || typing
+  return !!saving || busyWith.size > 0 || !!document.querySelector('.modal-back.show') || isDrawingPath() || !!S.connFrom || typing
     || !document.getElementById('plan-adjust-bar').hidden || document.body.classList.contains('leaflet-dragging');
 }
+
+const savedByNewerEditor = data => (data.version || 1) > PROJECT_VERSION;
+const NEWER_FILE = () => t('The project file was saved by a newer version of the editor: update the editor. Nothing was changed.');
+let newerFile = null; // the file as it was when that was said
 
 // What someone else saved into the open project file, merged into the tour; true if the
 // file had changed. Before saving (now) it doesn't wait for anything.
@@ -1222,11 +1235,19 @@ async function pullOnce(now) {
     try {
       const version = await readVersion(handle);
       if (handle !== projectHandle) return false;
+      if (savedByNewerEditor(version.data)) {
+        // Read here, what it holds would be lost with the next save: neither merged nor saved over.
+        if (!sameStat(stat, newerFile)) toast(NEWER_FILE());
+        newerFile = stat;
+        if (now) throw Object.assign(new Error(NEWER_FILE()), { final: true });
+        return false;
+      }
       const theirs = upgradeProject(version.data, handle.name);
       await mergeIn(theirs, version, await baseFor(theirs), { refs: handle });
       noteFileVersion(theirs, version.stat, { pulled: true });
       return true;
     } catch (err) {
+      if (err.final) throw err;
       // The cloud folder is replacing the file just now. Nothing has changed here yet: it
       // is read again - and it is not saved over, or what is in it would be lost.
       console.warn('reading the project file failed', err);
@@ -1243,6 +1264,7 @@ async function mergeCopy(copy) {
   try {
     await pullSharedChanges({ now: true });
     const version = await readVersion(new AppFileHandle(copy.token, copy.name));
+    if (savedByNewerEditor(version.data)) { alert(NEWER_FILE()); return; }
     const theirs = upgradeProject(version.data, copy.name);
     await mergeIn(theirs, version, await baseFor(theirs), { dirty: true });
     projectMeta.revs = [...new Set([...projectMeta.revs, ...(theirs.revs || []), ...(theirs.rev ? [theirs.rev] : [])])].slice(-60);
@@ -1331,12 +1353,20 @@ async function mergeIn(theirs, version, base, { refs = null, dirty = false } = {
     plans.push(plan);
   }
   const sel = report.renamed.get(S.selId) || S.selId;
+  const multi = [...S.multiSel].map(id => report.renamed.get(id) || id);
   applySnapshot({
     nodes, conns: data.conns.map(c => ({ id: c.id, from: c.from, to: c.to })),
     selId: nodes.some(n => n.id === sel) ? sel : null,
     starts: data.startIds, tourNames: data.tours || {}, nxt: Math.max(data.nxt || 1, S.nxt), gsvRemoved: data.gsvRemoved || [], plans,
-  });
+  }, { keepPano: swap });
   swapPhotoFiles(swap);
+  // What the user is working with stays: the selection, and (above) the view of the panorama.
+  S.multiSel = new Set(multi.filter(id => gn(id)));
+  if (S.multiSel.size) {
+    refreshAllMarkers();
+    updateMultiBar();
+    renderNodeList();
+  }
   const visible = !reportIsEmpty(report);
   if (visible) {
     // Undo goes back to states without the others' changes: saved, they would be gone from the file.
@@ -1352,8 +1382,10 @@ async function mergeIn(theirs, version, base, { refs = null, dirty = false } = {
       if (n.photoFile && (from === 'theirs' || from === 'same')) photoRefs.set(n.photoFile, { ref, entry: photoPathOf(n), type: n.photoFile.type });
     });
   }
-  if (dirty || wasDirty || report.renamed.size || report.retired.length || report.restored.length) markDirty();
-  else markClean();
+  if (dirty || wasDirty || report.renamed.size || report.retired.length || report.restored.length) {
+    markDirty();
+    collabEdited();
+  } else markClean();
   scheduleAutosave({ edit: false });
   if (visible || report.conflicts.length || lost.length) reportMerge(report, theirs.savedBy?.name, lost);
 }
@@ -1368,13 +1400,14 @@ function reportMerge(report, who, lost) {
   if (report.changed.length) parts.push(t('{n} changed', { n: report.changed.length }));
   if (report.removed.length) parts.push(t('{n} removed', { n: report.removed.length }));
   if (!parts.length && [...report.plans.values()].includes('theirs')) parts.push(t('floor plans'));
-  toast(t('{who} saved changes - now here too: {what}.', { who: who || t('Someone'), what: parts.join(', ') || t('details') }));
+  if (parts.length) toast(t('{who} saved changes - now here too: {what}.', { who: who || t('Someone'), what: parts.join(', ') }));
   const notes = [];
   if (report.conflicts.length) {
     notes.push(t('Changed on both computers - your version is kept: {list}', {
       list: report.conflicts.map(c => `${c.name} (${c.what.map(w => t(MERGE_PARTS[w] || w)).join(', ')})`).join('; '),
     }));
   }
+  if (report.blurKept.length) notes.push(t('Changed on both computers - the blurred photo is kept: {names}', { names: report.blurKept.join(', ') }));
   if (report.restored.length) notes.push(t('Deleted on one computer, changed on the other - kept: {names}', { names: report.restored.join(', ') }));
   if (report.retired.length) notes.push(t('The photo on Google is out of date now - the next upload replaces it: {names}', { names: report.retired.join(', ') }));
   if (lost.length) notes.push(t('These photos could not be kept - add them again: {names}', { names: lost.join(', ') }));
@@ -1501,7 +1534,9 @@ async function openProjectFile(file, handle = null, { ask = true } = {}) {
   if (ask && S.nodes.length && !confirm('Opening a project replaces the current tour (Ctrl+Z undoes it). Continue?')) return;
   try {
     const snap = await readProjectFile(file, handle);
+    const before = currentProject();
     pushUndo();
+    snapProject.set(undoStack[undoStack.length - 1], before);
     applySnapshot(snap, { refit: true });
     scheduleAutosave();
     projectHandle = snap.legacyJson ? null : handle;
@@ -3316,6 +3351,7 @@ function createMarker(n, { animate = true } = {}) {
   mk.on('click', e => {
     L.DomEvent.stopPropagation(e);
     if (suppressNextNodeClick) { suppressNextNodeClick = false; return; }
+    if (isDrawingPath()) { addPathPoint(e.latlng); return; }
     const native = e.originalEvent;
     if (native && (native.ctrlKey || native.metaKey || native.shiftKey)) {
       toggleMultiSelect(n.id);
@@ -3328,7 +3364,10 @@ function createMarker(n, { animate = true } = {}) {
     e.originalEvent.preventDefault();
     handleNodeConnectClick(n.id);
   });
-  mk.on('dblclick', e => L.DomEvent.stopPropagation(e));
+  mk.on('dblclick', e => {
+    L.DomEvent.stopPropagation(e);
+    if (isDrawingPath()) finishPath();
+  });
   mk.on('dragend', () => {
     pushUndo();
     const p = mk.getLatLng().wrap();
@@ -3478,7 +3517,8 @@ function drawConn(c, { animate = true } = {}) {
   }).addTo(map);
   c.xMark.on('click', e => {
     L.DomEvent.stopPropagation(e);
-    deleteConn(c.id);
+    if (isDrawingPath()) addPathPoint(e.latlng);
+    else deleteConn(c.id);
   });
   c.xMark.getElement()?.classList.toggle('hide', c.from !== S.selId && c.to !== S.selId);
 }
@@ -3908,7 +3948,10 @@ function pushUndo(snap = snapshotState()) {
   updateUndoRedoButtons();
 }
 
-function applySnapshot(snap, { refit = false, keepGoogle = false } = {}) {
+// keepPano (photos replaced by others, as a Map): the panorama stays as the user turned it,
+// if it still shows the same photo the same way.
+function applySnapshot(snap, { refit = false, keepGoogle = false, keepPano = null } = {}) {
+  const shown = keepPano && gn(panoNodeId);
   // Undo/redo restores edits, not what happened on Google: an upload after the
   // snapshot was taken must survive, or the photo would be uploaded twice.
   if (keepGoogle) {
@@ -3949,7 +3992,10 @@ function applySnapshot(snap, { refit = false, keepGoogle = false } = {}) {
   if (S.nxt <= maxUsed) S.nxt = maxUsed + 1;
   S.connFrom = null;
   S.multiSel = new Set();
-  panoNodeId = null;
+  const still = shown && gn(shown.id);
+  const samePano = still && [shown.photoFile, keepPano.get(shown.photoFile)].includes(still.photoFile)
+    && (still.pitch ?? null) === (shown.pitch ?? null) && (still.roll ?? null) === (shown.roll ?? null);
+  if (!samePano) panoNodeId = null;
   cmpBaseNodeId = null;
   cmpOverlayNodeId = null;
   cmpAligned = '';
@@ -3966,22 +4012,33 @@ function applySnapshot(snap, { refit = false, keepGoogle = false } = {}) {
   }
 }
 
-function doUndo() {
-  if (!undoStack.length) return;
-  redoStack.push(snapshotState());
-  const snap = undoStack.pop();
+// Undoing "open" goes back to the project before it, file included: what comes back must
+// not be saved into the project that was opened.
+const snapProject = new WeakMap(); // the snapshot from before opening -> the project file it belongs to
+const currentProject = () => ({ handle: projectHandle, name: projectName, version: fileVersion, meta: projectMeta, dirty: projectDirty });
+
+function stepHistory(from, to) {
+  const here = snapshotState();
+  to.push(here);
+  const snap = from.pop();
+  const project = snapProject.get(snap);
+  if (project) snapProject.set(here, currentProject());
   applySnapshot(snap, { keepGoogle: true });
+  if (project) {
+    ({ handle: projectHandle, name: projectName, version: fileVersion, meta: projectMeta, dirty: projectDirty } = project);
+    updateTitle();
+    collabProjectChanged();
+  }
   updateUndoRedoButtons();
-  scheduleAutosave();
+  scheduleAutosave({ edit: !project });
+}
+
+function doUndo() {
+  if (undoStack.length) stepHistory(undoStack, redoStack);
 }
 
 function doRedo() {
-  if (!redoStack.length) return;
-  undoStack.push(snapshotState());
-  const snap = redoStack.pop();
-  applySnapshot(snap, { keepGoogle: true });
-  updateUndoRedoButtons();
-  scheduleAutosave();
+  if (redoStack.length) stepHistory(redoStack, undoStack);
 }
 
 function updateUndoRedoButtons() {
@@ -4217,7 +4274,7 @@ function setSaveStatus(mode, text) {
 let autosaveDue = false;
 // edit: false for what isn't the user's change (news from Google): saved, but the project isn't "unsaved".
 function scheduleAutosave({ edit = true } = {}) {
-  if (edit) { markDirty(); collabEdited(); }
+  if (edit) { projectEdits++; markDirty(); collabEdited(); }
   queueChecklist(); // every change passes here: the checklist follows
   clearTimeout(autosaveTimer);
   autosaveDue = true;
@@ -4434,7 +4491,7 @@ function toast(msg) {
   const t = document.createElement('div');
   t.className = 'toast';
   t.textContent = msg;
-  document.body.appendChild(t);
+  document.getElementById('toasts').appendChild(t);
   requestAnimationFrame(() => t.classList.add('show'));
   setTimeout(() => {
     t.classList.remove('show');
@@ -6078,7 +6135,7 @@ async function exportTourProject(scope = null) {
   try {
     setSaveStatus('saving', 'Packing project…');
     if (handle) await detachPhotosFrom(handle);
-    const { zip } = await packProject(nodes, { projectId: newProjectId(), rev: newRev(), revs: [], savedBy: { name: collabName(), client: collabClient(), at: Date.now() } });
+    const { zip } = await packProject(nodes, { projectId: newProjectId(), rev: newRev(), revs: [] });
     if (handle) {
       const writable = await handle.createWritable();
       await writable.write(zip);
@@ -6923,12 +6980,15 @@ async function openTourCheck({ onContinue = null } = {}) {
   return issues;
 }
 
-function renderCheckRows(issues) {
+// source: rows of a check of their own, replaced when it runs again.
+function renderCheckRows(issues, source = '') {
   const list = document.getElementById('check-list');
+  if (source) list.querySelectorAll(`.check-row[data-source="${source}"]`).forEach(row => row.remove());
   issues.forEach(i => {
     const n = gn(i.id);
     const row = document.createElement('div');
     row.className = `check-row ${i.level}`;
+    row.dataset.source = source;
     row.innerHTML = `<span class="lv"></span><span class="nm">${escapeHtml(n?.name)}</span><span class="msg">${escapeHtml(i.msg)}</span><button class="btn">${t('Show')}</button>`;
     row.querySelector('button').onclick = () => {
       document.querySelectorAll('.modal-back.show').forEach(el => el.classList.remove('show'));
@@ -6954,10 +7014,8 @@ document.getElementById('check-quality').onclick = async () => {
     }
     const photos = new Set(found.map(f => f.id)).size;
     status.textContent = photos ? t('{n} photo(s) that may be blurred or badly exposed.', { n: photos }) : t('All photos look sharp and well exposed.');
-    if (found.length) {
-      document.querySelector('#check-list .check-ok')?.remove();
-      renderCheckRows(found);
-    }
+    if (found.length) document.querySelector('#check-list .check-ok')?.remove();
+    renderCheckRows(found, 'quality');
   } catch (err) {
     status.textContent = t('Comparing failed: {msg}', { msg: err.message || err });
   } finally {
@@ -6971,10 +7029,8 @@ document.getElementById('check-north').onclick = async () => {
   try {
     const found = await checkNorthAgainstNeighbours((i, n) => { status.textContent = t('Comparing photos… {i}', { i: `${i}/${n}` }); });
     status.textContent = found.length ? t('{n} photo(s) whose north disagrees with a neighbour.', { n: found.length }) : t('North agrees with the neighbouring photos wherever they could be compared.');
-    if (found.length) {
-      document.querySelector('#check-list .check-ok')?.remove();
-      renderCheckRows(found);
-    }
+    if (found.length) document.querySelector('#check-list .check-ok')?.remove();
+    renderCheckRows(found, 'north');
   } catch (err) {
     status.textContent = t('Comparing failed: {msg}', { msg: err.message || err });
   } finally {
@@ -7345,7 +7401,7 @@ document.getElementById('rn-go').onclick = () => {
 // (a new EXIF block; the image itself is not touched) - for the photos export
 // (exports.js) and Panoramax, which take these from the photos.
 async function photoWithPose(n) {
-  return replaceExif(n.photoFile, await poseExif(n), { heading: n.heading });
+  return replaceExif(n.photoFile, await poseExif(n), { heading: n.heading, ...(hasOwnPose(n) ? { pitch: n.pitch || 0, roll: n.roll || 0 } : {}) });
 }
 
 // The next photo (after the selected one) without north - N.
@@ -7879,7 +7935,7 @@ initCollab({
   t, toast, openModal, closeModal, closeMenus, storageGet, storageSet, choose,
   isApp: () => appHasWindow, handle: () => projectHandle, fileName: () => projectName,
   pull: () => pullSharedChanges(), save: () => saveProject({ quiet: true }), dirty: () => projectDirty,
-  blocked: sharedMergeBlocked, mergeCopy, defaultName: () => appUser,
+  blocked: sharedMergeBlocked, mergeCopy, defaultName: () => appUser, knownVersion: rev => projectMeta.revs.includes(rev),
 });
 initTourReport({
   S, t, gn, saveTextFile, fileBase, setSaveStatus, tourLength, lang: () => currentLang,

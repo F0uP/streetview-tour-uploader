@@ -147,6 +147,19 @@ def test_photos_placed_along_a_drawn_path(editor):
     assert rows['walk1.jpg']['connects_to'] == 'walk0.jpg;walk2.jpg'
 
 
+def test_a_point_on_the_map_can_be_a_point_of_the_path(editor):
+    page = editor.page
+    drop(page, [b64(f'w{k}.jpg', jpg(lat=KIEL[0], lng=KIEL[1] + k * STEP_8M, color=(40 + 60 * k, 90, 120))) for k in range(3)])
+    page.wait_for_function("document.querySelectorAll('#node-list .nrow').length === 3")
+    page.click('#btools')
+    page.click('button[data-run=pathplace]')
+    page.locator('.leaflet-marker-icon').first.click()
+    box = page.locator('#map').bounding_box()
+    page.mouse.click(box['x'] + 200, box['y'] + box['height'] - 160)
+    page.wait_for_timeout(300)
+    assert page.is_enabled('#path-done')
+
+
 def test_a_reshoot_takes_the_place_of_the_photo_on_google(editor):
     page = editor.page
     google = FakeGoogle(page)
@@ -218,6 +231,37 @@ def test_the_horizon_levelled_by_hand(editor):
     assert (sent['pitch'], sent['roll']) == (0, 0), sent
 
 
+def test_a_new_photo_is_level_as_its_camera_saved_it(editor, tmp_path):
+    page = editor.page
+    drop(page, [b64('a.jpg', jpg(lat=KIEL[0], lng=KIEL[1], heading=90))])
+    page.click('#node-list .nrow >> nth=0')
+    page.click('details[data-sec=horizon] summary')
+    page.wait_for_function("document.getElementById('hz-note').textContent === 'as the camera saved it'")
+    page.fill('#hz-pitch', '5')
+    page.wait_for_function("document.getElementById('hz-note').textContent === 'levelled by hand'")
+    page.set_input_files('#ni-p', files=[{'name': 'b.jpg', 'mimeType': 'image/jpeg', 'buffer': jpg(lat=KIEL[0], lng=KIEL[1], color=(200, 90, 40))}])
+    page.wait_for_function("document.getElementById('hz-note').textContent === 'as the camera saved it'")
+    node = json.loads(zipfile.ZipFile(export_project(page, tmp_path)).read('project.json'))['nodes'][0]
+    assert (node['photoName'], node['pitch'], node['roll']) == ('b.jpg', None, None)
+
+
+def test_exported_photos_are_level_too(editor):
+    page = editor.page
+    drop(page, [b64('a.jpg', jpg(lat=KIEL[0], lng=KIEL[1], heading=90))])
+    page.click('#node-list .nrow >> nth=0')
+    page.click('details[data-sec=horizon] summary')
+    page.wait_for_function("document.getElementById('hz-note').textContent === 'as the camera saved it'")
+    page.fill('#hz-pitch', '3')
+    page.fill('#hz-roll', '-1.5')
+    page.wait_for_function("document.getElementById('hz-note').textContent === 'levelled by hand'")
+    page.click('#bproject')
+    with page.expect_download() as dl:
+        page.click('button[data-run=photos]')
+    with zipfile.ZipFile(dl.value.path()) as z:
+        photo = next(z.read(n) for n in z.namelist() if n.endswith('.jpg'))
+    assert b'GPano:PosePitchDegrees="3"' in photo and b'GPano:PoseRollDegrees="-1.5"' in photo
+
+
 def noise(seed):
     return Image.effect_noise((2048, 1024), 60 + seed).convert('RGB')
 
@@ -244,6 +288,12 @@ def test_tour_check_finds_blurred_and_badly_exposed_photos(editor):
     assert 'sharp' not in found, found
     assert found['blurred'] == ['Looks blurred']
     assert 'Very dark' in found['dark'] and 'Overexposed' in found['white'], found
+
+    # looked at again: the same findings, once
+    page.click('#check-quality')
+    page.wait_for_timeout(1500)
+    rows = [t for t in page.locator('#check-list .check-row .msg').all_inner_texts() if 'Looks blurred' in t]
+    assert len(rows) == len(set(page.locator('#check-list .check-row .nm').all_inner_texts()) & {'blurred', 'dark', 'white'}), rows
 
 
 def test_the_check_of_all_photos_goes_on_to_the_next(editor):
@@ -315,6 +365,65 @@ def test_views_over_time_and_the_tour_report(editor):
     assert '1,239' in report or '1.239' in report
     assert report.count('src="data:image/jpeg') == 3
     assert '<svg class="views-chart"' in report and 'r1' in report
+
+
+def run_cli(monkeypatch, path, status=None):
+    """upload_tour.py --project with Google faked: what went up, what was sent, the project afterwards."""
+    import upload_tour
+    uploads, updates = [], []
+
+    def upload(creds, data, filename, *a, **k):
+        uploads.append(filename)
+        return f'up{len(uploads)}'
+    monkeypatch.setattr(upload_tour, 'get_credentials', lambda: None)
+    monkeypatch.setattr(upload_tour, '_upload_photo', upload)
+    monkeypatch.setattr(upload_tour, '_photo_status', lambda creds, ids: {
+        i: {'status': 'published', 'resolvedId': i, 'lat': KIEL[0], 'lng': KIEL[1], 'heading': 90.0, 'connections': [], **(status or {}).get(i, {})} for i in ids})
+    monkeypatch.setattr(upload_tour, '_update_photos', lambda creds, items: updates.extend(items) or [{'id': i['id'], 'ok': True} for i in items])
+    upload_tour.run_project(argparse.Namespace(project=str(path), dry_run=False, connect_only=False, wait=0, delete_old=False, place_id=None))
+    return uploads, updates, json.loads(zipfile.ZipFile(path).read('project.json'))
+
+
+def edit_project(path, change):
+    with zipfile.ZipFile(path) as z:
+        entries = {i.filename: z.read(i) for i in z.infolist()}
+    data = json.loads(entries['project.json'])
+    change(data)
+    entries['project.json'] = json.dumps(data).encode()
+    with zipfile.ZipFile(path, 'w') as z:
+        for name, blob in entries.items():
+            z.writestr(name, blob)
+
+
+def test_the_command_line_leaves_to_the_editor_what_it_did_not_send(monkeypatch, tmp_path):
+    path = vrtour(tmp_path / 'H.vrtour', 'H', KIEL[0], KIEL[1], gsv='x')
+
+    def moved(project):
+        project['nodes'][0]['lat'] = KIEL[0] + 0.001  # moved in the editor, not on Google yet
+        for n in project['nodes']:
+            n['gsvSig'] = 'as last sent'
+    edit_project(path, moved)
+    _, updates, saved = run_cli(monkeypatch, path)
+    assert next(i for i in updates if i['id'] == 'x0')['lat'] == KIEL[0]  # only links are sent
+    assert saved['nodes'][0]['gsvSig'] == 'as last sent'  # so the editor still sends the position
+
+
+def test_the_command_line_keeps_links_to_photos_outside_the_project(monkeypatch, tmp_path):
+    path = vrtour(tmp_path / 'H.vrtour', 'H', KIEL[0], KIEL[1], gsv='x')
+    _, updates, _ = run_cli(monkeypatch, path, status={'x0': {'connections': ['x1', 'x2', 'outside']}})
+    # x2 is in the project and not linked to x0 there: that link goes
+    assert next(i for i in updates if i['id'] == 'x0')['connections'] == ['x1', 'outside']
+
+
+def test_the_command_line_uploads_what_the_editor_would(monkeypatch, tmp_path):
+    sample = tmp_path / 'sample.vrtour'
+    sample.write_bytes((REPO / 'editor' / 'sample' / 'sample.vrtour').read_bytes())
+    assert run_cli(monkeypatch, sample)[0] == []  # the sample tour is drawn: never published
+
+    path = vrtour(tmp_path / 'H.vrtour', 'H', KIEL[0], KIEL[1], gsv='x')
+    edit_project(path, lambda project: project['nodes'][0].update(gsvStatus='missing'))
+    uploads, _, saved = run_cli(monkeypatch, path)
+    assert uploads == ['H1.jpg'] and saved['nodes'][0]['gsvPhotoId'] == 'up1'  # gone from Google: up again
 
 
 def test_the_command_line_uploads_a_project(monkeypatch, tmp_path, editor):

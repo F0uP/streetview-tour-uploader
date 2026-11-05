@@ -285,7 +285,7 @@ def _presence(project, client, name, leave=False):
     else:
         try:
             since = json.loads(mine.read_text(encoding='utf-8')).get('since', now)
-        except (OSError, ValueError):
+        except (OSError, ValueError, AttributeError):
             since = now
         try:
             mine.write_text(json.dumps({'client': client, 'name': name[:60], 'since': since, 'beat': now}), encoding='utf-8')
@@ -297,9 +297,9 @@ def _presence(project, client, name, leave=False):
             continue
         try:
             note = json.loads(f.read_text(encoding='utf-8'))
-        except (OSError, ValueError):
+            age = (now - int(note.get('beat') or 0)) / 1000
+        except (OSError, ValueError, TypeError, AttributeError):  # still arriving, or not a note of ours
             continue
-        age = (now - int(note.get('beat') or 0)) / 1000
         if age > PRESENCE_GONE:
             f.unlink(missing_ok=True)
         elif age <= PRESENCE_STALE and note.get('client') != client:
@@ -308,28 +308,30 @@ def _presence(project, client, name, leave=False):
 
 
 def _project_identity(path):
-    """The projectId and savedBy of a project file, or (None, None)."""
+    """The projectId, version (rev) and savedBy of a project file, or Nones."""
     try:
         with zipfile.ZipFile(path) as z:
             data = json.loads(z.read('project.json'))
-        return data.get('projectId'), data.get('savedBy')
+        return data.get('projectId'), data.get('rev'), data.get('savedBy')
     except Exception:
-        return None, None
+        return None, None, None
 
 
 def _other_versions(project):
     """Other files of the same project in its folder: the copies a cloud folder keeps when
-    two people saved at the same time ("tour-LAPTOP.vrtour", "tour (1).vrtour", ...)."""
-    pid, _ = _project_identity(project)
+    two people saved at the same time ("tour-LAPTOP.vrtour", "tour (1).vrtour", ...). Only
+    files named like that are opened: opening a file that is only in the cloud downloads it."""
+    pid = _project_identity(project)[0]
     if not pid:
         return []
+    named_like = re.compile(re.escape(project.stem) + r'[ _(-].*\.vrtour', re.IGNORECASE)
     out = []
-    for f in sorted(project.parent.glob('*.vrtour'))[:200]:
-        if f == project or f.name.startswith('.') or not f.is_file():
+    for f in sorted(project.parent.glob('*.vrtour')):
+        if f == project or not named_like.fullmatch(f.name) or not f.is_file():
             continue
-        other, saved_by = _project_identity(f)
+        other, rev, saved_by = _project_identity(f)
         if other == pid:
-            out.append({'path': f, 'name': f.name, 'savedBy': saved_by, **_file_stat(f)})
+            out.append({'path': f, 'name': f.name, 'rev': rev, 'savedBy': saved_by, **_file_stat(f)})
     return out
 
 

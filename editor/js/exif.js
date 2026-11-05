@@ -159,14 +159,27 @@ export async function withMetadata(encoded, original, exif = null) {
   return new Blob([out.subarray(0, 2), ...(exif ? [exif] : []), ...keep, out.subarray(q)], { type: 'image/jpeg' });
 }
 
-// The XMP segment with the photo's compass direction set (GPano:PoseHeadingDegrees), if it names one.
-function xmpWithHeading(seg, heading) {
+// A GPano value set in the XMP where it is named; with `add`, written next to the projection if not.
+function gpanoSet(xml, name, number, add = false) {
+  const value = (Math.round(number * 100) / 100).toString();
+  const attribute = new RegExp(`(GPano:${name}\\s*=\\s*")[^"]*(")`);
+  const element = new RegExp(`(<GPano:${name}>)[^<]*(</GPano:${name}>)`);
+  if (attribute.test(xml)) return xml.replace(attribute, (_, a, b) => a + value + b);
+  if (element.test(xml)) return xml.replace(element, (_, a, b) => a + value + b);
+  if (!add) return xml;
+  return xml.replace(/GPano:ProjectionType\s*=\s*"[^"]*"/, m => `${m} GPano:${name}="${value}"`)
+    .replace(/<GPano:ProjectionType>[^<]*<\/GPano:ProjectionType>/, m => `${m}<GPano:${name}>${value}</GPano:${name}>`);
+}
+
+// The XMP segment with the photo's pose: the compass direction if it names one (the EXIF
+// has it too), pitch and roll in any case (only the XMP can hold them).
+function xmpWithPose(seg, { heading = null, pitch = null, roll = null }) {
   const id = XMP_ID.length;
   const xml = new TextDecoder().decode(seg.subarray(4 + id));
-  const value = (Math.round(heading * 100) / 100).toString();
-  const next = xml
-    .replace(/(GPano:PoseHeadingDegrees\s*=\s*")[^"]*(")/, `$1${value}$2`)
-    .replace(/(<GPano:PoseHeadingDegrees>)[^<]*(<\/GPano:PoseHeadingDegrees>)/, `$1${value}$2`);
+  let next = xml;
+  if (heading != null) next = gpanoSet(next, 'PoseHeadingDegrees', heading);
+  if (pitch != null) next = gpanoSet(next, 'PosePitchDegrees', pitch, true);
+  if (roll != null) next = gpanoSet(next, 'PoseRollDegrees', roll, true);
   if (next === xml) return seg;
   const body = new TextEncoder().encode(next);
   const outSeg = new Uint8Array(4 + id + body.length);
@@ -178,8 +191,8 @@ function xmpWithHeading(seg, heading) {
 }
 
 // The original photo, its image data untouched, with a new EXIF block in place of its
-// own and (if it names one) the new compass direction in its XMP.
-export async function replaceExif(original, exif, { heading = null } = {}) {
+// own and its pose (compass direction if it names one, pitch, roll) in its XMP.
+export async function replaceExif(original, exif, pose = {}) {
   const bytes = new Uint8Array(await original.arrayBuffer());
   const { segments, dataStart } = jpegSegments(bytes);
   if (dataStart < 0) throw new Error('Not a JPEG file');
@@ -190,7 +203,7 @@ export async function replaceExif(original, exif, { heading = null } = {}) {
     if (kind === 'exif') continue;
     if (!placed && kind !== 'jfif') { parts.push(exif); placed = true; }
     const part = bytes.subarray(seg.start, seg.end);
-    parts.push(kind === 'xmp' && heading != null ? xmpWithHeading(part, heading) : part);
+    parts.push(kind === 'xmp' ? xmpWithPose(part, pose) : part);
   }
   if (!placed) parts.push(exif);
   parts.push(bytes.subarray(dataStart));
