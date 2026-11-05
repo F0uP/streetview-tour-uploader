@@ -307,12 +307,20 @@ def test_in_the_app_who_is_there_and_the_copies_a_cloud_folder_keeps(browser, ap
     folder = tmp_path / 'OneDrive'
     folder.mkdir()
     app.win.path = folder / 'Hof.vrtour'
+    looked_for_versions = []
+    other_versions = app.r._other_versions
+
+    def counted(project):
+        found = other_versions(project)
+        looked_for_versions.append(project)
+        return found
+    monkeypatch.setattr(app.r, '_other_versions', counted)
     anna = app_page(browser, app, 'Anna')
     drop(anna.page, [photo(f'p{k}.jpg', k, (40 + 50 * k, 90, 120)) for k in range(3)])
     save(anna.page)
     # a note next to the project says Anna has it open (the cloud folder shares it too)
     wait_for(lambda: len(list(folder.glob('.Hof.vrtour.*.editing'))) == 1)
-    time.sleep(1)  # Anna's editor looked for other versions too - before there was one
+    wait_for(lambda: looked_for_versions)  # and her editor looked for other versions, before there is one
 
     # OneDrive kept a second version: someone saved a point more at the same time
     project = json.loads(zipfile.ZipFile(app.win.path).read('project.json'))
@@ -336,8 +344,8 @@ def test_in_the_app_who_is_there_and_the_copies_a_cloud_folder_keeps(browser, ap
     assert 'Hof-LAPTOP.vrtour' in bea.page.inner_text('#choice-text') and 'Carl' in bea.page.inner_text('#choice-text')
     bea.page.click('#choice-buttons .btn.g')
     bea.page.wait_for_function("document.querySelectorAll('#node-list .nrow').length === 4")
-    bea.page.wait_for_function("document.getElementById('proj-dirty').hidden")
-    assert app.trashed == ['Hof-LAPTOP.vrtour'] and not copy.exists()
+    wait_for(lambda: app.trashed == ['Hof-LAPTOP.vrtour'], page=bea.page)  # the last step: merged and saved before it
+    assert not copy.exists() and bea.page.locator('#proj-dirty').is_hidden()
     assert len(json.loads(zipfile.ZipFile(app.win.path).read('project.json'))['nodes']) == 4
     bea.page.wait_for_function("!document.getElementById('collab-people').hidden")
     assert 'Anna' in bea.page.get_attribute('#collab-people', 'title')

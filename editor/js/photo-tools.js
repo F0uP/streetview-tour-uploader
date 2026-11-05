@@ -3,14 +3,14 @@
 import { degToRad, escapeHtml, normalizeRad } from './util.js';
 import { normalizeHeading } from './geo.js';
 import { parseOffsetHours } from './gpx.js';
-import { NADIR_SIZES, coverNadir, lookDown } from './photo-edit.js';
+import { LOOK_DOWN_FOV, NADIR_SIZES, coverNadir, lookDown } from './photo-edit.js';
 import { northFromSun } from './sun.js';
 
 // From the editor (initPhotoTools).
-let S, t, toast, closeMenus, openModal, closeModal, storageGet, storageSet, tourScopes, defaultScope, isSample, pushUndo,
+let S, t, toast, closeMenus, openModal, closeModal, storageGet, storageSet, tourScopes, defaultScope, pushUndo,
   tourChanged, rewritePhoto, replacePhoto, scopeNodes, scopeLabel, ensureCaptureTime, fixedNorth, resetPanorama;
 export function initPhotoTools(ctx) {
-  ({ S, t, toast, closeMenus, openModal, closeModal, storageGet, storageSet, tourScopes, defaultScope, isSample, pushUndo,
+  ({ S, t, toast, closeMenus, openModal, closeModal, storageGet, storageSet, tourScopes, defaultScope, pushUndo,
     tourChanged, rewritePhoto, replacePhoto, scopeNodes, scopeLabel, ensureCaptureTime, fixedNorth, resetPanorama } = ctx);
 }
 
@@ -31,7 +31,7 @@ export function openNadir() {
   const keep = size.value || storageGet('nadirSize') || String(NADIR_SIZES[1]);
   size.innerHTML = NADIR_SIZES.map((v, i) => `<option value="${v}">${escapeHtml(t(NADIR_LABELS[i]))} (${v}°)</option>`).join('');
   size.value = keep;
-  nadirScopes = tourScopes().map(sc => ({ ...sc, nodes: sc.nodes.filter(n => n.photoFile && !isSample(n)) })).filter(sc => sc.nodes.length);
+  nadirScopes = tourScopes().map(sc => ({ ...sc, nodes: sc.nodes.filter(n => n.photoFile) })).filter(sc => sc.nodes.length);
   const sel = document.getElementById('nadir-scope');
   sel.innerHTML = nadirScopes.map(sc => `<option value="${sc.key}">${escapeHtml(sc.label)} · ${escapeHtml(t('{n} photo(s)', { n: sc.nodes.length }))}</option>`).join('');
   sel.value = defaultScope() && nadirScopes.some(sc => sc.key === defaultScope()) ? defaultScope() : nadirScopes[0]?.key;
@@ -54,9 +54,18 @@ async function renderNadirPreview() {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(bmp, 0, 0);
     bmp.close?.();
-    coverNadir(ctx, 2048, 1024, nadirOptions());
+    const opts = nadirOptions();
+    coverNadir(ctx, 2048, 1024, opts);
     lookDown(ctx, 2048, 1024, out);
-    document.getElementById('nadir-view-note').textContent = t('Looking straight down: {name}', { name: n.name });
+    // How far the cover reaches: on even ground it can't be told from the ground around it.
+    const view = out.getContext('2d'), mid = out.width / 2;
+    view.strokeStyle = '#f6b93b';
+    view.lineWidth = 2;
+    view.setLineDash([7, 5]);
+    view.beginPath();
+    view.arc(mid, mid, (opts.size / (LOOK_DOWN_FOV / 2)) * mid, 0, 2 * Math.PI);
+    view.stroke();
+    document.getElementById('nadir-view-note').textContent = t('Looking straight down: {name}. Inside the ring: the cover.', { name: n.name });
   } catch (err) {
     document.getElementById('nadir-status').textContent = t('Could not load the photo: {msg}', { msg: err.message || err });
   }

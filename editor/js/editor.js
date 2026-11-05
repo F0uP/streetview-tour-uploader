@@ -7889,7 +7889,7 @@ initTourReport({
   placeOf: n => n.placeName || '',
 });
 initPhotoTools({
-  S, t, toast, closeMenus, openModal, closeModal, storageGet, storageSet, tourScopes, defaultScope, isSample: isSamplePhoto, pushUndo,
+  S, t, toast, closeMenus, openModal, closeModal, storageGet, storageSet, tourScopes, defaultScope, pushUndo,
   tourChanged, rewritePhoto, replacePhoto, scopeNodes, scopeLabel, ensureCaptureTime, fixedNorth, resetPanorama: () => { panoNodeId = null; },
 });
 initExports({

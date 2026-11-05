@@ -1057,7 +1057,7 @@ export const DE = {
   "Cover the tripod…": "Stativ abdecken…",
   "The ground right below the camera - the tripod, the stick or your hand - is the bottom of every 360° photo. This covers it in all photos at once: with the ground around it, an even colour or a logo of yours. The photos are encoded again; Ctrl+Z undoes it.": "Der Boden direkt unter der Kamera – das Stativ, der Stick oder deine Hand – ist der untere Rand jedes 360°-Fotos. Das hier deckt ihn in allen Fotos auf einmal ab: mit dem Boden ringsum, einer gleichmäßigen Farbe oder einem eigenen Logo. Die Fotos werden neu kodiert; Strg+Z macht es rückgängig.",
   "Looking straight down": "Senkrecht nach unten",
-  "Looking straight down: {name}": "Senkrecht nach unten: {name}",
+  "Looking straight down: {name}. Inside the ring: the cover.": "Senkrecht nach unten: {name}. Im Ring: die Abdeckung.",
   "Size": "Größe",
   "Small": "Klein",
   "Medium": "Mittel",

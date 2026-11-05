@@ -142,7 +142,8 @@ function drawNadirLogo(ctx, W, H, size, logo) {
 
 // What the camera sees looking straight down (for the preview): `fov` degrees around the
 // nadir of the panorama in ctx, drawn into the square canvas `out`, the photo's front up.
-export function lookDown(ctx, W, H, out, fov = 80) {
+export const LOOK_DOWN_FOV = 80;
+export function lookDown(ctx, W, H, out, fov = LOOK_DOWN_FOV) {
   const size = out.width;
   const band = Math.min(H, Math.ceil(H * (fov / 2 / 180)) + 1);
   const src = ctx.getImageData(0, H - band, W, band).data;

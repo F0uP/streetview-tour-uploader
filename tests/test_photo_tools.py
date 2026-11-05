@@ -126,6 +126,63 @@ def test_the_tripod_is_covered(editor):
     assert g > 90 and r < 110, (r, g, b)  # green like the ground around it, not black
 
 
+CANVAS = """() => {
+    const c = document.getElementById('nadir-canvas');
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let drawn = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i]) drawn++;
+    return { drawn, centre: [...d.slice((150 * c.width + 110) * 4, (150 * c.width + 110) * 4 + 3)] };
+}"""
+
+
+def logo_png():
+    out = io.BytesIO()
+    Image.new('RGB', (200, 200), (230, 40, 160)).save(out, 'PNG')
+    return out.getvalue()
+
+
+def test_the_view_straight_down_and_a_logo(editor):
+    page = editor.page
+    google = FakeGoogle(page)
+    drop(page, [b64('t.jpg', jpg(image=Image.new('RGB', (2048, 1024), (70, 120, 70)), lat=KIEL[0], lng=KIEL[1], heading=0))])
+    page.click('#btools')
+    page.click('button[data-run=nadir]')
+    # the photo as seen looking down, in the colour of its ground
+    page.wait_for_function(f"({CANVAS})().drawn > 50000")
+    r, g, b = page.evaluate(CANVAS)['centre']
+    assert g > r and g > b, (r, g, b)
+    # a logo: on show at once, chosen as the cover
+    page.set_input_files('#nadir-logo', files=[{'name': 'logo.png', 'mimeType': 'image/png', 'buffer': logo_png()}])
+    page.wait_for_function(f"({CANVAS})().centre[0] > 200")
+    assert page.is_checked('input[name=nadir-style][value=logo]')
+    # and in the photo
+    page.click('#nadir-go')
+    page.wait_for_function("document.getElementById('nadir-status').textContent.startsWith('The tripod is covered in 1')")
+    page.click('#nadir-back .close')
+    page.click('#bupload')
+    page.wait_for_timeout(500)
+    run_upload(page)
+    r, g, b = Image.open(io.BytesIO(google.bodies['t.jpg'])).convert('RGB').getpixel((1000, 1020))
+    assert r > 200 and g < 90, (r, g, b)
+
+
+def test_the_tripod_is_covered_in_the_sample_tour(editor):
+    """The sample tour is for trying things out: only publishing is not for it."""
+    page = editor.page
+    page.click('#btools')
+    page.click('button[data-run=sample]')
+    page.wait_for_function("document.querySelectorAll('#node-list .nrow').length > 1")
+    photos = page.locator('#node-list .nrow').count()
+    page.click('#btools')
+    page.click('button[data-run=nadir]')
+    assert page.locator('#nadir-scope option').count() > 0
+    page.wait_for_function(f"({CANVAS})().drawn > 50000")
+    page.set_input_files('#nadir-logo', files=[{'name': 'logo.png', 'mimeType': 'image/png', 'buffer': logo_png()}])
+    page.wait_for_function(f"({CANVAS})().centre[0] > 200")
+    page.click('#nadir-go')
+    page.wait_for_function(f"document.getElementById('nadir-status').textContent.startsWith('The tripod is covered in {photos}')", timeout=60000)
+
+
 def sun_reference(when, lat, lng):
     """The sun's azimuth and altitude after NOAA's short formulas (good to about half a degree)."""
     g = 2 * math.pi / 365 * (when.timetuple().tm_yday - 1 + (when.hour + when.minute / 60 - 12) / 24)
